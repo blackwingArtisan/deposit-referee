@@ -4,8 +4,10 @@ import { defineConfig, devices } from "@playwright/test";
  * The deposit flow on the real PayPal sandbox (npm run test:e2e:sandbox). The deposit is paid
  * with PayPal's test card. AI is mocked unless E2E_AI_MODE=live, which spends real money.
  * Uses a production build: `next dev` can reload endlessly.
+ * Set E2E_BASE_URL to run the same flow against a deployed copy instead of a local build.
  */
 const PORT = Number(process.env.E2E_PORT ?? 3200);
+const HOSTED = process.env.E2E_BASE_URL;
 
 export default defineConfig({
   testDir: "tests/e2e",
@@ -16,12 +18,12 @@ export default defineConfig({
   reporter: [["list"]],
   outputDir: "test-results/sandbox",
   use: {
-    baseURL: `http://localhost:${PORT}`,
+    baseURL: HOSTED ?? `http://localhost:${PORT}`,
     viewport: { width: 1440, height: 1000 },
     trace: "retain-on-failure",
   },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 1000 } } }],
-  webServer: {
+  webServer: HOSTED ? undefined : {
     command: `rm -rf .data-sandbox && npx next build && npx next start --port ${PORT}`,
     url: `http://localhost:${PORT}/api/kit/status`,
     reuseExistingServer: false,
