@@ -1,8 +1,8 @@
 # Deposit Referee
 
-> One sentence: who it helps and what the AI agent does with PayPal. <!-- TODO -->
+> Hosts who rent out rooms, tools or gear hold a deposit with PayPal; AI compares the check-in and check-out photos and suggests a charge; the host approves the exact amount, and the rest goes back to the renter.
 
-**Live demo:** https://deposit-referee.onrender.com <!-- TODO: update after deploy --> · **Video (≤3 min):** <!-- TODO: YouTube link --> · **License:** MIT
+**Status:** runs locally against the PayPal sandbox; not deployed yet · **Video (≤3 min):** <!-- TODO: YouTube link --> · **License:** MIT
 
 ![Screenshot](docs/screenshot.png) <!-- TODO: add a 1440×900 screenshot of the main flow -->
 
@@ -12,9 +12,14 @@
 
 ## What it does
 
-<!-- TODO: The user journey in 4–6 bullets, from the user's point of view. Name the moment the agent acts and the moment a human approves. -->
+1. The host creates a booking with a deposit, for example $200 for a lakeside cabin.
+2. The renter places the deposit: a PayPal order with `intent=AUTHORIZE`. The money is held, not taken, for up to PayPal's 29-day limit.
+3. Check-in and check-out photos go on the booking, each with its source shown.
+4. Claude compares the two photos, itemizes new damage, draws a red box on it and suggests a charge with its reasons.
+5. The AI suggests, the host decides: the host sets the exact charge, and it waits at the approval gate. No money moves before that approval.
+6. PayPal captures exactly that amount, the rest of the hold is voided, and the result screen shows, for example, "$150 captured, $50 released", re-read from PayPal.
 
-- …
+Money rules in code (`src/lib/deposit/rules.ts`): all amounts are integer cents, released is authorized minus captured and never comes from the AI, and a charge above the hold or on an expired hold is refused.
 
 ## How PayPal is used
 
@@ -66,7 +71,7 @@ Next.js route handlers (Node)
   └─ .data/       local JSON: ledger, audit log, AI spend (mock PayPal state in mock mode)
 ```
 
-<!-- TODO: add anything app-specific (other services, data sources). -->
+App code: `src/lib/deposit/` (rules, bookings, photos, AI review, settlement), `src/agents/tools/capture-deposit.ts` (the guarded charge), `src/components/deposit/`, `src/app/(app)/bookings/`, `src/app/api/bookings/`. The kit's `/example` and `/dashboard` pages are still in the code, but not in the nav.
 
 ## Run locally
 
@@ -81,7 +86,9 @@ npm run seed                      # optional demo data
 
 Open http://localhost:3000. For the real sandbox set `PAYPAL_MODE=sandbox`, `PAYPAL_CLIENT_ID` and `PAYPAL_CLIENT_SECRET`. For real AI set `ANTHROPIC_API_KEY`.
 
-Checks: `npm run check` (lint, typecheck, unit tests, build), `npm run test:e2e`, `npm run test:sandbox`.
+Checks: `npm run check` (lint, typecheck, unit tests, build), `npm run test:e2e` (mock PayPal, mock AI), `npm run test:sandbox`.
+
+`npm run test:e2e:sandbox` runs the whole deposit flow in a real browser on the PayPal sandbox with mock AI, then re-reads the order, capture and authorization straight from PayPal. It pays the deposit with PayPal's sandbox test card (`DEMO_TEST_CARD=1`). `E2E_AI_MODE=live npm run test:e2e:sandbox` does the same with one paid vision call.
 
 ## Sandbox test accounts
 
@@ -103,7 +110,11 @@ Render Blueprint (`render.yaml`): New → Blueprint → this repo, then enter th
 - Local JSON storage: data resets on redeploy (fine for a demo, not for production).
 - Sandbox Transaction Search needs the reporting feature enabled on the PayPal app, and data can lag up to 3 hours; the app keeps its own ledger.
 - The optional PayPal remote MCP connector is read-only and untested.
-- <!-- TODO: app-specific limitations -->
+- There are no logins yet: one browser plays both host and renter, and anyone with the page could approve.
+- The wallet button needs a sandbox buyer login, so automated runs pay with the test card. The wallet path hasn't been run through to a hold.
+- Vision has only been shown to be reliable on obvious damage (TK-39 spike, 5 photo pairs). Subtle damage is untested.
+- The demo photos are CC0, and the floor gouge in the check-out photo is digitally added. See [PHOTO-CREDITS.md](PHOTO-CREDITS.md).
+- A no-damage booking can't be settled yet: releasing a whole deposit with no charge comes later.
 
 ## License
 

@@ -4,7 +4,7 @@
  * straight from PayPal. In sandbox the deposit is paid with PayPal's test card (DEMO_TEST_CARD=1)
  * because the wallet button needs a buyer login. AI is mocked unless E2E_AI_MODE=live.
  */
-import { expect, test } from "@playwright/test";
+import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 import { readPayPalObjects, tryCapture } from "./paypal-reread";
 import type { BookingView } from "../../src/lib/deposit/types";
 
@@ -12,7 +12,15 @@ const DEPOSIT_CENTS = 20_000;
 const dollars = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 const headline = (cents: number) => `$${cents % 100 === 0 ? cents / 100 : (cents / 100).toFixed(2)}`;
 
-test("host holds a deposit, AI finds the damage, host approves, the rest is released", async ({ page, request }) => {
+interface FlowOptions {
+  /** The host's own exact charge. Leave it out to accept the AI's suggestion. */
+  hostCharge?: string;
+  /** Upload the check-out photo instead of picking the demo one. */
+  uploadCheckOut?: boolean;
+  screenshot: string;
+}
+
+async function runFlow(page: Page, request: APIRequestContext, { hostCharge, uploadCheckOut, screenshot }: FlowOptions) {
   const status = await (await request.get("/api/kit/status")).json();
   const sandbox = status.paypal.mode === "sandbox";
   const live = status.ai.mode === "live";
@@ -27,6 +35,7 @@ test("host holds a deposit, AI finds the damage, host approves, the rest is rele
   const booking = async () => (await (await request.get(`/api/bookings/${id}`)).json()) as BookingView;
 
   // The renter places the deposit: money held, not taken.
+  if (sandbox) await expect(page.getByTestId("paypal-v6-button")).toBeVisible();
   await page.getByTestId(sandbox ? "sandbox-test-card" : "simulate-paypal-approval").click();
   if (!sandbox) await page.getByTestId("mock-approve").click();
   const hold = page.getByTestId("hold-panel");
@@ -36,10 +45,13 @@ test("host holds a deposit, AI finds the damage, host approves, the rest is rele
   // Both photos, each with its source.
   await page.getByTestId("demo-photo-check_in").click();
   await expect(page.getByTestId("demo-photo-check_out")).toBeEnabled();
-  await page.getByTestId("demo-photo-check_out").click();
+  if (uploadCheckOut) await page.getByTestId("upload-photo-check_out").setInputFiles("public/demo-photos/cabin-check-out.jpg");
+  else await page.getByTestId("demo-photo-check_out").click();
   await expect(page.getByTestId("photo-source")).toHaveCount(2);
   await expect(page.getByTestId("photo-source").first()).toContainText("Greg Zaal, CC0 1.0");
-  await expect(page.getByTestId("photo-source").nth(1)).toContainText("added digitally");
+  await expect(page.getByTestId("photo-source").nth(1)).toContainText(uploadCheckOut ? "Uploaded by the host" : "added digitally");
+  const checkOutPhoto = page.getByRole("img", { name: "Check-out", exact: true });
+  await expect.poll(() => checkOutPhoto.evaluate((el) => (el as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
 
   // AI comparison, then the box drawn from its output.
   await page.getByTestId("run-review").click();
@@ -53,12 +65,15 @@ test("host holds a deposit, AI finds the damage, host approves, the rest is rele
   const drawn = review.items[0].box!;
   expect(await box.evaluate((el) => (el as HTMLElement).style.left)).toBe(`${drawn.x * 100}%`);
 
-  // The AI suggests; the charge box starts there, as an exact amount.
-  const chargeCents = review.suggestedCents;
+  // The AI suggests, the host decides. The charge box starts at the suggestion.
+  const suggested = review.suggestedCents;
+  await expect(page.getByTestId("ai-suggestion")).toContainText(`The AI suggests ${dollars(suggested)}. You decide.`);
+  await expect(page.getByTestId("charge-input")).toHaveValue((suggested / 100).toFixed(2));
+  if (hostCharge) await page.getByTestId("charge-input").fill(hostCharge);
+  const chargeCents = hostCharge ? Math.round(Number(hostCharge) * 100) : suggested;
   const releaseCents = DEPOSIT_CENTS - chargeCents;
   expect(chargeCents).toBeGreaterThan(0);
   expect(chargeCents).toBeLessThan(DEPOSIT_CENTS);
-  await expect(page.getByTestId("ai-suggestion")).toContainText(`The AI suggests ${dollars(chargeCents)}. You decide.`);
   await expect(page.getByTestId("charge-preview")).toContainText(`Charge exactly ${dollars(chargeCents)} and release ${dollars(releaseCents)}`);
   await page.getByTestId("request-approval").click();
 
@@ -68,7 +83,7 @@ test("host holds a deposit, AI finds the damage, host approves, the rest is rele
   await expect(prompt).toContainText(`Charge exactly ${dollars(chargeCents)} from the $200.00 hold and release ${dollars(releaseCents)} to the renter`);
   await expect(page.getByTestId("approve-button")).toHaveCount(1);
   if (sandbox) expect((await readPayPalObjects(reviewed.orderId!, reviewed.authorizationId!)).authorization.status).toBe("CREATED");
-  await page.screenshot({ path: "screenshots/deposit-approval.png", fullPage: true });
+  await page.screenshot({ path: `screenshots/${screenshot}-approval.png`, fullPage: true });
   await page.getByTestId("approve-button").click();
 
   // The result.
@@ -78,7 +93,7 @@ test("host holds a deposit, AI finds the damage, host approves, the rest is rele
   await expect(ruling.getByTestId("damage-box").first()).toBeVisible();
   await expect(ruling.locator("img").nth(1)).toHaveJSProperty("complete", true);
   await expect(page.getByText("Approved", { exact: true })).toBeHidden({ timeout: 15_000 }); // the toast covers the PayPal ids
-  await page.screenshot({ path: `screenshots/deposit-result-${live ? "live-ai" : "mock-ai"}.png`, fullPage: true });
+  await page.screenshot({ path: `screenshots/${screenshot}-${status.paypal.mode}-${live ? "live-ai" : "mock-ai"}.png`, fullPage: true });
 
   const done = await booking();
   expect(done.status).toBe("settled");
@@ -106,4 +121,14 @@ test("host holds a deposit, AI finds the damage, host approves, the rest is rele
     console.log(`PayPal re-read: order ${order.id} ${order.status}; authorization ${authorization.id} ${authorization.status} ${authorization.amount.value}; capture ${capture!.id} ${capture!.status} ${capture!.amount.value}; further $1.00 capture refused: ${further.status} ${further.issue}`);
   }
   console.log(`AI: mocked=${review.mocked} model=${review.model ?? "none"} cost=$${review.costUsd.toFixed(4)} box=${JSON.stringify(drawn)}`);
+}
+
+test("host accepts the AI's suggestion: partial capture, rest released", async ({ page, request }) => {
+  await runFlow(page, request, { screenshot: "deposit-result" });
+});
+
+test("host sets a different exact charge, on an uploaded photo", async ({ page, request }) => {
+  const live = (await (await request.get("/api/kit/status")).json()).ai.mode === "live";
+  test.skip(live, "Keeps a live run to one paid AI call");
+  await runFlow(page, request, { hostCharge: "35.00", uploadCheckOut: true, screenshot: "deposit-host-charge" });
 });
