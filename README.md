@@ -103,6 +103,10 @@ Checks: `npm run check` (lint, typecheck, unit tests, build), `npm run test:e2e`
 
 Render Blueprint (`render.yaml`): New → Blueprint → this repo, then enter the secrets in the dashboard.
 
+## Kit fixes carried here
+
+Started from kit `b67af83`. Two kit bugs found while building this are fixed here and in the kit: the app shell's `Nav` now sits in `<Suspense>` so dynamic routes work (`c8bcc06`), and `authorizationState` now counts captures on real sandbox orders (`4372849`).
+
 ## Limitations
 
 - Sandbox only; no live payments are possible.
