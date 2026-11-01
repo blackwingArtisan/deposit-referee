@@ -229,7 +229,11 @@ Design system: `@/components/ui` (Button/ButtonLink, Card/CardHeader/CardBody/Ca
 
 ### Deploy (Render)
 
-`render.yaml` defines one web service: `npm ci && npm run build`, start `next start -H 0.0.0.0`, health check `/api/kit/status`. Secrets are dashboard-only (`sync: false`). The disk is ephemeral: mock state, ledger, audit log and AI spend reset on redeploy, so run `npm run seed` locally for recordings and use "Load demo data" on the hosted demo. The free plan sleeps when idle, so open the URL a minute before judging. Set `PAYPAL_WEBHOOK_ID` after creating the webhook for the Render URL.
+`render.yaml` defines one web service: `npm ci && npm run build`, then `npm run seed:sandbox` and `next start -H 0.0.0.0` on each boot, health check `/api/kit/status`. Secrets are dashboard-only (`sync: false`). The disk is ephemeral: mock state, ledger, audit log and AI spend reset on redeploy, which is why the seed runs at boot; it only reads the committed objects, so it adds nothing to the sandbox. The free plan sleeps when idle, so open the URL a minute before judging. Set `PAYPAL_WEBHOOK_ID` after creating the webhook for the Render URL.
+
+`DEMO_TEST_CARD=1` is on in `render.yaml` because judges have no sandbox buyer login. It only works in sandbox mode. `/api/dev/sandbox/approve-order/:id` is then public, so never set it with live credentials.
+
+All entries share one sandbox app, and PayPal sends each app's webhook all of that app's events. `isOtherAppsEvent` in `webhook-handler.ts` drops an event that names an order, invoice or capture this app never touched, so one entry's payments stay out of another's ledger. In your own handlers, expect events only for objects this app created. Webhooks for payouts and disputes aren't filtered, because they name no order.
 
 ### PayPal MCP for your dev tools
 

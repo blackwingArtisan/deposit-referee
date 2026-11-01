@@ -12,12 +12,12 @@
 
 ## What it does
 
-1. The host creates a booking with a deposit, for example $200 for a lakeside cabin.
+1. The host creates a booking with a deposit, for example $300 for a lakeside cabin.
 2. The renter places the deposit: a PayPal order with `intent=AUTHORIZE`. The money is held, not taken, for up to PayPal's 29-day limit.
 3. Check-in and check-out photos go on the booking, each with its source shown.
 4. Claude compares the two photos, itemizes new damage, draws a red box on it and suggests a charge with its reasons.
 5. The AI suggests, the host decides: the host sets the exact charge, and it waits at the approval gate. No money moves before that approval.
-6. PayPal captures exactly that amount, the rest of the hold is voided, and the result screen shows, for example, "$150 captured, $50 released", re-read from PayPal.
+6. PayPal captures exactly that amount, the rest of the hold is voided, and the result screen shows, for example, "$150 captured, $150 released", re-read from PayPal.
 
 Money rules in code (`src/lib/deposit/rules.ts`): all amounts are integer cents, released is authorized minus captured and never comes from the AI, and a charge above the hold or on an expired hold is refused.
 

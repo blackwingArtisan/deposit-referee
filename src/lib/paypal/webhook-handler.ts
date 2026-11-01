@@ -8,7 +8,7 @@ import { timeline, withContext } from "../events/bus";
 import { singleton } from "../singleton";
 import { getEnv } from "../env";
 import { getPayPal } from "./index";
-import { ingestPayPalResource } from "./ledger";
+import { ingestPayPalResource, ledger } from "./ledger";
 import { dispatchWebhook, invoiceFromEvent, parseWebhookEvent, type AnyWebhookEvent } from "./webhooks";
 import "./handlers";
 
@@ -18,6 +18,27 @@ function amountOf(event: AnyWebhookEvent) {
   const r = event.resource as Record<string, unknown>;
   const m = (r.amount ?? r.dispute_amount ?? invoiceFromEvent(event)?.amount) as { currency_code?: string; value?: string } | undefined;
   return m?.currency_code && m.value ? { currency_code: m.currency_code, value: m.value } : undefined;
+}
+
+/**
+ * Sandbox entries share one PayPal app, and PayPal sends every webhook all of that app's events.
+ * True only for an event that names an order, invoice or capture this app has never touched, so
+ * one entry's payments stay out of another's ledger. Payouts, disputes and the rest pass through.
+ */
+export function isOtherAppsEvent(event: AnyWebhookEvent) {
+  const r = event.resource as {
+    id?: string;
+    links?: { rel: string; href: string }[];
+    supplementary_data?: { related_ids?: { order_id?: string } };
+  };
+  const orderId = r.supplementary_data?.related_ids?.order_id ?? (event.event_type.startsWith("CHECKOUT.ORDER.") ? r.id : undefined);
+  if (orderId) return !ledger.get("order", orderId);
+  if (event.event_type.startsWith("INVOICING.INVOICE.")) {
+    const invoiceId = invoiceFromEvent(event)?.id;
+    return !!invoiceId && !ledger.get("invoice", invoiceId);
+  }
+  const capturedBy = r.links?.find((l) => l.rel === "up" && l.href.includes("/captures/"))?.href.split("/").pop();
+  return !!capturedBy && !ledger.get("capture", capturedBy);
 }
 
 export async function processWebhookEvent(event: AnyWebhookEvent, opts: { replay?: boolean } = {}) {
@@ -63,6 +84,7 @@ export async function handleWebhookRequest(req: Request): Promise<Response> {
   } catch {
     return Response.json({ error: "INVALID_WEBHOOK_PAYLOAD" }, { status: 400 });
   }
+  if (getEnv().paypalMode === "sandbox" && isOtherAppsEvent(event)) return Response.json({ received: true, ignored: "other-app" });
   const replay = getEnv().paypalMode === "mock" && req.headers.get("x-kit-replay") === "1";
   const result = await processWebhookEvent(event, { replay });
   // Always 2xx once verified, or PayPal keeps retrying; handler errors show on the timeline.

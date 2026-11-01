@@ -24,7 +24,7 @@ export default function BookingsPage() {
   const [bookings, setBookings] = useState<BookingView[]>([]);
   const [item, setItem] = useState("");
   const [renter, setRenter] = useState("");
-  const [deposit, setDeposit] = useState("200.00");
+  const [deposit, setDeposit] = useState("300.00");
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {

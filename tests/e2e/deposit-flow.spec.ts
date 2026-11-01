@@ -8,7 +8,7 @@ import { expect, test, type APIRequestContext, type Page } from "@playwright/tes
 import { readPayPalObjects, tryCapture } from "./paypal-reread";
 import type { BookingView } from "../../src/lib/deposit/types";
 
-const DEPOSIT_CENTS = 20_000;
+const DEPOSIT_CENTS = 30_000;
 const dollars = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 const headline = (cents: number) => `$${cents % 100 === 0 ? cents / 100 : (cents / 100).toFixed(2)}`;
 
@@ -28,7 +28,7 @@ async function runFlow(page: Page, request: APIRequestContext, { hostCharge, upl
   await page.goto("/bookings");
   await page.getByLabel("What's being rented").fill("Lakeside cabin, weekend of Nov 6");
   await page.getByLabel("Renter").fill("Test Renter");
-  await page.getByLabel("Deposit").fill("200.00");
+  await page.getByLabel("Deposit").fill("300.00");
   await page.getByTestId("create-booking").click();
   await page.waitForURL(/\/bookings\/bk_/);
   const id = new URL(page.url()).pathname.split("/").pop()!;
@@ -39,7 +39,7 @@ async function runFlow(page: Page, request: APIRequestContext, { hostCharge, upl
   await page.getByTestId(sandbox ? "sandbox-test-card" : "simulate-paypal-approval").click();
   if (!sandbox) await page.getByTestId("mock-approve").click();
   const hold = page.getByTestId("hold-panel");
-  await expect(hold).toContainText("$200 on hold. Nothing has been charged.", { timeout: 30_000 });
+  await expect(hold).toContainText("$300 on hold. Nothing has been charged.", { timeout: 30_000 });
   await expect(hold).toContainText("PayPal holds last 29 days");
 
   // Both photos, each with its source.
@@ -70,7 +70,7 @@ async function runFlow(page: Page, request: APIRequestContext, { hostCharge, upl
   await expect(page.getByTestId("ai-suggestion")).toContainText(`The AI suggests ${dollars(suggested)}. You decide.`);
   await expect(page.getByTestId("charge-input")).toHaveValue((suggested / 100).toFixed(2));
   // A real AI total can reach the whole hold. The app caps it, and the host picks the charge.
-  if (review.cappedToHold) await expect(page.getByTestId("review")).toContainText("the suggestion stops at $200");
+  if (review.cappedToHold) await expect(page.getByTestId("review")).toContainText("the suggestion stops at $300");
   const exactCharge = hostCharge ?? (review.cappedToHold ? "150.00" : undefined);
   if (exactCharge) await page.getByTestId("charge-input").fill(exactCharge);
   const chargeCents = exactCharge ? Math.round(Number(exactCharge) * 100) : suggested;
@@ -83,7 +83,7 @@ async function runFlow(page: Page, request: APIRequestContext, { hostCharge, upl
   // The gate: nothing moves until the host approves.
   const prompt = page.getByTestId("approval-prompt");
   await expect(prompt).toBeVisible({ timeout: 30_000 });
-  await expect(prompt).toContainText(`Charge exactly ${dollars(chargeCents)} from the $200.00 hold and release ${dollars(releaseCents)} to the renter`);
+  await expect(prompt).toContainText(`Charge exactly ${dollars(chargeCents)} from the $300.00 hold and release ${dollars(releaseCents)} to the renter`);
   await expect(page.getByTestId("approve-button")).toHaveCount(1);
   if (sandbox) expect((await readPayPalObjects(reviewed.orderId!, reviewed.authorizationId!)).authorization.status).toBe("CREATED");
   await page.screenshot({ path: `screenshots/${screenshot}-approval.png`, fullPage: true });
@@ -114,7 +114,7 @@ async function runFlow(page: Page, request: APIRequestContext, { hostCharge, upl
     const { order, authorization, capture } = await readPayPalObjects(done.orderId!, done.authorizationId!, done.settlement!.captureId!);
     expect(order.intent).toBe("AUTHORIZE");
     expect(authorization.status).toBe("VOIDED");
-    expect(authorization.amount.value).toBe("200.00");
+    expect(authorization.amount.value).toBe("300.00");
     expect(capture!.status).toBe("COMPLETED");
     expect(capture!.amount.value).toBe((chargeCents / 100).toFixed(2));
     expect(capture!.final_capture).toBe(false);

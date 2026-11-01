@@ -6,14 +6,16 @@ services:
     runtime: node
     plan: free # free instances sleep when idle; the first request after a nap takes ~1 min
     buildCommand: npm ci && npm run build
-    startCommand: npm start -- -H 0.0.0.0
+    startCommand: npm run seed:sandbox; npm start -- -H 0.0.0.0 # the disk is wiped on deploy; a rerun only reads. `;` so a failed seed still boots
     healthCheckPath: /api/kit/status
     autoDeploy: true
     envVars:
       - key: NODE_VERSION
-        value: "26" # matches .node-version; use 24 if Render lacks 26
+        value: "24" # what ran on Render; .node-version says 26
       - key: PAYPAL_MODE
         value: sandbox # or mock (no credentials needed). Anything else refuses to start.
+      - key: DEMO_TEST_CARD
+        value: "1" # judges have no sandbox buyer login; adds "Pay with sandbox test card"
       - key: PAYPAL_CLIENT_ID
         sync: false
       - key: PAYPAL_CLIENT_SECRET
