@@ -17,7 +17,9 @@ export async function authorizationState(pp: PayPalApi, authorizationId: string)
   const auth = await pp.payments.getAuthorization(authorizationId);
   const orderId = auth.supplementary_data?.related_ids.order_id;
   const order = orderId ? await pp.orders.get(orderId) : null;
-  const captures = (order?.purchase_units ?? []).flatMap((u) => u.payments?.captures ?? []).filter((c) => c.supplementary_data?.related_ids.authorization_id === authorizationId);
+  // Captures inside an order have no supplementary_data on the real API, only the "up" link.
+  const belongsToAuth = (c: T.Capture) => c.supplementary_data?.related_ids.authorization_id === authorizationId || c.links.some((l) => l.rel === "up" && l.href.endsWith(`/authorizations/${authorizationId}`));
+  const captures = (order?.purchase_units ?? []).flatMap((u) => u.payments?.captures ?? []).filter(belongsToAuth);
   const cur = auth.amount.currency_code;
   const capturedMinor = captures.filter((c) => c.status !== "DECLINED" && c.status !== "FAILED").reduce((s, c) => s + toMinor(c.amount.value, cur), 0);
   const remaining = moneyFromMinor(Math.max(0, toMinor(auth.amount.value, cur) - capturedMinor), cur);

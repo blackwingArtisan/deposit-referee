@@ -69,8 +69,11 @@ async function runFlow(page: Page, request: APIRequestContext, { hostCharge, upl
   const suggested = review.suggestedCents;
   await expect(page.getByTestId("ai-suggestion")).toContainText(`The AI suggests ${dollars(suggested)}. You decide.`);
   await expect(page.getByTestId("charge-input")).toHaveValue((suggested / 100).toFixed(2));
-  if (hostCharge) await page.getByTestId("charge-input").fill(hostCharge);
-  const chargeCents = hostCharge ? Math.round(Number(hostCharge) * 100) : suggested;
+  // A real AI total can reach the whole hold. The app caps it, and the host picks the charge.
+  if (review.cappedToHold) await expect(page.getByTestId("review")).toContainText("the suggestion stops at $200");
+  const exactCharge = hostCharge ?? (review.cappedToHold ? "150.00" : undefined);
+  if (exactCharge) await page.getByTestId("charge-input").fill(exactCharge);
+  const chargeCents = exactCharge ? Math.round(Number(exactCharge) * 100) : suggested;
   const releaseCents = DEPOSIT_CENTS - chargeCents;
   expect(chargeCents).toBeGreaterThan(0);
   expect(chargeCents).toBeLessThan(DEPOSIT_CENTS);
@@ -91,6 +94,8 @@ async function runFlow(page: Page, request: APIRequestContext, { hostCharge, upl
   await expect(ruling).toBeVisible({ timeout: 60_000 });
   await expect(page.getByTestId("ruling-headline")).toHaveText(`${headline(chargeCents)} captured, ${headline(releaseCents)} released`);
   await expect(ruling.getByTestId("damage-box").first()).toBeVisible();
+  // The void on the timeline shows what was released, not the whole hold.
+  await expect(page.getByTestId("timeline-step").filter({ hasText: "void_authorization" })).toContainText(dollars(releaseCents));
   await expect(ruling.locator("img").nth(1)).toHaveJSProperty("complete", true);
   await expect(page.getByText("Approved", { exact: true })).toBeHidden({ timeout: 15_000 }); // the toast covers the PayPal ids
   await page.screenshot({ path: `screenshots/${screenshot}-${status.paypal.mode}-${live ? "live-ai" : "mock-ai"}.png`, fullPage: true });
