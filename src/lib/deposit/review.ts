@@ -5,6 +5,7 @@
  */
 import { z } from "zod";
 import { compareImages } from "@/lib/ai";
+import { modelLabel } from "@/lib/ai/config";
 import type { ImageMediaType } from "@/lib/ai/images";
 import { readPhoto } from "./photos";
 import type { Booking, DamageBox, DamageReview } from "./types";
@@ -92,5 +93,5 @@ export async function reviewPhotos(booking: Booking): Promise<DamageReview> {
     schema: Verdict,
     mock: () => MOCK_VERDICT,
   });
-  return toReview(data, booking.authorizedCents, { mocked, model, costUsd });
+  return toReview(data, booking.authorizedCents, { mocked, model: model ? modelLabel(model) : undefined, costUsd });
 }

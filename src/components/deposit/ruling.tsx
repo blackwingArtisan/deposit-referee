@@ -1,0 +1,64 @@
+import { formatCents } from "@/lib/deposit/rules";
+import type { BookingView } from "@/lib/deposit/types";
+import { DamageItems } from "./damage-items";
+import { PhotoFrame } from "./photo-frame";
+
+function Reference({ label, value }: { label: string; value?: string }) {
+  return (
+    <div className="flex items-baseline justify-between gap-4 py-1.5 sm:block">
+      <dt className="text-xs text-zinc-500">{label}</dt>
+      <dd className="font-mono text-sm text-zinc-800">{value ?? "Not available"}</dd>
+    </div>
+  );
+}
+
+/** The result screen. Every number here was re-read from PayPal after the money moved. */
+export function Ruling({ booking }: { booking: BookingView }) {
+  const { settlement, review, photos, authorizedCents } = booking;
+  const captured = settlement?.capturedCents;
+  const released = settlement?.releasedCents;
+  if (captured === undefined || released === undefined || authorizedCents === undefined) return null;
+  const capturedShare = (captured / authorizedCents) * 100;
+
+  return (
+    <section data-testid="ruling" className="rounded-2xl border border-zinc-200/80 bg-white p-5 sm:p-8">
+      <h2 data-testid="ruling-headline" className="text-4xl font-semibold tracking-tight tabular-nums sm:text-6xl">
+        <span className="text-red-700">{formatCents(captured)} captured</span>
+        <span className="text-zinc-400">, </span>
+        <span className="text-emerald-700">{formatCents(released)} released</span>
+      </h2>
+      <p className="mt-3 text-[15px] text-zinc-600">
+        From {booking.renter}&rsquo;s {formatCents(authorizedCents)} deposit on {booking.item}. PayPal confirms the charge is {settlement?.captureStatus?.toLowerCase()} and the hold is {settlement?.authorizationStatus?.toLowerCase()}.
+      </p>
+
+      <div className="mt-5 flex h-3 overflow-hidden rounded-full" role="img" aria-label={`${formatCents(captured)} of ${formatCents(authorizedCents)} captured`}>
+        <div className="bg-red-600" style={{ width: `${capturedShare}%` }} />
+        <div className="flex-1 bg-emerald-500" />
+      </div>
+
+      <div className="mt-7 grid gap-5 md:grid-cols-2">
+        {photos.check_in ? <PhotoFrame label="Check-in" photo={photos.check_in} /> : null}
+        {photos.check_out ? <PhotoFrame label="Check-out" photo={photos.check_out} items={review?.items} /> : null}
+      </div>
+
+      {review ? (
+        <div className="mt-6 grid gap-6 border-t border-zinc-100 pt-5 lg:grid-cols-2">
+          <div>
+            <h3 className="mb-2 text-sm font-semibold text-zinc-900">What the AI found</h3>
+            <DamageItems review={review} />
+          </div>
+          <div>
+            <h3 className="mb-2 text-sm font-semibold text-zinc-900">Why</h3>
+            <p className="text-sm leading-relaxed text-zinc-700">{review.reasoning}</p>
+          </div>
+        </div>
+      ) : null}
+
+      <dl className="mt-6 grid gap-x-6 border-t border-zinc-100 pt-4 sm:grid-cols-3">
+        <Reference label="PayPal order" value={booking.orderId} />
+        <Reference label="PayPal authorization" value={booking.authorizationId} />
+        <Reference label="PayPal capture" value={settlement?.captureId} />
+      </dl>
+    </section>
+  );
+}

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState, type ReactNode } from "react";
+import { Suspense, useState, type ReactNode } from "react";
 import { Activity, ClipboardCheck, FlaskConical, LayoutDashboard, Menu, X, type LucideIcon } from "lucide-react";
 import { appConfig } from "@/app.config";
 import { cn } from "../ui/cn";
@@ -11,6 +11,7 @@ import { ModeBadges } from "./mode-badges";
 
 const ICONS: Record<string, LucideIcon> = { "/dashboard": LayoutDashboard, "/bookings": ClipboardCheck, "/example": FlaskConical, "/activity": Activity };
 
+/** usePathname() suspends on dynamic routes, so callers wrap this in <Suspense>. */
 function Nav({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
   return (
@@ -45,7 +46,9 @@ export function AppShell({ children }: { children: ReactNode }) {
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 flex-col border-r border-zinc-200/80 bg-zinc-50/80 px-4 py-5 backdrop-blur lg:flex">
         <AppLogo href="/" className="px-2" />
         <div className="mt-8 flex-1">
-          <Nav />
+          <Suspense>
+            <Nav />
+          </Suspense>
         </div>
         <ModeBadges vertical className="px-1" />
         <p className="mt-4 px-1 text-[11px] leading-relaxed text-zinc-400">Sandbox only. No live PayPal calls are possible from this app.</p>
@@ -59,7 +62,9 @@ export function AppShell({ children }: { children: ReactNode }) {
       </header>
       {open ? (
         <div className="border-b border-zinc-200 bg-zinc-50 px-4 py-3 lg:hidden">
-          <Nav onNavigate={() => setOpen(false)} />
+          <Suspense>
+            <Nav onNavigate={() => setOpen(false)} />
+          </Suspense>
           <ModeBadges className="mt-3" />
         </div>
       ) : null}

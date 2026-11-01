@@ -54,5 +54,5 @@ function photoFile(photo: BookingPhoto): string {
 }
 
 export function readPhoto(photo: BookingPhoto): Buffer {
-  return fs.readFileSync(photoFile(photo));
+  return fs.readFileSync(/*turbopackIgnore: true*/ photoFile(photo));
 }
