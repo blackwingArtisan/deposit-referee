@@ -9,41 +9,41 @@ export const appConfig = {
   slug: "deposit-referee", // kit:slug
   brandColor: "#0f766e", // kit:brand
   brandForeground: "#FFFFFF", // kit:brand-foreground
-  tagline: "AI agents that move money safely with PayPal.",
-  description: "A starter for PayPal AI Hackathon apps: guarded agent tools, live timeline, mock + sandbox PayPal.",
+  tagline: "Damage deposits, settled from two photos.",
+  description: "Hold a rental deposit with PayPal, compare check-in and check-out photos with AI, and charge only what the host approves.",
   repoUrl: "",
   videoUrl: "",
 
   nav: [
-    { label: "Dashboard", href: "/dashboard" },
-    { label: "Example flow", href: "/example" },
+    { label: "Bookings", href: "/bookings" },
     { label: "Activity", href: "/activity" },
   ],
 
   landing: {
-    eyebrow: "Built on PayPal + Claude",
-    headline: "Let an AI agent run the payments busywork, with a human in the loop.",
+    eyebrow: "For hosts who rent out rooms, tools and gear",
+    headline: "Stop arguing over damage deposits.",
     subheadline:
-      "Authorize, capture, refund, invoice and pay out through PayPal. Every step the agent takes is visible, capped and auditable, and anything above your threshold waits for your approval.",
-    primaryCta: { label: "Open the app", href: "/dashboard" },
-    secondaryCta: { label: "See the example flow", href: "/example" },
+      "The renter's deposit sits on hold with PayPal, not in your account. AI compares the check-in and check-out photos and marks the damage. You approve the exact charge, and the rest goes straight back.",
+    primaryCta: { label: "Open bookings", href: "/bookings" },
+    secondaryCta: { label: "See activity", href: "/activity" },
     steps: [
-      { title: "Connect PayPal", body: "Sandbox credentials or zero-setup mock mode. Orders, payments, payouts, invoicing and disputes are ready." },
-      { title: "Give the agent a goal", body: "Claude plans the work and calls PayPal Agent Toolkit tools, plus guarded extensions for authorizations and payouts." },
-      { title: "Approve what matters", body: "Caps, allowlists and approval thresholds are enforced on every money-moving call, and each decision is logged." },
+      { title: "Hold the deposit", body: "The renter approves a PayPal hold. Nothing is charged, and it lasts up to 29 days." },
+      { title: "Compare the photos", body: "AI looks at check-in and check-out, draws a red box on new damage and suggests a charge with its reasons." },
+      { title: "Approve the charge", body: "You set the exact amount. PayPal takes that and releases everything else." },
     ],
     features: [
-      { title: "Live agent timeline", body: "Every model step and PayPal call appears as a card with status, amount and debug id." },
-      { title: "Human approval", body: "Money above your threshold pauses for a one-click approval. No silent transfers." },
-      { title: "Audit trail", body: "An append-only, hash-chained log of every request, approval and result." },
+      { title: "Money stays on hold", body: "The deposit is authorized, not taken. Only the amount you approve is ever captured." },
+      { title: "Evidence on the page", body: "Both photos side by side, the damage marked, and reasons a renter can read." },
+      { title: "Every step on record", body: "Each PayPal call and approval goes into a log that shows if anything was changed." },
     ],
   },
 
-  /** Guard policy for this app's agents (merged over DEFAULT_POLICY). */
+  /** Guard policy (merged over DEFAULT_POLICY). A deposit charge always waits for the host. */
   agentPolicy: {
     approvalThreshold: "50.00",
     maxPerAction: "500.00",
     maxPerDay: "2000.00",
+    requireApprovalFor: ["capture_deposit", "accept_dispute_claim"],
   } satisfies Partial<GuardPolicy>,
 };
 

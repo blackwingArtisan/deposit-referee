@@ -3,13 +3,13 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, type ReactNode } from "react";
-import { Activity, FlaskConical, LayoutDashboard, Menu, X, type LucideIcon } from "lucide-react";
+import { Activity, ClipboardCheck, FlaskConical, LayoutDashboard, Menu, X, type LucideIcon } from "lucide-react";
 import { appConfig } from "@/app.config";
 import { cn } from "../ui/cn";
 import { AppLogo } from "./app-logo";
 import { ModeBadges } from "./mode-badges";
 
-const ICONS: Record<string, LucideIcon> = { "/dashboard": LayoutDashboard, "/example": FlaskConical, "/activity": Activity };
+const ICONS: Record<string, LucideIcon> = { "/dashboard": LayoutDashboard, "/bookings": ClipboardCheck, "/example": FlaskConical, "/activity": Activity };
 
 function Nav({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
