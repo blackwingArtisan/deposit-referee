@@ -1,0 +1,34 @@
+# Render Blueprint: one Node web service. In the Render dashboard: New → Blueprint → this repo.
+# Secrets marked `sync: false` are entered in the dashboard (never committed).
+services:
+  - type: web
+    name: deposit-referee
+    runtime: node
+    plan: free # free instances sleep when idle; the first request after a nap takes ~1 min
+    buildCommand: npm ci && npm run build
+    startCommand: npm start -- -H 0.0.0.0
+    healthCheckPath: /api/kit/status
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: "26" # matches .node-version; use 24 if Render lacks 26
+      - key: PAYPAL_MODE
+        value: sandbox # or mock (no credentials needed). Anything else refuses to start.
+      - key: PAYPAL_CLIENT_ID
+        sync: false
+      - key: PAYPAL_CLIENT_SECRET
+        sync: false
+      - key: PAYPAL_WEBHOOK_ID
+        sync: false # create a webhook for https://<service>.onrender.com/api/paypal/webhooks first
+      - key: PAYPAL_SANDBOX_BUYER_EMAIL
+        sync: false
+      - key: PAYPAL_SANDBOX_SELLER_EMAIL
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: AI_DAILY_CAP_USD
+        value: "2"
+      - key: AI_RATE_LIMIT_PER_MINUTE
+        value: "6"
+      - key: AI_RATE_LIMIT_PER_DAY
+        value: "60"

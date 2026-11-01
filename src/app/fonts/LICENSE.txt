@@ -1,0 +1,3 @@
+Geist and Geist Mono (latin subset), by Vercel, licensed under the SIL Open Font License 1.1
+(https://openfontlicense.org). Bundled locally so builds never depend on Google Fonts.
+Source: the woff2 files shipped with the `next` package (next/dist/next-devtools/server/font).

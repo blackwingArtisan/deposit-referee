@@ -1,0 +1,55 @@
+{
+  "name": "deposit-referee",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "typecheck": "next typegen && tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:sandbox": "SANDBOX_SMOKE=1 vitest run tests/unit/sandbox.smoke.test.ts",
+    "test:e2e": "playwright test -c playwright.config.ts",
+    "demo:record": "playwright test -c playwright.demo.config.ts",
+    "demo:mp4": "bash scripts/webm-to-mp4.sh",
+    "seed": "tsx scripts/seed.ts",
+    "seed:reset": "tsx scripts/seed.ts --reset",
+    "seed:sandbox": "tsx scripts/seed.ts --sandbox",
+    "paypal:mcp": "node scripts/paypal-mcp.mjs",
+    "check": "npm run lint && npm run typecheck && npm test && npm run build"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "1.3.0",
+    "@paypal/agent-toolkit": "1.11.0",
+    "@paypal/paypal-js": "11.3.0",
+    "@paypal/react-paypal-js": "10.6.1",
+    "ag-grid-community": "36.2.0",
+    "ag-grid-react": "36.2.0",
+    "lucide-react": "1.55.0",
+    "next": "16.4.3",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.64.1",
+    "@tailwindcss/turbopack": "4.3.3",
+    "@types/node": "26.6.5",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "eslint": "9.39.5",
+    "eslint-config-next": "16.4.3",
+    "tailwindcss": "4.3.3",
+    "tsx": "4.23.15",
+    "typescript": "5.9.3",
+    "vitest": "5.0.5"
+  },
+  "overrides": {
+    "mathjs": "15.2.0"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}

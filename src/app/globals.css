@@ -1,0 +1,75 @@
+@import "tailwindcss";
+
+/*
+ * One brand colour drives the whole UI: --brand (and --brand-foreground for text on it).
+ * They are set on <html> from src/app.config.ts (brandColor). Shades are derived with
+ * color-mix, so apps never edit this file to re-skin.
+ */
+:root {
+  --brand: #0f766e;
+  --brand-foreground: #FFFFFF;
+  --background: #f7f7f8;
+  --foreground: #18181b;
+}
+
+@theme inline {
+  --color-brand: var(--brand);
+  --color-brand-foreground: var(--brand-foreground);
+  --color-brand-50: color-mix(in oklab, var(--brand) 6%, white);
+  --color-brand-100: color-mix(in oklab, var(--brand) 12%, white);
+  --color-brand-200: color-mix(in oklab, var(--brand) 24%, white);
+  --color-brand-300: color-mix(in oklab, var(--brand) 42%, white);
+  --color-brand-400: color-mix(in oklab, var(--brand) 70%, white);
+  --color-brand-500: var(--brand);
+  --color-brand-600: color-mix(in oklab, var(--brand) 86%, black);
+  --color-brand-700: color-mix(in oklab, var(--brand) 72%, black);
+  --color-brand-800: color-mix(in oklab, var(--brand) 56%, black);
+  --color-brand-900: color-mix(in oklab, var(--brand) 40%, black);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+
+  --animate-fade-in: fade-in 0.35s ease-out both;
+  --animate-slide-up: slide-up 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  --animate-pulse-ring: pulse-ring 1.6s ease-out infinite;
+
+  @keyframes fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  @keyframes slide-up {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes pulse-ring {
+    0% { box-shadow: 0 0 0 0 color-mix(in oklab, var(--color-amber-400) 55%, transparent); }
+    100% { box-shadow: 0 0 0 10px transparent; }
+  }
+}
+
+html {
+  color-scheme: light;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: color-mix(in oklab, var(--brand) 22%, white);
+}
+
+.bg-grid {
+  background-image:
+    linear-gradient(to right, color-mix(in oklab, var(--foreground) 6%, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in oklab, var(--foreground) 6%, transparent) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+
+.scrollbar-thin {
+  scrollbar-width: thin;
+}
