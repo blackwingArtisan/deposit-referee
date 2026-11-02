@@ -129,6 +129,12 @@ async function runFlow(page: Page, request: APIRequestContext, { hostCharge, upl
 }
 
 test("host accepts the AI's suggestion: partial capture, rest released", async ({ page, request }) => {
+  // Money only moves through the Guard: the kit's open PayPal routes and demo pages are gone.
+  for (const path of ["/example", "/dashboard"]) expect((await page.request.get(path)).status()).toBe(404);
+  for (const path of ["/api/paypal/orders", "/api/paypal/captures/X/refund", "/api/paypal/authorizations/X/capture", "/api/paypal/authorizations/X/void"]) {
+    expect((await page.request.post(path, { data: {} })).status()).toBe(404);
+  }
+
   await runFlow(page, request, { screenshot: "deposit-result" });
 });
 
