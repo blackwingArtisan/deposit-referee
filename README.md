@@ -60,6 +60,7 @@ All PayPal calls go to the **sandbox** (`https://api-m.sandbox.paypal.com`); the
 - **Agent loop**: Claude's tool use via the Anthropic TypeScript SDK (`@anthropic-ai/sdk`), with adaptive thinking and summarized reasoning shown on the timeline.
 - **Structured output**: zod schemas through the Messages API's structured outputs (`output_config.format`).
 - **Cost control**: a hard daily spend cap (worst case reserved before every call), per-IP rate limits, and Haiku for everything except the photo comparison.
+- **When the AI can't run**: if the account is out of credit or the daily cap is spent, the host gets a plain message. No money moves, the deposit stays on hold, and the same booking can carry on later.
 - **Mock mode**: without an API key the app runs a clearly labelled scripted agent, so the demo works anywhere.
 
 **Built with AI.** This project was built with **Claude Code** (Anthropic's coding agent), which wrote the code under human direction. It started from a shared starter kit that Claude Code also wrote. The product idea, scope and review were human decisions.
@@ -102,7 +103,7 @@ npm run seed                      # optional demo data
 
 Open http://localhost:3000. For the real sandbox set `PAYPAL_MODE=sandbox`, `PAYPAL_CLIENT_ID` and `PAYPAL_CLIENT_SECRET`. For real AI set `ANTHROPIC_API_KEY`.
 
-Checks: `npm run check` (lint, typecheck, unit tests, build), `npm run test:e2e` (mock PayPal, mock AI), `npm run test:e2e:studio` (the same with AG Studio on, on a production build), `npm run test:sandbox`.
+Checks: `npm run check` (lint, typecheck, unit tests, build), `npm run test:e2e` (mock PayPal, mock AI), `npm run test:e2e:studio` (the same with AG Studio on, on a production build), `ENGINE=webkit npm run test:e2e:engines` (one other browser at a time: `webkit`, `firefox`, `iphone` or `android`), `npm run test:sandbox`.
 
 `npm run test:e2e:sandbox` runs the whole deposit flow in a real browser on the PayPal sandbox with mock AI, then re-reads the order, capture and authorization straight from PayPal. It pays the deposit with PayPal's sandbox test card (`DEMO_TEST_CARD=1`). `E2E_AI_MODE=live npm run test:e2e:sandbox` runs just the damage and no-damage flows with real Claude, so two vision calls and two short agent runs.
 
