@@ -3,7 +3,7 @@
  * with the switch off it's the plain grid and no AG Studio code reaches the browser.
  */
 import { expect, test, type Page } from "@playwright/test";
-import { toProposal } from "./booking-flow";
+import { expectNoSidewaysScroll, toProposal } from "./booking-flow";
 
 const SPONSOR_UI = process.env.NEXT_PUBLIC_SPONSOR_UI === "1";
 
@@ -55,6 +55,7 @@ test("the dashboard shows real deposit data", async ({ page, request }) => {
     expect(code).not.toContain("ag-studio");
     await page.screenshot({ path: "screenshots/insights-plain.png", fullPage: true });
   }
+  await expectNoSidewaysScroll(page);
   // With no key yet, AG Studio's starred licence banner is the only error allowed.
   expect(errors.filter((message) => !message.startsWith("*"))).toEqual([]);
 });

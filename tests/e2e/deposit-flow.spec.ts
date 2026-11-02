@@ -5,7 +5,7 @@
  * because the wallet button needs a buyer login. AI is mocked unless E2E_AI_MODE=live.
  */
 import { expect, test, type Page } from "@playwright/test";
-import { dollars, headline, openAsRenter, renterAccepts, renterContests, setCharge, toProposal, type Flow } from "./booking-flow";
+import { dollars, expectNoSidewaysScroll, headline, openAsRenter, renterAccepts, renterContests, setCharge, toProposal, type Flow } from "./booking-flow";
 import { readPayPalObjects, tryCapture } from "./paypal-reread";
 
 const DEPOSIT_CENTS = 30_000;
@@ -29,6 +29,8 @@ async function approveCharge(page: Page, flow: Flow, chargeCents: number, screen
   await expect(prompt).toBeVisible({ timeout: 30_000 });
   await expect(prompt).toContainText(`Charge exactly ${dollars(chargeCents)} from the $300.00 hold and release ${dollars(releaseCents)} to the renter`);
   await expect(page.getByTestId("approve-button")).toHaveCount(1);
+  await expect(page.getByTestId("approve-button")).toBeInViewport();
+  await expectNoSidewaysScroll(page);
   await expectHoldUntouched(flow);
   await page.screenshot({ path: `screenshots/${screenshot}-approval.png`, fullPage: true });
   await page.getByTestId("approve-button").click();
@@ -41,6 +43,8 @@ async function approveCharge(page: Page, flow: Flow, chargeCents: number, screen
   // The void on the timeline shows what was released, not the whole hold.
   await expect(page.getByTestId("timeline-step").filter({ hasText: "void_authorization" })).toContainText(dollars(releaseCents));
   await expect(ruling.locator("img").nth(1)).toHaveJSProperty("complete", true);
+  await expect(page.getByTestId("ruling-headline")).toBeInViewport();
+  await expectNoSidewaysScroll(page);
   await expect(page.getByText("Approved", { exact: true })).toBeHidden({ timeout: 15_000 }); // the toast covers the PayPal ids
   await page.screenshot({ path: `screenshots/${screenshot}-${flow.mode}-${flow.live ? "live-ai" : "mock-ai"}.png`, fullPage: true });
 

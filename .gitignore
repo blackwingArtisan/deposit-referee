@@ -51,3 +51,6 @@ test-results/
 playwright-report/
 screenshots/
 .env.shared
+
+# other browser engines
+test-results-*/

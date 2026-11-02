@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type ChangeEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from "react";
 import { useParams } from "next/navigation";
 import { Bot, CircleAlert, Clock, ImagePlus, Lock, ScanSearch, Upload } from "lucide-react";
 import { ApprovalPrompt } from "@/components/agent/approval-prompt";
@@ -12,6 +12,7 @@ import { PageHeader } from "@/components/shell/app-shell";
 import { useToast } from "@/components/toast";
 import { Badge, Button, Card, CardBody, CardHeader, EmptyState, SkeletonCard } from "@/components/ui";
 import { formatCents, formatExactCents } from "@/lib/deposit/rules";
+import { bookingSteps } from "@/lib/deposit/timeline";
 import type { BookingStatus, BookingView, PhotoSlot } from "@/lib/deposit/types";
 import type { Money } from "@/lib/money";
 import { DamageItems } from "./damage-items";
@@ -109,8 +110,20 @@ export function BookingScreen() {
     return () => clearInterval(timer);
   }, [moving, renterPending, refresh]);
 
+  // On a phone the approval card and the result appear far from the button that asked for them.
+  const decision = useRef<HTMLDivElement>(null);
+  const approvalId = booking?.approval?.id;
+  useEffect(() => {
+    if (approvalId) decision.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [approvalId]);
+  const shownStatus = useRef(booking?.status);
+  useEffect(() => {
+    if (booking?.status === "settled" && shownStatus.current && shownStatus.current !== "settled") window.scrollTo({ top: 0, behavior: "smooth" });
+    shownStatus.current = booking?.status;
+  }, [booking?.status]);
+
   // The approval card sits next to the amount, so the timeline only reports the wait.
-  const timelineSteps = useMemo(() => steps.filter((s) => s.channel !== "global" || s.kind === "webhook").map((s) => (s.approval?.state === "pending" ? { ...s, approval: undefined } : s)), [steps]);
+  const timelineSteps = useMemo(() => (booking ? bookingSteps(steps, booking) : []).map((s) => (s.approval?.state === "pending" ? { ...s, approval: undefined } : s)), [steps, booking]);
 
   const fail = (title: string, e: unknown) => toast({ title, description: (e as Error).message, variant: "error", durationMs: 7000 });
 
@@ -145,7 +158,7 @@ export function BookingScreen() {
     <Card className="flex flex-col">
       <CardHeader title="Live timeline" description="Every PayPal call and decision, as it happens." />
       <CardBody className="flex-1">
-        <ToolCallTimeline steps={timelineSteps} className="max-h-[760px] min-h-[320px]" />
+        <ToolCallTimeline steps={timelineSteps} className="max-h-[420px] min-h-[320px] xl:max-h-[760px]" />
       </CardBody>
     </Card>
   );
@@ -165,7 +178,7 @@ export function BookingScreen() {
           {timeline}
         </div>
       ) : (
-        <div className="grid gap-6 xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
+        <div className="grid grid-cols-[minmax(0,1fr)] gap-6 xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
           <Card>
             <CardBody className="space-y-8 py-6">
               <Step n={1} title="Renter places the deposit" done={status !== "draft"}>
@@ -251,13 +264,15 @@ export function BookingScreen() {
                     {deciding && proposal ? <HostDecision key={proposal.runId} booking={booking} busy={busy} act={run} /> : null}
 
                     {status === "awaiting_approval" && approval ? (
-                      <ApprovalPrompt
-                        approvalId={approval.id}
-                        summary={approval.summary}
-                        reason="This is the Guard's approval step. No money moves until you approve."
-                        amount={approval.amountValue ? ({ currency_code: "USD", value: approval.amountValue } satisfies Money) : undefined}
-                        onDecided={() => void refresh().catch(() => undefined)}
-                      />
+                      <div ref={decision}>
+                        <ApprovalPrompt
+                          approvalId={approval.id}
+                          summary={approval.summary}
+                          reason="This is the Guard's approval step. No money moves until you approve."
+                          amount={approval.amountValue ? ({ currency_code: "USD", value: approval.amountValue } satisfies Money) : undefined}
+                          onDecided={() => void refresh().catch(() => undefined)}
+                        />
+                      </div>
                     ) : null}
 
                     {status === "awaiting_approval" && !approval ? <Notice tone="muted">Working with PayPal.</Notice> : null}

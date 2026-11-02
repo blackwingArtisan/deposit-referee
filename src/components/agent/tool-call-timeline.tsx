@@ -73,13 +73,13 @@ function Meta({ step }: { step: TimelineStep }) {
   const parts: ReactNode[] = [];
   if (p) {
     parts.push(
-      <span key="m" className="font-mono">
+      <span key="m" className="min-w-0 break-all font-mono">
         {p.method} {p.path}
       </span>,
     );
     if (p.httpStatus) parts.push(<span key="s">HTTP {p.httpStatus}</span>);
     if (p.durationMs !== undefined) parts.push(<span key="d">{p.durationMs} ms</span>);
-    if (p.debugId) parts.push(<span key="dbg" className="font-mono">debug_id {p.debugId}</span>);
+    if (p.debugId) parts.push(<span key="dbg" className="min-w-0 break-all font-mono">debug_id {p.debugId}</span>);
     parts.push(
       <span key="mode" className={cn("rounded px-1.5 font-medium", p.mode === "sandbox" ? "bg-brand-50 text-brand-700" : "bg-zinc-100 text-zinc-600")}>
         {p.mode === "sandbox" ? "PayPal sandbox" : "mock PayPal"}

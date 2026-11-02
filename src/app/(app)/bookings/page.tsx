@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState, useSyncExternalStore, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useKit } from "@/components/kit/kit-provider";
@@ -17,15 +17,17 @@ function outcome(booking: BookingView): string {
   return `${formatCents(booking.depositCents)} on hold`;
 }
 
+const noSubscription = () => () => undefined;
+
 export default function BookingsPage() {
   const { kitFetch } = useKit();
   const { toast } = useToast();
   const router = useRouter();
   const [bookings, setBookings] = useState<BookingView[]>([]);
-  const [item, setItem] = useState("");
-  const [renter, setRenter] = useState("");
-  const [deposit, setDeposit] = useState("300.00");
   const [busy, setBusy] = useState(false);
+  // On a slow phone the form is on screen before React is running. The fields are uncontrolled so
+  // React keeps what was already typed, and the button waits so the form can't submit natively.
+  const hydrated = useSyncExternalStore(noSubscription, () => true, () => false);
 
   useEffect(() => {
     kitFetch<{ bookings: BookingView[] }>("/api/bookings")
@@ -33,11 +35,12 @@ export default function BookingsPage() {
       .catch((e: Error) => toast({ title: "Could not load bookings", description: e.message, variant: "error" }));
   }, [kitFetch, toast]);
 
-  async function create(event: FormEvent) {
+  async function create(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const form = new FormData(event.currentTarget);
     setBusy(true);
     try {
-      const booking = await kitFetch<BookingView>("/api/bookings", { json: { item, renter, depositCents: dollarsToCents(deposit) } });
+      const booking = await kitFetch<BookingView>("/api/bookings", { json: { item: form.get("item"), renter: form.get("renter"), depositCents: dollarsToCents(String(form.get("deposit"))) } });
       router.push(`/bookings/${booking.id}`);
     } catch (e) {
       toast({ title: "Could not create the booking", description: (e as Error).message, variant: "error", durationMs: 7000 });
@@ -48,21 +51,21 @@ export default function BookingsPage() {
   return (
     <>
       <PageHeader title="Bookings" description="Hold a deposit for each rental, then settle it from the check-in and check-out photos." />
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)]">
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)]">
         <Card>
           <CardHeader title="New booking" />
           <CardBody>
             <form onSubmit={create} className="space-y-4">
               <Field label="What's being rented" htmlFor="item">
-                <Input id="item" required minLength={2} maxLength={80} value={item} onChange={(e) => setItem(e.target.value)} placeholder="Lakeside cabin, weekend of Nov 6" />
+                <Input id="item" name="item" required minLength={2} maxLength={80} placeholder="Lakeside cabin, weekend of Nov 6" />
               </Field>
               <Field label="Renter" htmlFor="renter">
-                <Input id="renter" required maxLength={60} value={renter} onChange={(e) => setRenter(e.target.value)} placeholder="Renter's name" />
+                <Input id="renter" name="renter" required maxLength={60} placeholder="Renter's name" />
               </Field>
               <Field label="Deposit" htmlFor="deposit" hint={`From ${formatCents(MIN_DEPOSIT_CENTS)} to ${formatCents(MAX_DEPOSIT_CENTS)}.`}>
-                <MoneyInput id="deposit" value={deposit} onChange={(e) => setDeposit(e.target.value)} className="w-40" />
+                <MoneyInput id="deposit" name="deposit" defaultValue="300.00" className="w-40" />
               </Field>
-              <Button type="submit" loading={busy} data-testid="create-booking">
+              <Button type="submit" loading={busy} disabled={!hydrated} data-testid="create-booking">
                 Create booking
               </Button>
             </form>

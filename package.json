@@ -20,7 +20,8 @@
     "seed:reset": "tsx scripts/seed.ts --reset",
     "seed:sandbox": "tsx scripts/seed.ts --sandbox",
     "paypal:mcp": "node scripts/paypal-mcp.mjs",
-    "check": "npm run lint && npm run typecheck && npm test && npm run build"
+    "check": "npm run lint && npm run typecheck && npm test && npm run build",
+    "test:e2e:engines": "playwright test -c playwright.engines.config.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "1.3.0",

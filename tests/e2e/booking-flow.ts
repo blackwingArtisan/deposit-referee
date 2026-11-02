@@ -13,6 +13,12 @@ export interface Flow {
   booking: () => Promise<BookingView>;
 }
 
+/** A phone page wider than its screen scrolls sideways, and mobile browsers rescale it, which breaks tapping. */
+export async function expectNoSidewaysScroll(page: Page) {
+  const width = await page.evaluate(() => ({ screen: document.documentElement.clientWidth, content: document.documentElement.scrollWidth }));
+  expect(width.content).toBeLessThanOrEqual(width.screen);
+}
+
 export async function kitStatus(request: APIRequestContext) {
   const status = await (await request.get("/api/kit/status")).json();
   return { sandbox: status.paypal.mode === "sandbox", live: status.ai.mode === "live", mode: status.paypal.mode as string };
@@ -53,6 +59,7 @@ export async function toProposal(page: Page, request: APIRequestContext, opts: {
   await page.getByTestId("run-review").click();
   await expect(page.getByTestId("review")).toBeVisible({ timeout: 90_000 });
   await expect(page.getByTestId("ai-proposal")).toBeVisible({ timeout: 90_000 });
+  await expectNoSidewaysScroll(page);
   return { id, sandbox, live, mode, booking };
 }
 
@@ -62,6 +69,7 @@ export async function openAsRenter(page: Page, booking: BookingView): Promise<Pa
   const renter = await context.newPage();
   await renter.goto(`/renter/${booking.renterToken}`);
   await expect(renter.getByTestId("renter-headline")).toBeVisible();
+  await expectNoSidewaysScroll(renter);
   return renter;
 }
 
