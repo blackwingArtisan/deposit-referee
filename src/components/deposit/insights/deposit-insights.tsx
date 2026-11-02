@@ -1,0 +1,78 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import dynamic from "next/dynamic";
+import type { ColDef } from "ag-grid-community";
+import { DataGrid } from "@/components/data-grid";
+import { useKit } from "@/components/kit/kit-provider";
+import { PageHeader } from "@/components/shell/app-shell";
+import { useToast } from "@/components/toast";
+import { Stat } from "@/components/ui";
+import type { DepositRow } from "@/lib/deposit/insights";
+
+/**
+ * Sponsor UI sits behind a build-time switch. With NEXT_PUBLIC_SPONSOR_UI unset, the page shows
+ * the plain grid, and next.config.ts aliases the sponsor's packages to a stub so none of their
+ * code is built.
+ */
+const StudioDashboard =
+  process.env.NEXT_PUBLIC_SPONSOR_UI === "1"
+    ? dynamic(() => import("./studio-dashboard"), { ssr: false, loading: () => <p className="text-sm text-zinc-500">Loading the dashboard.</p> })
+    : null;
+
+const usd = (value: number) => `$${value.toFixed(2)}`;
+
+const amount = (field: keyof DepositRow, headerName: string): ColDef<DepositRow> => ({
+  field,
+  headerName,
+  type: "rightAligned",
+  minWidth: 120,
+  filter: "agNumberColumnFilter",
+  valueFormatter: (p) => (p.value === null || p.value === undefined ? "" : usd(p.value as number)),
+});
+
+const COLUMNS: ColDef<DepositRow>[] = [
+  { field: "property", headerName: "Property", minWidth: 170 },
+  { field: "renter", headerName: "Renter", minWidth: 130 },
+  { field: "stage", headerName: "Stage", minWidth: 130 },
+  amount("held", "Held"),
+  amount("charged", "Charged"),
+  amount("released", "Released"),
+  amount("aiProposed", "AI proposed"),
+  amount("hostChange", "Host change"),
+  { field: "contested", headerName: "Contested", minWidth: 110 },
+];
+
+function PlainDashboard({ rows }: { rows: DepositRow[] | null }) {
+  const totals = useMemo(() => (rows ?? []).reduce((sum, r) => ({ held: sum.held + r.held, charged: sum.charged + r.charged, released: sum.released + r.released, changed: sum.changed + (r.hostChanged === "Yes" ? 1 : 0) }), { held: 0, charged: 0, released: 0, changed: 0 }), [rows]);
+  return (
+    <div className="space-y-6" data-testid="plain-dashboard">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <Stat label="Held now" value={usd(totals.held)} />
+        <Stat label="Charged" value={usd(totals.charged)} />
+        <Stat label="Released" value={usd(totals.released)} />
+        <Stat label="AI figure changed" value={totals.changed} hint="Bookings where you changed the AI's number" />
+      </div>
+      <DataGrid<DepositRow> rows={rows} columns={COLUMNS} getRowId={(r) => r.bookingId} searchPlaceholder="Search deposits…" emptyMessage="No bookings yet" />
+    </div>
+  );
+}
+
+export function DepositInsights() {
+  const { kitFetch } = useKit();
+  const { toast } = useToast();
+  const [rows, setRows] = useState<DepositRow[] | null>(null);
+
+  useEffect(() => {
+    kitFetch<{ rows: DepositRow[] }>("/api/insights")
+      .then((r) => setRows(r.rows))
+      .catch((e: Error) => toast({ title: "Could not load the dashboard", description: e.message, variant: "error" }));
+  }, [kitFetch, toast]);
+
+  return (
+    <>
+      <PageHeader title="Dashboard" description="What's held, charged and released by property, and where you changed the AI's number. Amounts come from PayPal, re-read when each deposit settled." />
+      {StudioDashboard ? rows ? <StudioDashboard rows={rows} /> : null : <PlainDashboard rows={rows} />}
+    </>
+  );
+}

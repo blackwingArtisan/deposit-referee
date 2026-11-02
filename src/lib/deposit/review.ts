@@ -22,7 +22,7 @@ const Verdict = z.object({
           w: z.number().describe("Width, 0-1"),
           h: z.number().describe("Height, 0-1"),
         }),
-        charge_cents: z.number().describe("Repair charge for this damage in US cents: 15000 means $150.00"),
+        charge_cents: z.number().describe("Proposed charge for this damage in US cents: 15000 means $150.00"),
       }),
     )
     .describe("One item per new damage; empty if none"),
@@ -41,7 +41,7 @@ Decide whether the renter caused new damage.
 - Ordinary wear and tear is not damage.
 - If you can't be reasonably sure the damage is new, don't charge.
 
-For each new damage, give a box around it in the check-out photo. Propose a fair repair charge in US cents for a typical US rental, for the repair only.`;
+For each new damage, give a box around it in the check-out photo. Propose a fair charge in US cents for a typical US rental, for the repair only.`;
 
 /** A real answer from the vision spike on the demo photos (pair 1, run 1). */
 export const MOCK_VERDICT: Verdict = {
@@ -54,6 +54,14 @@ export const MOCK_VERDICT: Verdict = {
     },
   ],
   reasoning: "The check-out photo shows a long, narrow scratch with a gouged, lighter edge across the plank floor. The same area in the check-in photo is clean, with only normal grain and seams. Lighting and camera angle differ, but they do not explain a distinct scratch like this. The charge covers repairing or replacing the affected plank.",
+  confidence: "high",
+};
+
+/** Used when the two photos are the same file, which is how the demo shows a clean check-out. */
+export const MOCK_NO_DAMAGE: Verdict = {
+  new_damage: false,
+  findings: [],
+  reasoning: "The check-in and check-out photos match. There is no new damage to charge for.",
   confidence: "high",
 };
 
@@ -86,12 +94,13 @@ export async function reviewPhotos(booking: Booking): Promise<DamageReview> {
   const { check_in, check_out } = booking.photos;
   if (!check_in || !check_out || booking.authorizedCents === undefined) throw new Error("A review needs both photos and a hold.");
   const image = (photo: typeof check_in) => ({ base64: readPhoto(photo).toString("base64"), mediaType: photo.mediaType as ImageMediaType });
+  const samePhoto = readPhoto(check_in).equals(readPhoto(check_out));
   const { data, mocked, model, costUsd } = await compareImages({
     images: [image(check_in), image(check_out)],
     labels: ["Check-in photo", "Check-out photo"],
     question: QUESTION,
     schema: Verdict,
-    mock: () => MOCK_VERDICT,
+    mock: () => (samePhoto ? MOCK_NO_DAMAGE : MOCK_VERDICT),
   });
   return toReview(data, booking.authorizedCents, { mocked, model: model ? modelLabel(model) : undefined, costUsd });
 }

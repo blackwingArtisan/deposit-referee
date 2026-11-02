@@ -1,13 +1,15 @@
 import { z } from "zod";
 import { viewBooking } from "@/lib/deposit/bookings";
-import { requestSettlement } from "@/lib/deposit/settle";
+import { requestRelease, requestSettlement } from "@/lib/deposit/settle";
 import { getContext } from "@/lib/events/bus";
 import { readJson, route } from "@/lib/http";
 
-const Body = z.object({ chargeCents: z.number().int().positive() });
+const Body = z.union([z.object({ chargeCents: z.number().int().positive() }), z.object({ release: z.literal(true) })]);
 
-/** Sends the host's exact charge to the approval gate. No money moves until it is approved. */
+/** Sends the host's decision to the approval gate. No money moves until it is approved. */
 export const POST = route<RouteContext<"/api/bookings/[id]/settle">>(async (req, ctx) => {
-  const { chargeCents } = await readJson(req, Body);
-  return viewBooking(requestSettlement((await ctx.params).id, chargeCents, getContext().channel).booking);
+  const body = await readJson(req, Body);
+  const { id } = await ctx.params;
+  const { channel } = getContext();
+  return viewBooking(("release" in body ? requestRelease(id, channel) : requestSettlement(id, body.chargeCents, channel)).booking);
 });

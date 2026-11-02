@@ -28,6 +28,12 @@ export interface AgentRun {
   costUsd: number;
 }
 
+/** Unit tests set AGENT_SCRIPT_PAUSE_MS=0. The pause only exists so a person can follow the timeline. */
+function scriptPauseMs(): number | undefined {
+  const value = process.env.AGENT_SCRIPT_PAUSE_MS;
+  return value === undefined ? undefined : Number(value);
+}
+
 const runs = singleton("agent:runs", () => new Map<string, AgentRun>());
 
 export function getRun(id: string) {
@@ -38,8 +44,7 @@ export function listRuns(channel?: string): AgentRun[] {
   return [...runs.values()].filter((r) => !channel || r.channel === channel).sort((a, b) => b.startedAt.localeCompare(a.startedAt));
 }
 
-/** Kicks off a run and returns immediately. Use runAgentToCompletion() in tests/scripts. */
-export function startAgentRun(def: AgentDefinition, input: AgentInput, opts: { channel: string }): AgentRun {
+function newRun(def: AgentDefinition, input: AgentInput, opts: { channel: string }): AgentRun {
   const run: AgentRun = {
     id: `run_${randomUUID().slice(0, 12)}`,
     agentId: def.id,
@@ -52,8 +57,19 @@ export function startAgentRun(def: AgentDefinition, input: AgentInput, opts: { c
     costUsd: 0,
   };
   runs.set(run.id, run);
+  return run;
+}
+
+/** Kicks off a run and returns immediately. Use runAgent() to wait for it. */
+export function startAgentRun(def: AgentDefinition, input: AgentInput, opts: { channel: string }): AgentRun {
+  const run = newRun(def, input, opts);
   void runAgentToCompletion(def, input, run);
   return run;
+}
+
+/** Runs an agent and resolves when it has stopped. */
+export function runAgent(def: AgentDefinition, input: AgentInput, opts: { channel: string }): Promise<AgentRun> {
+  return runAgentToCompletion(def, input, newRun(def, input, opts));
 }
 
 export async function runAgentToCompletion(def: AgentDefinition, input: AgentInput, run: AgentRun): Promise<AgentRun> {
@@ -68,7 +84,7 @@ export async function runAgentToCompletion(def: AgentDefinition, input: AgentInp
         result = await runClaudeAgent({ runId: run.id, channel: run.channel, def, input, guard });
       } else {
         if (!def.mockScript) throw new Error(`${def.name} has no mockScript and AI is in mock mode (set ANTHROPIC_API_KEY).`);
-        result = await runScriptedAgent({ runId: run.id, channel: run.channel, def, input, guard, script: def.mockScript(input) });
+        result = await runScriptedAgent({ runId: run.id, channel: run.channel, def, input, guard, script: def.mockScript(input), pauseMs: scriptPauseMs() });
       }
       Object.assign(run, { status: "completed", summary: result.summary, costUsd: result.costUsd, finishedAt: new Date().toISOString() });
       timeline.emit({ kind: "run", status: "succeeded", stepId, title: `${def.name} finished`, subtitle: engine, detail: result.summary || "Done.", data: { costUsd: result.costUsd, turns: result.turns } });

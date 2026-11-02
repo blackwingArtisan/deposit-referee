@@ -7,6 +7,8 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["tests/unit/**/*.test.ts"],
+    // The JSON store is one file per data dir, so two test files can't write to it at once.
+    fileParallelism: false,
     env: {
       // Tests never touch the shared credentials file or the real data dir.
       ENV_SHARED_PATH: path.join(os.tmpdir(), "kit-tests-no-shared-env"),
@@ -14,6 +16,7 @@ export default defineConfig({
       PAYPAL_MODE: "mock",
       MOCK_PAYPAL_LATENCY_MS: "0",
       AI_MODE: "mock",
+      AGENT_SCRIPT_PAUSE_MS: "0",
     },
     testTimeout: 15_000,
   },

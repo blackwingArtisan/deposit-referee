@@ -12,6 +12,9 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 export const MIN_DEPOSIT_CENTS = 100;
 export const MAX_DEPOSIT_CENTS = 50_000;
 
+/** How long the renter has to answer a proposed charge before the host may go ahead. */
+export const RENTER_WINDOW_HOURS = 48;
+
 const CURRENCY = "USD";
 
 export class RuleError extends Error {
@@ -38,6 +41,43 @@ export function assertChargeFits(chargeCents: number, authorizedCents: number) {
   assertCents(chargeCents, "Charge");
   if (chargeCents === 0) throw new RuleError("Enter a charge of at least $0.01.");
   releasedCents(authorizedCents, chargeCents);
+}
+
+/**
+ * The hard limit on any capture, whatever the agent or a request asks for: above zero, inside
+ * the hold, and no more than the itemized damage. Every capture path runs this.
+ */
+export function assertCaptureLimits(chargeCents: number, itemizedCents: number, heldCents: number) {
+  assertChargeFits(chargeCents, heldCents);
+  assertCents(itemizedCents, "Itemized damage");
+  if (chargeCents > itemizedCents) throw new RuleError(`${formatExactCents(chargeCents)} is more than the ${formatExactCents(itemizedCents)} of itemized damage.`);
+}
+
+export function itemizedCents(lines: { amountCents: number }[]): number {
+  return lines.reduce((sum, line) => sum + line.amountCents, 0);
+}
+
+/** The renter's window ends in 48 hours, or an hour before the hold does if that comes first. */
+export function renterDeadline(holdExpiresAt: string | undefined, now = Date.now()): string {
+  const window = now + RENTER_WINDOW_HOURS * 60 * 60 * 1000;
+  const holdEnd = holdExpiresAt ? Date.parse(holdExpiresAt) - 60 * 60 * 1000 : window;
+  return new Date(Math.min(window, holdEnd)).toISOString();
+}
+
+export interface RenterClearance {
+  cleared: boolean;
+  reason: string;
+}
+
+/** Whether the host may send this charge to the approval gate. A contest was heard if the host is looking at it. */
+export function renterClearance(renter: { deadline: string; response?: { decision: "accepted" | "contested"; amountCents: number } } | undefined, chargeCents: number, now = Date.now()): RenterClearance {
+  if (!renter) return { cleared: false, reason: "The renter hasn't seen a proposal yet." };
+  const { deadline, response } = renter;
+  if (response && chargeCents > response.amountCents) return { cleared: false, reason: `The renter answered ${formatExactCents(response.amountCents)}, so a higher charge needs a new answer.` };
+  if (response?.decision === "accepted") return { cleared: true, reason: "The renter accepted this charge." };
+  if (response?.decision === "contested") return { cleared: true, reason: "The renter contested. Read their note before you decide." };
+  if (now >= Date.parse(deadline)) return { cleared: true, reason: "The renter didn't answer in time." };
+  return { cleared: false, reason: `The renter has until ${new Date(deadline).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZone: "UTC" })} UTC to accept or contest.` };
 }
 
 export interface HoldClock {
@@ -77,6 +117,15 @@ export function formatCents(cents: number): string {
 /** "$150.00": used wherever the host is agreeing to an exact amount. */
 export function formatExactCents(cents: number): string {
   return `$${centsToDollars(cents)}`;
+}
+
+/** Reads one line's amount field. Zero is fine: it drops the line from the charge. */
+export function parseLineAmount(value: string): { cents: number; error?: undefined } | { cents?: undefined; error: string } {
+  try {
+    return { cents: dollarsToCents(value) };
+  } catch {
+    return { error: "Enter an amount like 150.00." };
+  }
 }
 
 /** Reads the host's charge field. Never throws, because it runs on every keystroke. */

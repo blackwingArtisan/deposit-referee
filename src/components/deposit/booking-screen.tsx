@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState, type ChangeEvent, type ReactNode } from "react";
 import { useParams } from "next/navigation";
-import { CircleAlert, Clock, ImagePlus, Lock, ScanSearch, Upload } from "lucide-react";
+import { Bot, CircleAlert, Clock, ImagePlus, Lock, ScanSearch, Upload } from "lucide-react";
 import { ApprovalPrompt } from "@/components/agent/approval-prompt";
 import { ToolCallTimeline } from "@/components/agent/tool-call-timeline";
 import { useKit } from "@/components/kit/kit-provider";
@@ -10,18 +10,21 @@ import { useTimeline } from "@/components/kit/use-timeline";
 import { CheckoutButton } from "@/components/paypal/checkout-button";
 import { PageHeader } from "@/components/shell/app-shell";
 import { useToast } from "@/components/toast";
-import { Badge, Button, Card, CardBody, CardHeader, EmptyState, Field, MoneyInput, SkeletonCard } from "@/components/ui";
-import { centsToDollars, formatCents, formatExactCents, parseCharge, releasedCents } from "@/lib/deposit/rules";
+import { Badge, Button, Card, CardBody, CardHeader, EmptyState, SkeletonCard } from "@/components/ui";
+import { formatCents, formatExactCents } from "@/lib/deposit/rules";
 import type { BookingStatus, BookingView, PhotoSlot } from "@/lib/deposit/types";
 import type { Money } from "@/lib/money";
 import { DamageItems } from "./damage-items";
+import { HostDecision } from "./host-decision";
 import { PhotoFrame } from "./photo-frame";
 import { Ruling } from "./ruling";
 
 const STATUS_LABEL: Record<BookingStatus, { label: string; tone: "neutral" | "info" | "warning" | "brand" | "success" }> = {
   draft: { label: "Waiting for deposit", tone: "neutral" },
   held: { label: "Deposit on hold", tone: "info" },
-  reviewed: { label: "Host deciding", tone: "brand" },
+  reviewed: { label: "Agent working", tone: "brand" },
+  proposed: { label: "Host deciding", tone: "brand" },
+  contested: { label: "Contested by the renter", tone: "warning" },
   awaiting_approval: { label: "Waiting for approval", tone: "warning" },
   captured: { label: "Charged, releasing the rest", tone: "warning" },
   settled: { label: "Settled", tone: "success" },
@@ -86,7 +89,6 @@ export function BookingScreen() {
   const [booking, setBooking] = useState<BookingView | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
-  const [editedCharge, setEditedCharge] = useState<string | null>(null);
 
   const load = useCallback(() => kitFetch<BookingView>(`/api/bookings/${id}`), [id, kitFetch]);
   const refresh = useCallback(() => load().then(setBooking), [load]);
@@ -98,12 +100,14 @@ export function BookingScreen() {
   }, [load]);
 
   // The money moves in the background once the host approves, so follow it until it stops.
+  // While the host decides, the renter can answer from their own page at any moment.
   const moving = booking?.status === "awaiting_approval" || (booking?.status === "captured" && !booking.settlement?.error);
+  const renterPending = booking?.status === "proposed";
   useEffect(() => {
-    if (!moving) return;
-    const timer = setInterval(() => void refresh().catch(() => undefined), 700);
+    if (!moving && !renterPending) return;
+    const timer = setInterval(() => void refresh().catch(() => undefined), moving ? 700 : 2000);
     return () => clearInterval(timer);
-  }, [moving, refresh]);
+  }, [moving, renterPending, refresh]);
 
   // The approval card sits next to the amount, so the timeline only reports the wait.
   const timelineSteps = useMemo(() => steps.filter((s) => s.channel !== "global" || s.kind === "webhook").map((s) => (s.approval?.state === "pending" ? { ...s, approval: undefined } : s)), [steps]);
@@ -125,22 +129,16 @@ export function BookingScreen() {
   if (!booking) return <SkeletonCard />;
 
   const url = `/api/bookings/${booking.id}`;
-  const { status, hold, review, settlement, photos, authorizedCents = booking.depositCents } = booking;
+  const { status, review, proposal, settlement, photos, authorizedCents = booking.depositCents } = booking;
+  const deciding = status === "proposed" || status === "contested";
 
-  const addDemoPhoto = (slot: PhotoSlot) => run(`photo:${slot}`, "Could not add the photo", () => kitFetch<BookingView>(`${url}/photos`, { json: { slot } }));
+  const addDemoPhoto = (slot: PhotoSlot, clean?: boolean) => run(`photo:${slot}`, "Could not add the photo", () => kitFetch<BookingView>(`${url}/photos`, { json: { slot, clean } }));
 
   async function uploadPhoto(slot: PhotoSlot, event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     event.target.value = "";
     if (file) await run(`photo:${slot}`, "Could not add the photo", async () => kitFetch<BookingView>(`${url}/photos`, { json: { slot, dataUrl: await readAsDataUrl(file) } }));
   }
-
-  const chargeValue = editedCharge ?? centsToDollars(review?.suggestedCents ?? 0);
-  const charge = parseCharge(chargeValue, authorizedCents);
-  const requestApproval = () => {
-    const { cents } = charge;
-    if (cents !== undefined) void run("settle", "Could not request approval", () => kitFetch<BookingView>(`${url}/settle`, { json: { chargeCents: cents } }));
-  };
 
   const approval = booking.approval;
   const timeline = (
@@ -200,6 +198,11 @@ export function BookingScreen() {
                           <Button variant="secondary" size="sm" icon={<ImagePlus className="size-4" />} loading={busy === `photo:${slot}`} disabled={!!busy} onClick={() => addDemoPhoto(slot)} data-testid={`demo-photo-${slot}`}>
                             Use demo photo
                           </Button>
+                          {slot === "check_out" ? (
+                            <Button variant="ghost" size="sm" disabled={!!busy} onClick={() => addDemoPhoto(slot, true)} data-testid="demo-photo-clean">
+                              Use demo photo, no damage
+                            </Button>
+                          ) : null}
                           <label className="inline-flex h-8 cursor-pointer items-center justify-center gap-2 rounded-lg px-3 text-sm font-medium text-zinc-700 hover:bg-zinc-100 focus-within:ring-2 focus-within:ring-brand-300">
                             <Upload className="size-4" /> Upload photo
                             <input type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" disabled={!!busy} onChange={(e) => uploadPhoto(slot, e)} data-testid={`upload-photo-${slot}`} />
@@ -215,13 +218,13 @@ export function BookingScreen() {
                 <Step n={3} title="AI compares the photos" done={!!review}>
                   {review ? (
                     <div className="space-y-3" data-testid="review">
-                      <DamageItems review={review} />
+                      <DamageItems lines={review.items.map((item) => ({ description: item.description, amountCents: item.chargeCents }))} />
                       <p className="text-sm leading-relaxed text-zinc-700">{review.reasoning}</p>
                       <div className="flex flex-wrap items-center gap-2">
                         <Badge tone={review.mocked ? "warning" : "brand"}>{review.mocked ? "Simulated AI result" : review.model}</Badge>
                         <Badge>Confidence: {review.confidence}</Badge>
                       </div>
-                      {review.cappedToHold ? <Notice tone="muted">The repairs add up to more than the hold, so the suggestion stops at {formatCents(authorizedCents)}.</Notice> : null}
+                      {review.cappedToHold ? <Notice tone="muted">The items add up to more than the hold, so a charge stops at {formatCents(authorizedCents)}.</Notice> : null}
                     </div>
                   ) : (
                     <Button icon={<ScanSearch className="size-4" />} loading={busy === "review"} disabled={!!busy} onClick={() => run("review", "The AI review failed", () => kitFetch<BookingView>(`${url}/review`, { method: "POST" }))} data-testid="run-review">
@@ -232,35 +235,26 @@ export function BookingScreen() {
               ) : null}
 
               {review ? (
-                <Step n={4} title="You decide the charge">
+                <Step n={4} title="The agent proposes, you decide" done={status === "captured"}>
                   <div className="space-y-3">
                     {settlement?.error ? <Notice tone="error">{settlement.error}</Notice> : null}
 
                     {status === "reviewed" ? (
                       <>
-                        <p className="text-sm text-zinc-700" data-testid="ai-suggestion">
-                          The AI suggests {formatExactCents(review.suggestedCents)}. You decide.
-                        </p>
-                        {!review.newDamage ? <Notice tone="muted">Releasing a whole deposit with no charge isn&rsquo;t built yet.</Notice> : null}
-                        <Field label="Exact charge" htmlFor="charge" error={charge.error} hint="PayPal captures exactly this amount and nothing more.">
-                          <MoneyInput id="charge" value={chargeValue} onChange={(e) => setEditedCharge(e.target.value)} className="w-40" data-testid="charge-input" />
-                        </Field>
-                        {charge.cents !== undefined ? (
-                          <p className="text-sm text-zinc-700" data-testid="charge-preview">
-                            Charge exactly {formatExactCents(charge.cents)} and release {formatExactCents(releasedCents(authorizedCents, charge.cents))} to the renter.
-                          </p>
-                        ) : null}
-                        <Button onClick={requestApproval} loading={busy === "settle"} disabled={charge.cents === undefined || hold?.expired || !!busy} data-testid="request-approval">
-                          Request approval{charge.cents !== undefined ? ` for ${formatExactCents(charge.cents)}` : ""}
+                        {booking.agentError ? <Notice tone="error">{booking.agentError}</Notice> : <Notice tone="muted">The settlement agent is reading the review.</Notice>}
+                        <Button icon={<Bot className="size-4" />} loading={busy === "propose"} disabled={!!busy} onClick={() => run("propose", "The agent could not finish", () => kitFetch<BookingView>(`${url}/propose`, { method: "POST" }))} data-testid="ask-agent">
+                          Ask the agent again
                         </Button>
                       </>
                     ) : null}
+
+                    {deciding && proposal ? <HostDecision key={proposal.runId} booking={booking} busy={busy} act={run} /> : null}
 
                     {status === "awaiting_approval" && approval ? (
                       <ApprovalPrompt
                         approvalId={approval.id}
                         summary={approval.summary}
-                        reason="A host has to approve this before any money moves."
+                        reason="This is the Guard's approval step. No money moves until you approve."
                         amount={approval.amountValue ? ({ currency_code: "USD", value: approval.amountValue } satisfies Money) : undefined}
                         onDecided={() => void refresh().catch(() => undefined)}
                       />

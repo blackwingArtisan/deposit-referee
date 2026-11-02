@@ -20,7 +20,7 @@ function PhotoSourceLine({ photo }: { photo: BookingPhoto }) {
 }
 
 /** A photo, its source, and the AI's red boxes. Box positions are fractions, so they scale with the photo. */
-export function PhotoFrame({ label, photo, items = [] }: { label: string; photo: BookingPhoto; items?: DamageItem[] }) {
+export function PhotoFrame({ label, photo, items = [] }: { label: string; photo: BookingPhoto; items?: Pick<DamageItem, "description" | "box">[] }) {
   return (
     <figure className="min-w-0">
       <figcaption className="mb-1.5 text-sm font-medium text-zinc-800">{label}</figcaption>

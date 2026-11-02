@@ -1,23 +1,28 @@
 /**
- * Moves the money: the host's exact charge through the approval gate, then releases the rest.
- * The route returns while this waits for the host; the browser polls the booking. Every step
- * is saved, so a failed release can be retried without charging again.
+ * Moves the money: the host's decision through the Guard's approval gate, then the capture and
+ * the release of the rest, or a void of the whole hold. The route returns while this waits for
+ * the host; the browser polls the booking. Every step is saved, so a failed release can be
+ * retried without charging again.
  */
 import { randomUUID } from "node:crypto";
 import { appConfig } from "@/app.config";
 import { captureDeposit } from "@/agents/tools/capture-deposit";
+import { releaseDeposit } from "@/agents/tools/release-deposit";
 import { runTool, type ToolCallResult } from "@/lib/agent/execute";
 import { Guard } from "@/lib/agent/guard";
 import { voidAuthorization } from "@/lib/agent/tools/extensions";
 import { withContext } from "@/lib/events/bus";
 import { HttpError } from "@/lib/http";
 import { getPayPal } from "@/lib/paypal";
-import { activeSettlements, requireBooking, saveBooking } from "./bookings";
-import { assertChargeFits, assertHoldOpen, dollarsToCents, formatCents, releasedCents, RuleError } from "./rules";
+import { activeSettlements, decisionStatus, requireBooking, saveBooking } from "./bookings";
+import { assertCaptureLimits, assertHoldOpen, dollarsToCents, formatCents, itemizedCents, releasedCents, renterClearance, RuleError } from "./rules";
 import type { Booking, Settlement } from "./types";
 
 function failureReason(result: ToolCallResult): string {
   const outcome = result.outcome;
+  if (outcome?.status === "denied" && outcome.code === "APPROVAL_DENIED") {
+    return outcome.approval?.decidedBy === "renter" ? "The renter contested before the capture, so it was stopped. No money moved." : "You declined this. No money moved, and the booking stays open for a new decision.";
+  }
   if (outcome?.status === "denied") return outcome.reason;
   if (outcome?.status === "failed") return (outcome.error as Error)?.message ?? "PayPal call failed.";
   return result.content;
@@ -28,19 +33,38 @@ function updateSettlement(id: string, status: Booking["status"], patch: Partial<
   return saveBooking({ ...booking, status, settlement: { ...booking.settlement!, ...patch } });
 }
 
+/** Nothing moved, so the decision goes back to the host. */
+function backToHost(id: string, error: string) {
+  updateSettlement(id, decisionStatus(requireBooking(id)), { error });
+}
+
+type ToolCtx = Parameters<typeof runTool>[2];
+
+/** The whole deposit goes back. PayPal's re-read decides whether that happened. */
+async function releaseWhole(id: string, authorizationId: string, ctx: ToolCtx) {
+  const paypal = getPayPal();
+  if ((await paypal.payments.getAuthorization(authorizationId)).status !== "VOIDED") {
+    const result = await runTool(releaseDeposit, { booking_id: id, idempotency_key: `${id}:release` }, ctx);
+    if (result.isError) return backToHost(id, failureReason(result));
+  }
+  const auth = await paypal.payments.getAuthorization(authorizationId);
+  if (auth.status !== "VOIDED") throw new RuleError(`PayPal shows this hold as ${auth.status}, not voided.`);
+  updateSettlement(id, "settled", { capturedCents: 0, releasedCents: dollarsToCents(auth.amount.value), authorizationStatus: auth.status, settledAt: new Date().toISOString(), error: undefined });
+}
+
 async function settle(id: string, channel: string) {
   const start = requireBooking(id);
-  const { authorizationId: authorization_id, authorizedCents, settlement } = start;
+  const { authorizationId: authorization_id, authorizedCents, settlement, proposal } = start;
   if (!authorization_id || authorizedCents === undefined || !settlement) throw new Error(`Booking ${id} has no hold to settle.`);
-  const ctx = { runId: settlement.runId, actor: "host", channel, guard: new Guard({ paypal: getPayPal(), policy: appConfig.agentPolicy }) };
+  // The host's approval releases what the agent proposed. If they changed the number, it's theirs.
+  const actor = proposal && settlement.requestedCents === proposal.aiCents ? "agent:deposit-settlement" : "host";
+  const ctx = { runId: settlement.runId, actor, channel, guard: new Guard({ paypal: getPayPal(), policy: appConfig.agentPolicy }) };
+  if (settlement.kind === "release") return releaseWhole(id, authorization_id, ctx);
 
   let capturedCents = settlement.capturedCents;
   if (settlement.captureId === undefined) {
-    const result = await runTool(captureDeposit, { authorization_id, amount_cents: settlement.requestedCents, idempotency_key: `${id}:${settlement.requestedCents}` }, ctx);
-    if (result.isError) {
-      updateSettlement(id, "reviewed", { error: failureReason(result) });
-      return;
-    }
+    const result = await runTool(captureDeposit, { booking_id: id, amount_cents: settlement.requestedCents, idempotency_key: `${id}:${settlement.requestedCents}` }, ctx);
+    if (result.isError) return backToHost(id, failureReason(result));
     const capture = result.output as { capture_id: string; status: string; amount: { value: string } };
     capturedCents = dollarsToCents(capture.amount.value);
     updateSettlement(id, "captured", { captureId: capture.capture_id, captureStatus: capture.status, capturedCents, error: undefined });
@@ -79,27 +103,51 @@ function start(id: string, channel: string, runId: string) {
       const booking = requireBooking(id);
       const message = e instanceof Error ? e.message : String(e);
       // Nothing captured yet means nothing moved: the host can simply try again.
-      updateSettlement(id, booking.settlement?.captureId ? "captured" : "reviewed", { error: message });
+      updateSettlement(id, booking.settlement?.captureId ? "captured" : decisionStatus(booking), { error: message });
     })
     .finally(() => active.delete(id));
 }
 
-/** Sends the host's exact charge to the approval gate. Resolves when the settlement has finished. */
-export function requestSettlement(id: string, chargeCents: number, channel: string): { booking: Booking; finished: Promise<void> } {
+function requireDecidable(id: string): Booking & { holdExpiresAt: string; authorizedCents: number } {
   const booking = requireBooking(id);
   if (activeSettlements().has(id)) throw new HttpError(409, "This booking is already being settled.", "conflict");
-  if (booking.status !== "reviewed") throw new HttpError(409, `A booking in status ${booking.status} can't be charged.`, "conflict");
+  if (booking.status !== "proposed" && booking.status !== "contested") throw new HttpError(409, `A booking in status ${booking.status} can't be charged.`, "conflict");
   const { holdExpiresAt, authorizedCents } = booking;
   if (!holdExpiresAt || authorizedCents === undefined) throw new HttpError(409, "This booking has no hold.", "conflict");
+  return { ...booking, holdExpiresAt, authorizedCents };
+}
+
+function asHttp<T>(check: () => T): T {
   try {
-    assertHoldOpen(holdExpiresAt);
-    assertChargeFits(chargeCents, authorizedCents);
+    return check();
   } catch (e) {
     throw e instanceof RuleError ? new HttpError(422, e.message, "rule") : e;
   }
+}
+
+function send(booking: Booking, settlement: Omit<Settlement, "runId">, channel: string) {
   const runId = `settle_${randomUUID().slice(0, 12)}`;
-  const saved = saveBooking({ ...booking, status: "awaiting_approval", settlement: { runId, requestedCents: chargeCents } });
-  return { booking: saved, finished: start(id, channel, runId) };
+  const saved = saveBooking({ ...booking, status: "awaiting_approval", settlement: { ...settlement, runId } });
+  return { booking: saved, finished: start(booking.id, channel, runId) };
+}
+
+/** Sends the host's exact charge to the approval gate. Resolves when the settlement has finished. */
+export function requestSettlement(id: string, chargeCents: number, channel: string): { booking: Booking; finished: Promise<void> } {
+  const booking = requireDecidable(id);
+  asHttp(() => {
+    assertHoldOpen(booking.holdExpiresAt);
+    assertCaptureLimits(chargeCents, itemizedCents(booking.proposal?.lines ?? []), booking.authorizedCents);
+    const clearance = renterClearance(booking.renterState, chargeCents);
+    if (!clearance.cleared) throw new RuleError(clearance.reason);
+  });
+  return send(booking, { kind: "charge", requestedCents: chargeCents, contestHeard: booking.status === "contested" }, channel);
+}
+
+/** Sends a full release to the approval gate. The renter loses nothing, so they don't have to answer first. */
+export function requestRelease(id: string, channel: string): { booking: Booking; finished: Promise<void> } {
+  const booking = requireDecidable(id);
+  asHttp(() => assertHoldOpen(booking.holdExpiresAt));
+  return send(booking, { kind: "release", requestedCents: 0 }, channel);
 }
 
 /** Finishes a booking whose charge went through but whose hold was not released. Never charges again. */

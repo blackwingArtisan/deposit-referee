@@ -14,11 +14,13 @@ function Reference({ label, value }: { label: string; value?: string }) {
 
 /** The result screen. Every number here was re-read from PayPal after the money moved. */
 export function Ruling({ booking }: { booking: BookingView }) {
-  const { settlement, review, photos, authorizedCents } = booking;
+  const { settlement, review, proposal, photos, authorizedCents } = booking;
   const captured = settlement?.capturedCents;
   const released = settlement?.releasedCents;
   if (captured === undefined || released === undefined || authorizedCents === undefined) return null;
   const capturedShare = (captured / authorizedCents) * 100;
+  const wholeRelease = settlement?.kind === "release";
+  const lines = proposal?.lines.filter((line) => line.amountCents > 0) ?? [];
 
   return (
     <section data-testid="ruling" className="rounded-2xl border border-zinc-200/80 bg-white p-5 sm:p-8">
@@ -28,7 +30,8 @@ export function Ruling({ booking }: { booking: BookingView }) {
         <span className="text-emerald-700">{formatCents(released)} released</span>
       </h2>
       <p className="mt-3 text-[15px] text-zinc-600">
-        From {booking.renter}&rsquo;s {formatCents(authorizedCents)} deposit on {booking.item}. PayPal confirms the charge is {settlement?.captureStatus?.toLowerCase()} and the hold is {settlement?.authorizationStatus?.toLowerCase()}.
+        From {booking.renter}&rsquo;s {formatCents(authorizedCents)} deposit on {booking.item}.{" "}
+        {wholeRelease ? `Nothing was charged. PayPal confirms the hold is ${settlement?.authorizationStatus?.toLowerCase()}.` : `PayPal confirms the charge is ${settlement?.captureStatus?.toLowerCase()} and the hold is ${settlement?.authorizationStatus?.toLowerCase()}.`}
       </p>
 
       <div className="mt-5 flex h-3 overflow-hidden rounded-full" role="img" aria-label={`${formatCents(captured)} of ${formatCents(authorizedCents)} captured`}>
@@ -38,18 +41,18 @@ export function Ruling({ booking }: { booking: BookingView }) {
 
       <div className="mt-7 grid gap-5 md:grid-cols-2">
         {photos.check_in ? <PhotoFrame label="Check-in" photo={photos.check_in} /> : null}
-        {photos.check_out ? <PhotoFrame label="Check-out" photo={photos.check_out} items={review?.items} /> : null}
+        {photos.check_out ? <PhotoFrame label="Check-out" photo={photos.check_out} items={lines.length ? lines : review?.items} /> : null}
       </div>
 
       {review ? (
         <div className="mt-6 grid gap-6 border-t border-zinc-100 pt-5 lg:grid-cols-2">
           <div>
-            <h3 className="mb-2 text-sm font-semibold text-zinc-900">What the AI found</h3>
-            <DamageItems review={review} />
+            <h3 className="mb-2 text-sm font-semibold text-zinc-900">{wholeRelease ? "What the AI found" : "What was charged"}</h3>
+            <DamageItems lines={wholeRelease ? [] : lines} />
           </div>
           <div>
             <h3 className="mb-2 text-sm font-semibold text-zinc-900">Why</h3>
-            <p className="text-sm leading-relaxed text-zinc-700">{review.reasoning}</p>
+            <p className="text-sm leading-relaxed text-zinc-700">{proposal?.rationale ?? review.reasoning}</p>
           </div>
         </div>
       ) : null}
@@ -57,7 +60,7 @@ export function Ruling({ booking }: { booking: BookingView }) {
       <dl className="mt-6 grid gap-x-6 border-t border-zinc-100 pt-4 sm:grid-cols-3">
         <Reference label="PayPal order" value={booking.orderId} />
         <Reference label="PayPal authorization" value={booking.authorizationId} />
-        <Reference label="PayPal capture" value={settlement?.captureId} />
+        {wholeRelease ? null : <Reference label="PayPal capture" value={settlement?.captureId} />}
       </dl>
     </section>
   );

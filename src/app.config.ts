@@ -16,6 +16,7 @@ export const appConfig = {
 
   nav: [
     { label: "Bookings", href: "/bookings" },
+    { label: "Dashboard", href: "/insights" },
     { label: "Activity", href: "/activity" },
   ],
 
@@ -38,12 +39,12 @@ export const appConfig = {
     ],
   },
 
-  /** Guard policy (merged over DEFAULT_POLICY). A deposit charge always waits for the host. */
+  /** Guard policy (merged over DEFAULT_POLICY). A deposit charge or release always waits for the host. */
   agentPolicy: {
     approvalThreshold: "50.00",
     maxPerAction: "500.00",
     maxPerDay: "2000.00",
-    requireApprovalFor: ["capture_deposit", "accept_dispute_claim"],
+    requireApprovalFor: ["capture_deposit", "release_deposit", "accept_dispute_claim"],
   } satisfies Partial<GuardPolicy>,
 };
 
