@@ -4,7 +4,7 @@ import { reviewPhotos } from "@/lib/deposit/review";
 import { getContext } from "@/lib/events/bus";
 import { HttpError, route } from "@/lib/http";
 
-/** One AI comparison per booking. The settlement agent then reads it and stops with a proposal. */
+/** One AI review per booking. The settlement agent then reads it and stops with a proposal. */
 export const POST = route<RouteContext<"/api/bookings/[id]/review">>(
   async (_req, ctx) => {
     const booking = requireBooking((await ctx.params).id);

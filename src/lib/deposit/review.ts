@@ -1,8 +1,10 @@
 /**
- * The AI comparison. The charge rule comes from the TK-39 vision spike (Sonnet 5.5, 5 pairs, sealed
- * key), and it stays strict: subtle marks aren't charged. A blind test showed the AI often sees them
- * and declines, so what it notices goes to worth_a_look, where only the host can turn it into a
- * charge. The AI suggests. Totals, the cap and the released amount are worked out here.
+ * The AI comparison, in two separate calls. The charge check is the prompt from the TK-39 vision
+ * spike (Sonnet 5.5, 5 pairs, sealed key), and it stays strict: subtle marks aren't charged. When it
+ * charges nothing, a second call looks for marks, which go to worth_a_look, where only the host can
+ * turn them into a charge. They're separate because asking for both in one prompt made the model
+ * less willing to charge: a large hole charged 2 of 2 alone came back worth a look 3 of 3 together.
+ * The AI suggests. Totals, the cap and the released amount are worked out here.
  */
 import { z } from "zod";
 import { compareImages } from "@/lib/ai";
@@ -47,7 +49,10 @@ const Verdict = z.object({
 });
 export type Verdict = z.infer<typeof Verdict>;
 
-const QUESTION = `You are the neutral referee for a security deposit. The first photo was taken at check-in and the second at check-out, of the same part of a rental. The renter's money is at stake, and a wrongful charge is the worst mistake you can make.
+const ChargeVerdict = Verdict.omit({ worth_a_look: true });
+const LookVerdict = Verdict.pick({ worth_a_look: true });
+
+const CHARGE_QUESTION = `You are the neutral referee for a security deposit. The first photo was taken at check-in and the second at check-out, of the same part of a rental. The renter's money is at stake, and a wrongful charge is the worst mistake you can make.
 
 Decide whether the renter caused new damage.
 - Charge only for damage that is visible at check-out and not visible at check-in.
@@ -57,12 +62,13 @@ Decide whether the renter caused new damage.
 - Ordinary wear and tear is not damage.
 - If you can't be reasonably sure the damage is new, don't charge.
 
-For each new damage, give a box around it in the check-out photo. Propose a fair charge in US cents for a typical US rental, for the repair only.
+For each new damage, give a box around it in the check-out photo. Propose a fair charge in US cents for a typical US rental, for the repair only.`;
 
-Then fill in worth_a_look. Go over the check-out photo surface by surface (walls, floor, doors, cabinets, counters, tile, furniture) and compare each with the same spot in the check-in photo. If you find a specific mark (a scratch, scuff, chip, dent, crack, stain, burn or tear) that you can't see at check-in but aren't sure enough to charge for, don't charge it: list it in worth_a_look with a box around it in the check-out photo. The host will look at it, and it is never charged unless the host chooses to.
+const LOOK_QUESTION = `The first photo was taken at check-in and the second at check-out, of the same part of a rental. A strict damage review charged nothing. Check what it may have passed over.
+
+Go over the check-out photo surface by surface (walls, floor, doors, cabinets, counters, tile, furniture) and compare each with the same spot in the check-in photo. If you find a specific mark (a scratch, scuff, chip, dent, crack, stain, burn or tear) that you can't see at check-in, list it in worth_a_look with a box around it in the check-out photo. The host will look at it, and it is never charged unless the host chooses to.
 - List only one specific mark you can point to and box, never a general difference in a surface.
-- Never list anything you can also see at check-in, or anything above that isn't damage: shadows, reflections, glare, moved things, ordinary wear.
-- Damage you charge for doesn't also go in worth_a_look.
+- Never list anything you can also see at check-in, or anything that isn't damage: differences in lighting, exposure, colour, camera position, framing or sharpness, shadows, reflections, glare, moved things, ordinary wear.
 - Most stays have nothing worth a look, so an empty list is the normal answer.`;
 
 /** A real answer from the vision spike on the demo photos (pair 1, run 1). */
@@ -143,16 +149,36 @@ export async function reviewPhotos(booking: Booking): Promise<DamageReview> {
   if (!check_in || !check_out || booking.authorizedCents === undefined) throw new Error("A review needs both photos and a hold.");
   const image = (photo: typeof check_in) => ({ base64: readPhoto(photo).toString("base64"), mediaType: photo.mediaType as ImageMediaType });
   const samePhoto = readPhoto(check_in).equals(readPhoto(check_out));
+  const images = [image(check_in), image(check_out)];
+  const labels = ["Check-in photo", "Check-out photo"];
+  const mockVerdict = () => {
+    if (samePhoto) return MOCK_NO_DAMAGE;
+    return check_out.src === DEMO_FAINT_CHECK_OUT.src ? MOCK_FAINT_MARK : MOCK_VERDICT;
+  };
   const { data, mocked, model, costUsd } = await compareImages({
-    images: [image(check_in), image(check_out)],
-    labels: ["Check-in photo", "Check-out photo"],
-    question: QUESTION,
-    schema: Verdict,
+    images,
+    labels,
+    question: CHARGE_QUESTION,
+    schema: ChargeVerdict,
     mock: () => {
       failIfCreditOut(booking.id, "review");
-      if (samePhoto) return MOCK_NO_DAMAGE;
-      return check_out.src === DEMO_FAINT_CHECK_OUT.src ? MOCK_FAINT_MARK : MOCK_VERDICT;
+      return mockVerdict();
     },
   });
-  return toReview(data, booking.authorizedCents, { mocked, model: model ? modelLabel(model) : undefined, costUsd });
+  const charged = data.new_damage && data.findings.length > 0;
+  const look = charged
+    ? null
+    : await compareImages({
+        images,
+        labels,
+        question: LOOK_QUESTION,
+        schema: LookVerdict,
+        mock: () => ({ worth_a_look: mockVerdict().worth_a_look }),
+      }).catch((err: unknown) => {
+        // The charge check already has its answer, so a failed second look can't cost the review.
+        console.error("worth-a-look check failed:", err instanceof Error ? err.message : err);
+        return null;
+      });
+  const verdict = { ...data, worth_a_look: look?.data.worth_a_look ?? [] };
+  return toReview(verdict, booking.authorizedCents, { mocked, model: model ? modelLabel(model) : undefined, costUsd: costUsd + (look?.costUsd ?? 0) });
 }
