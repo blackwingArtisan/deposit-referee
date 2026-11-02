@@ -22,7 +22,8 @@ export default defineConfig({
   },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 1000 } } }],
   webServer: {
-    command: process.env.E2E_PROD ? `npx next build && npx next start --port ${PORT}` : `npx next dev --port ${PORT}`,
+    // A fresh data dir each run: the Guard's $2,000 daily cap counts captures across runs.
+    command: `rm -rf .data-e2e && ${process.env.E2E_PROD ? `npx next build && npx next start --port ${PORT}` : `npx next dev --port ${PORT}`}`,
     url: `http://localhost:${PORT}/api/kit/status`,
     reuseExistingServer: !process.env.CI,
     timeout: 300_000,
