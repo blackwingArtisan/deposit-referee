@@ -12,6 +12,7 @@ import { runAgent } from "@/lib/agent/runs";
 import { runScriptedAgent } from "@/lib/agent/scripted";
 import { paypalTools } from "@/lib/agent/tools";
 import { requireBooking, saveBooking } from "@/lib/deposit/bookings";
+import { failIfCreditOut } from "@/lib/deposit/credit-test";
 import { itemizedCents, formatExactCents, RuleError } from "@/lib/deposit/rules";
 import type { Booking, DamageReview } from "@/lib/deposit/types";
 import { getPayPal } from "@/lib/paypal";
@@ -50,6 +51,7 @@ You cannot move money and you have no tool for it. The host approves or changes 
   maxTurns: 6,
   mockScript: (input) => {
     const { booking_id, order_id, authorization_id } = input.context as { booking_id: string; order_id: string; authorization_id: string };
+    failIfCreditOut(booking_id, "agent");
     const { review, authorizedCents = 0 } = requireBooking(booking_id);
     const proposal = fairProposal(booking_id, review!, authorizedCents);
     return [

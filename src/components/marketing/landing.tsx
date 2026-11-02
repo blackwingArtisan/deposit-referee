@@ -1,4 +1,5 @@
-import { ArrowRight, Bot, Check, Landmark, Lock, ShieldCheck, Sparkles } from "lucide-react";
+/* eslint-disable @next/next/no-img-element -- the demo photos are small local files shown as they are */
+import { ArrowRight, Bot, Check, Lock, ScanSearch, ShieldCheck, Sparkles } from "lucide-react";
 import { appConfig } from "@/app.config";
 import { MoneyBadge } from "../money-badge";
 import { ButtonLink } from "../ui/button";
@@ -27,33 +28,45 @@ export function SiteHeader() {
   );
 }
 
-function TimelinePreview() {
+/** The demo booking's real numbers: the photo pair, its red box, and who did each step. */
+function DepositPreview() {
   const rows = [
-    { icon: Bot, title: "Settlement agent started", sub: "Claude Haiku 5.5", tone: "bg-brand-50 text-brand-600 ring-brand-200" },
-    { icon: Landmark, title: "Check authorization", sub: "GET /v2/payments/authorizations/8AA8…", tone: "bg-emerald-50 text-emerald-600 ring-emerald-200", done: true },
-    { icon: ShieldCheck, title: "Capture $80.00 of $120.00", sub: "Approved by you · guard threshold $50", tone: "bg-amber-50 text-amber-600 ring-amber-300", money: { v: "80.00", d: "in" as const } },
-    { icon: Lock, title: "Void the remaining hold", sub: "POST /v2/payments/authorizations/…/void", tone: "bg-emerald-50 text-emerald-600 ring-emerald-200", money: { v: "40.00", d: "neutral" as const } },
+    { icon: ScanSearch, title: "New damage found", sub: "Claude Sonnet 5.5 compared the photos", tone: "bg-brand-50 text-brand-600 ring-brand-200" },
+    { icon: Bot, title: "Proposed $150.00 of the $300.00 hold", sub: "Claude Haiku 5.5, then it stops", tone: "bg-brand-50 text-brand-600 ring-brand-200" },
+    { icon: ShieldCheck, title: "You approved the charge", sub: "Nothing moves until you do", tone: "bg-amber-50 text-amber-600 ring-amber-300", money: { v: "150.00", d: "in" as const } },
+    { icon: Lock, title: "The rest went back", sub: "PayPal released the hold", tone: "bg-emerald-50 text-emerald-600 ring-emerald-200", money: { v: "150.00", d: "neutral" as const } },
   ];
   return (
-    <div className="relative rounded-2xl border border-zinc-200 bg-white/90 p-5 shadow-2xl shadow-brand-900/10 ring-1 ring-black/5 backdrop-blur">
-      <div className="mb-4 flex items-center justify-between">
-        <span className="text-sm font-semibold text-zinc-900">Agent timeline</span>
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">
-          <span className="size-1.5 animate-pulse rounded-full bg-emerald-500" /> Live
-        </span>
+    <div data-testid="deposit-preview" className="relative min-w-0 rounded-2xl border border-zinc-200 bg-white/90 p-5 shadow-2xl shadow-brand-900/10 ring-1 ring-black/5 backdrop-blur">
+      <div className="mb-3 flex items-baseline justify-between gap-3">
+        <span className="text-sm font-semibold text-zinc-900">Lakeside cabin</span>
+        <span className="text-xs text-zinc-500">Example booking</span>
       </div>
-      <ol className="relative space-y-3 before:absolute before:bottom-3 before:left-[15px] before:top-3 before:w-px before:bg-zinc-200">
+      <div className="grid grid-cols-2 gap-2">
+        <figure className="min-w-0">
+          <img src="/demo-photos/cabin-check-in.jpg" alt="The cabin floor at check-in, with no scratch" className="block h-auto w-full rounded-lg" />
+          <figcaption className="mt-1 text-xs text-zinc-500">Check-in</figcaption>
+        </figure>
+        <figure className="min-w-0">
+          <div className="relative overflow-hidden rounded-lg">
+            <img src="/demo-photos/cabin-check-out.jpg" alt="The same floor at check-out, with a red box around a new scratch" className="block h-auto w-full" />
+            <div className="absolute rounded-[3px] border-2 border-red-600 shadow-[0_0_0_1px_rgba(255,255,255,0.85)]" style={{ left: "44%", top: "59%", width: "9%", height: "29%" }} aria-hidden />
+          </div>
+          <figcaption className="mt-1 text-xs text-zinc-500">Check-out</figcaption>
+        </figure>
+      </div>
+      <ol className="relative mt-4 space-y-2 before:absolute before:bottom-3 before:left-[15px] before:top-3 before:w-px before:bg-zinc-200">
         {rows.map((r) => (
-          <li key={r.title} className="relative flex items-start gap-3">
+          <li key={r.title} className="relative flex items-center gap-3">
             <span className={`z-10 flex size-8 shrink-0 items-center justify-center rounded-full ring-1 ${r.tone}`}>
               <r.icon className="size-4" />
             </span>
-            <div className="min-w-0 flex-1 rounded-xl border border-zinc-100 bg-zinc-50/60 px-3 py-2">
-              <div className="flex items-center justify-between gap-2">
-                <p className="truncate text-sm font-semibold text-zinc-900">{r.title}</p>
-                {r.money ? <MoneyBadge amount={{ currency_code: "USD", value: r.money.v }} direction={r.money.d} size="sm" /> : r.done ? <Check className="size-4 text-emerald-600" /> : null}
+            <div className="flex min-w-0 flex-1 items-center justify-between gap-2 rounded-xl border border-zinc-100 bg-zinc-50/60 px-3 py-1.5">
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-zinc-900">{r.title}</p>
+                <p className="text-xs text-zinc-500">{r.sub}</p>
               </div>
-              <p className="truncate font-mono text-[11px] text-zinc-500">{r.sub}</p>
+              {r.money ? <MoneyBadge amount={{ currency_code: "USD", value: r.money.v }} direction={r.money.d} size="sm" /> : null}
             </div>
           </li>
         ))}
@@ -68,7 +81,7 @@ export function Hero() {
     <section className="relative overflow-hidden">
       <div className="bg-grid absolute inset-0 [mask-image:radial-gradient(ellipse_at_top,black,transparent_70%)]" aria-hidden />
       <div className="absolute -top-40 left-1/2 h-[480px] w-[900px] -translate-x-1/2 rounded-full bg-brand-200/40 blur-3xl" aria-hidden />
-      <div className="relative mx-auto grid max-w-6xl items-center gap-12 px-4 pb-20 pt-16 sm:px-6 lg:grid-cols-[1.1fr_1fr] lg:pt-24">
+      <div className="relative mx-auto grid max-w-6xl items-center gap-12 px-4 pb-20 pt-16 sm:px-6 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] lg:pt-24">
         <div>
           <span className="inline-flex items-center gap-2 rounded-full border border-brand-200 bg-white/80 px-3 py-1 text-sm font-medium text-brand-700 shadow-sm">
             <Sparkles className="size-4" /> {l.eyebrow}
@@ -87,7 +100,7 @@ export function Hero() {
             <ShieldCheck className="size-4 text-emerald-600" /> Caps, approvals and an audit log on every money-moving step.
           </p>
         </div>
-        <TimelinePreview />
+        <DepositPreview />
       </div>
     </section>
   );
@@ -135,7 +148,7 @@ export function CtaBand() {
       <div className="mx-auto flex max-w-6xl flex-col items-start justify-between gap-6 rounded-3xl bg-gradient-to-br from-brand-700 to-brand-900 px-8 py-12 text-white shadow-xl md:flex-row md:items-center">
         <div>
           <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">{appConfig.tagline}</h2>
-          <p className="mt-2 text-white/75">Runs end to end in mock mode. Switch to PayPal sandbox with two environment variables.</p>
+          <p className="mt-2 text-white/75">PayPal sandbox only, so no real money moves. Try the whole thing with a test card.</p>
         </div>
         <ButtonLink href={appConfig.landing.primaryCta.href} size="lg" variant="secondary" className="border-transparent">
           {appConfig.landing.primaryCta.label} <ArrowRight className="size-4" />

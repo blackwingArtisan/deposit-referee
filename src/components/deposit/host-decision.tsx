@@ -6,13 +6,14 @@ import { Bot, CircleAlert, ExternalLink, MessageSquareWarning, Plus, ShieldCheck
 import { useKit } from "@/components/kit/kit-provider";
 import { useToast } from "@/components/toast";
 import { Badge, Button, Field, Input, MoneyInput } from "@/components/ui";
-import { centsToDollars, formatExactCents, itemizedCents, parseLineAmount, releasedCents, renterClearance } from "@/lib/deposit/rules";
+import { centsToDollars, formatExactCents, itemizedCents, localTime, parseLineAmount, releasedCents, renterClearance } from "@/lib/deposit/rules";
 import type { BookingView, ChargeLine } from "@/lib/deposit/types";
 
 function RenterPanel({ booking, chargeCents }: { booking: BookingView; chargeCents: number }) {
   const { toast } = useToast();
   const response = booking.renterState?.response;
   const path = `/renter/${booking.renterToken}`;
+  const clearance = renterClearance(booking.renterState, chargeCents);
   const copy = () =>
     navigator.clipboard
       .writeText(`${window.location.origin}${path}`)
@@ -30,7 +31,7 @@ function RenterPanel({ booking, chargeCents }: { booking: BookingView; chargeCen
   }
   return (
     <div className="rounded-lg border border-zinc-200 px-4 py-3 text-sm">
-      <p className="font-medium text-zinc-900" data-testid="renter-status">{renterClearance(booking.renterState, chargeCents).reason}</p>
+      <p className="font-medium text-zinc-900" data-testid="renter-status">{clearance.until ? `The renter has until ${localTime(clearance.until)} to accept or contest.` : clearance.reason}</p>
       <p className="mt-1 text-zinc-600">Send the renter their link. They see this proposal and the photos, and can accept or contest it before anything is charged.</p>
       <div className="mt-2 flex flex-wrap items-center gap-3">
         <Link href={path} target="_blank" className="inline-flex items-center gap-1 font-medium text-brand underline underline-offset-2" data-testid="renter-link">

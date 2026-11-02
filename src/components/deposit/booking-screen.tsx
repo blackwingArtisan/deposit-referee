@@ -84,12 +84,13 @@ function HoldPanel({ booking }: { booking: BookingView }) {
 
 export function BookingScreen() {
   const { id } = useParams<{ id: string }>();
-  const { kitFetch } = useKit();
+  const { kitFetch, status: kit } = useKit();
   const { toast } = useToast();
   const { steps } = useTimeline();
   const [booking, setBooking] = useState<BookingView | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const [reviewError, setReviewError] = useState<string | null>(null);
 
   const load = useCallback(() => kitFetch<BookingView>(`/api/bookings/${id}`), [id, kitFetch]);
   const refresh = useCallback(() => load().then(setBooking), [load]);
@@ -138,6 +139,19 @@ export function BookingScreen() {
     }
   }
 
+  // A failed comparison leaves the booking as it was, so the reason has to stay on the screen.
+  async function compare() {
+    setBusy("review");
+    setReviewError(null);
+    try {
+      setBooking(await kitFetch<BookingView>(`/api/bookings/${id}/review`, { method: "POST" }));
+    } catch (e) {
+      setReviewError((e as Error).message);
+    } finally {
+      setBusy(null);
+    }
+  }
+
   if (loadError) return <EmptyState title="Booking not found" description={loadError} />;
   if (!booking) return <SkeletonCard />;
 
@@ -171,6 +185,12 @@ export function BookingScreen() {
         description={`${formatCents(booking.depositCents)} damage deposit`}
         actions={<Badge tone={STATUS_LABEL[status].tone} dot>{STATUS_LABEL[status].label}</Badge>}
       />
+
+      {booking.sample ? (
+        <div className="mb-6" data-testid="sample-note">
+          <Notice tone="muted">This is a sample booking. Its hold and any charge are {kit?.paypal.mode === "sandbox" ? "real objects on the PayPal sandbox" : "on mock PayPal"}, and the AI text is a simulated result. It was loaded with the demo data, so its timeline is short.</Notice>
+        </div>
+      ) : null}
 
       {status === "settled" ? (
         <div className="space-y-6">
@@ -240,9 +260,12 @@ export function BookingScreen() {
                       {review.cappedToHold ? <Notice tone="muted">The items add up to more than the hold, so a charge stops at {formatCents(authorizedCents)}.</Notice> : null}
                     </div>
                   ) : (
-                    <Button icon={<ScanSearch className="size-4" />} loading={busy === "review"} disabled={!!busy} onClick={() => run("review", "The AI review failed", () => kitFetch<BookingView>(`${url}/review`, { method: "POST" }))} data-testid="run-review">
-                      Compare photos
-                    </Button>
+                    <div className="space-y-3">
+                      {reviewError ? <Notice tone="error">{reviewError}</Notice> : null}
+                      <Button icon={<ScanSearch className="size-4" />} loading={busy === "review"} disabled={!!busy} onClick={compare} data-testid="run-review">
+                        Compare photos
+                      </Button>
+                    </div>
                   )}
                 </Step>
               ) : null}

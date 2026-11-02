@@ -6,12 +6,10 @@ import { Check, MessageSquareWarning } from "lucide-react";
 import { useKit } from "@/components/kit/kit-provider";
 import { useToast } from "@/components/toast";
 import { Badge, Button, Card, CardBody, EmptyState, Field, SkeletonCard, Textarea } from "@/components/ui";
-import { formatCents, formatExactCents } from "@/lib/deposit/rules";
+import { formatCents, formatExactCents, localTime } from "@/lib/deposit/rules";
 import type { RenterView } from "@/lib/deposit/types";
 import { DamageItems } from "./damage-items";
 import { PhotoFrame } from "./photo-frame";
-
-const when = (iso: string) => new Date(iso).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 
 function Headline({ view }: { view: RenterView }) {
   if (view.settled) return <>{formatCents(view.settled.capturedCents)} charged, {formatCents(view.settled.releasedCents)} released</>;
@@ -113,7 +111,7 @@ export function RenterScreen() {
       {view.canContest ? (
         <Card>
           <CardBody className="space-y-4 py-6">
-            {renterState && !response ? <p className="text-sm text-zinc-700">You have until {when(renterState.deadline)} to answer. If you don&rsquo;t, the host may go ahead.</p> : null}
+            {renterState && !response ? <p className="text-sm text-zinc-700">You have until {localTime(renterState.deadline)} to answer. If you don&rsquo;t, the host may go ahead.</p> : null}
             <Field label="Disagree? Tell the host why" htmlFor="contest-note" hint="Contesting stops the charge and sends this note to the host. This isn't a PayPal dispute.">
               <Textarea id="contest-note" maxLength={500} value={note} onChange={(e) => setNote(e.target.value)} data-testid="contest-note" />
             </Field>

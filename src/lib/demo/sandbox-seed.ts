@@ -176,7 +176,7 @@ export async function seedSandbox(file = path.resolve(/*turbopackIgnore: true*/ 
   const save = () => fs.writeFileSync(file, JSON.stringify(manifest, null, 2) + "\n");
   return withContext({ channel: "seed", actor: "seed" }, async () => {
     const counts = await runSandboxSeed(pp, manifest, save);
-    await seedAppData();
+    await seedAppData(manifest, save);
     return { ...counts, ids: manifest };
   });
 }

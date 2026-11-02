@@ -9,6 +9,6 @@ const Body = z.object({
   depositCents: z.number().int().min(MIN_DEPOSIT_CENTS).max(MAX_DEPOSIT_CENTS),
 });
 
-export const GET = route(async () => ({ bookings: listBookings() }));
+export const GET = route(async (req) => ({ bookings: listBookings({ tests: req.nextUrl.searchParams.has("tests") }) }));
 
 export const POST = route(async (req) => viewBooking(createBooking(await readJson(req, Body))));

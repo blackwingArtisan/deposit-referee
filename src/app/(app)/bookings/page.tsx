@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useKit } from "@/components/kit/kit-provider";
 import { PageHeader } from "@/components/shell/app-shell";
 import { useToast } from "@/components/toast";
-import { Button, Card, CardBody, CardHeader, Field, Input, MoneyInput } from "@/components/ui";
+import { Badge, Button, Card, CardBody, CardHeader, Field, Input, MoneyInput } from "@/components/ui";
 import { dollarsToCents, formatCents, MAX_DEPOSIT_CENTS, MIN_DEPOSIT_CENTS } from "@/lib/deposit/rules";
 import type { BookingView } from "@/lib/deposit/types";
 
@@ -78,8 +78,11 @@ export default function BookingsPage() {
               <ul className="divide-y divide-zinc-100">
                 {bookings.map((b) => (
                   <li key={b.id}>
-                    <Link href={`/bookings/${b.id}`} className="flex items-baseline justify-between gap-4 py-3 hover:text-brand">
-                      <span className="min-w-0 truncate font-medium text-zinc-900">{b.item}</span>
+                    <Link href={`/bookings/${b.id}`} className="flex flex-col gap-0.5 py-3 hover:text-brand sm:flex-row sm:items-baseline sm:justify-between sm:gap-4">
+                      <span className="flex min-w-0 items-baseline gap-2">
+                        <span className="min-w-0 font-medium text-zinc-900 sm:truncate">{b.item}</span>
+                        {b.sample ? <Badge>Sample</Badge> : null}
+                      </span>
                       <span className="shrink-0 text-sm tabular-nums text-zinc-600">{outcome(b)}</span>
                     </Link>
                   </li>

@@ -20,6 +20,15 @@ export class AiBudgetExceededError extends Error {
   }
 }
 
+/** The AI can't run: the account is out of credit, or today's limit is spent. Says so in the host's words. */
+export class AiCreditError extends Error {
+  readonly status = 402;
+  constructor(cause: "account" | "daily limit" = "account") {
+    super(`${cause === "account" ? "The AI is out of credit" : "Today's AI limit is used up"}, so this step didn't run. No money moved, and the deposit is still on hold. Try again ${cause === "account" ? "once credit is added" : "tomorrow"}.`);
+    this.name = "AiCreditError";
+  }
+}
+
 export class AiRefusalError extends Error {
   readonly status = 422;
   constructor(

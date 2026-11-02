@@ -135,7 +135,7 @@ export class Guard {
     if (tool.risk === "money" && amount && inPolicyCurrency) {
       const dayCap = money(p.maxPerDay, p.currency);
       if (!this.daily.reserve(key, amount, dayCap)) {
-        return deny("OVER_DAILY_CAP", `${formatMoney(amount)} would exceed today's agent limit of ${formatMoney(dayCap)} (used ${formatMoney(this.daily.used(p.currency))}).`, { impact, key });
+        return deny("OVER_DAILY_CAP", `The app moves at most ${formatMoney(dayCap)} a day, and ${formatMoney(this.daily.used(p.currency))} has already moved today, so this ${formatMoney(amount)} was stopped. No money moved.`, { impact, key });
       }
       reserved = true;
     }

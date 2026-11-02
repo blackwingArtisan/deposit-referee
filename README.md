@@ -4,11 +4,11 @@
 
 **Status:** live at https://deposit-referee.onrender.com on the PayPal sandbox with mock AI · **Video (≤3 min):** <!-- TODO: YouTube link --> · **License:** MIT
 
-![Screenshot](docs/screenshot.png) <!-- TODO: add a 1440×900 screenshot of the main flow -->
+![The AI's proposal on a booking, with both photos and the live timeline](docs/screenshot.png)
 
 ## The problem
 
-<!-- TODO: 3–5 sentences. Who has the problem, how often, what it costs them today (time, money, errors). Use a concrete example. -->
+Anyone who rents out a cabin, a room or a set of tools knows this argument. A renter leaves, the host finds a long scratch in the floor, and each side remembers it differently. If the host already has the deposit, the renter has to chase it back. If the host doesn't, there's no easy way to charge for real damage. Deposit Referee keeps the money on a PayPal hold, puts the evidence on one page both sides can read, and charges only what the host approves.
 
 ## What it does
 
@@ -42,15 +42,10 @@ All PayPal calls go to the **sandbox** (`https://api-m.sandbox.paypal.com`); the
 
 | PayPal API | Endpoint(s) | Where and why |
 |---|---|---|
-| JS SDK v6 (buyer approval) | `web-sdk/v6/core`, `PayPalOneTimePaymentButton` | <!-- TODO --> |
-| Orders v2 | `POST /v2/checkout/orders`, `/authorize`, `/capture` | <!-- TODO --> |
-| Payments v2 | `/v2/payments/authorizations/{id}/capture`, `/void`, `/v2/payments/captures/{id}/refund` | <!-- TODO --> |
-| Payouts | `POST /v1/payments/payouts` | <!-- TODO or delete row --> |
-| Invoicing v2 | `/v2/invoicing/invoices`, `/send`, `/remind` | <!-- TODO or delete row --> |
-| Disputes | `/v1/customer/disputes`, `/accept-claim`, `/provide-evidence` | <!-- TODO or delete row --> |
-| Transaction Search | `GET /v1/reporting/transactions` | <!-- TODO or delete row --> |
-| Webhooks | `POST /v1/notifications/verify-webhook-signature` | Verified webhooks update the app's ledger and trigger <!-- TODO --> |
-| Vault v3 | `/v3/vault/setup-tokens`, `/payment-tokens` | <!-- TODO or delete row --> |
+| JS SDK v6 (buyer approval) | `web-sdk/v6/core`, `PayPalOneTimePaymentButton` | The renter approves the deposit with the PayPal button. Judges can use the sandbox test card instead, because they have no buyer login |
+| Orders v2 | `POST /v2/checkout/orders` (intent `AUTHORIZE`), `/authorize`, `GET /v2/checkout/orders/{id}` | Places the deposit as a hold, so nothing is charged. The settlement agent reads the order before it proposes |
+| Payments v2 | `GET /v2/payments/authorizations/{id}`, `/capture`, `/void`, `GET /v2/payments/captures/{id}` | Charges the exact amount the host approved, releases the rest of the hold, then re-reads both so the result screen shows PayPal's numbers |
+| Webhooks | `POST /v1/notifications/verify-webhook-signature` | Verified webhooks update the app's ledger and appear on the timeline of the booking they belong to |
 | **PayPal Agent Toolkit** | `@paypal/agent-toolkit` 1.11 tools: `get_order` | The settlement agent reads the order through PayPal's Agent Toolkit (definitions, validation and sandbox execution), plus guarded extensions the toolkit lacks: `get_authorization` for the agent, and `void_authorization` for the release after the host approves. |
 
 **Safety around money:** every money-moving agent call passes a guard. It enforces a per-action cap, a daily cap, a payee allowlist and idempotency (`PayPal-Request-Id`), and makes `capture_deposit` and `release_deposit` wait for the host at any amount. Every decision goes to a hash-chained, append-only audit log.
@@ -64,7 +59,7 @@ All PayPal calls go to the **sandbox** (`https://api-m.sandbox.paypal.com`); the
 
 - **Agent loop**: Claude's tool use via the Anthropic TypeScript SDK (`@anthropic-ai/sdk`), with adaptive thinking and summarized reasoning shown on the timeline.
 - **Structured output**: zod schemas through the Messages API's structured outputs (`output_config.format`).
-- **Cost control**: a hard daily spend cap (worst case reserved before every call), per-IP rate limits, and Haiku by default.
+- **Cost control**: a hard daily spend cap (worst case reserved before every call), per-IP rate limits, and Haiku for everything except the photo comparison.
 - **Mock mode**: without an API key the app runs a clearly labelled scripted agent, so the demo works anywhere.
 
 **Built with AI.** This project was built with **Claude Code** (Anthropic's coding agent), which wrote the code under human direction. It started from a shared starter kit that Claude Code also wrote. The product idea, scope and review were human decisions.
@@ -118,7 +113,7 @@ Checks: `npm run check` (lint, typecheck, unit tests, build), `npm run test:e2e`
 3. At checkout, log in with the **Personal** sandbox account (password on the account's details page).
 4. Optional: add a webhook for `https://<your-deploy>/api/paypal/webhooks` and set `PAYPAL_WEBHOOK_ID`.
 
-<!-- TODO: if judges should use a specific buyer account, give its email here (never a real account). -->
+Judges don't need a buyer account: the hosted demo has a **Pay with sandbox test card** button.
 
 ## Deploy
 
@@ -132,16 +127,16 @@ Started from kit `b67af83`. Two kit bugs found while building this are fixed her
 
 - Sandbox only; no live payments are possible.
 - Buyer approval in sandbox needs a sandbox buyer login, so automated tests cover that step in mock mode.
-- Local JSON storage: data resets on redeploy (fine for a demo, not for production).
+- Local JSON storage: data resets on redeploy (fine for a demo, not for production). Every start reloads the sample bookings, so the dashboard is never empty. They're marked **Sample**, and their AI text is simulated.
 - Sandbox Transaction Search needs the reporting feature enabled on the PayPal app, and data can lag up to 3 hours; the app keeps its own ledger.
 - The optional PayPal remote MCP connector is read-only and untested.
 - There are no logins yet: the renter's page is a private link the host shares by hand, and anyone with the host's page could approve.
 - The renter's contest is a note to the host inside this app. It doesn't open a PayPal dispute.
 - The AI's figures run low and aren't repair estimates. They're proposals the host can change.
 - `next dev` can reload endlessly on heavy pages (a kit issue, seen without AG Studio too), so run the AG Studio dashboard on a production build.
-- Dashboard data resets on each redeploy, like the rest of the local JSON store.
+- Rows booked under the test name `Test Renter` stay out of the lists. Add `?tests=1` to see them.
 - The wallet button needs a sandbox buyer login, so automated runs pay with the test card. The wallet path hasn't been run through to a hold.
-- Vision has only been shown to be reliable on obvious damage (TK-39 spike, 5 photo pairs). Subtle damage is untested.
+- Vision is reliable on obvious damage (TK-39 spike, 5 photo pairs) and cautious on subtle damage. In a blind test of 8 fresh pairs with the real prompt, it made no false charges on the 3 pairs with no new damage, but it charged none of the 5 pairs with subtle damage. In 4 of those 5 its reasons described the mark and declined to charge, and it missed a small tile chip completely. So read its reasons, and use **Add damage the AI missed** when it holds back.
 - The demo photos are CC0, and the floor gouge in the check-out photo is digitally added. See [PHOTO-CREDITS.md](PHOTO-CREDITS.md).
 
 ## License

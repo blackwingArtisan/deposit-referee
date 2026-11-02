@@ -1,12 +1,10 @@
 /**
- * APP-OWNED: seed your app's own records (customers, listings, jobs...) here.
- * Called by `npm run seed` and the "Load demo data" button after the PayPal demo data.
- *
- *   import { collection } from "@/lib/store/collection";
- *   export async function seedAppData() {
- *     collection<Customer>("customers").replaceAll([{ id: "c_1", name: "Maya Chen", email: "maya.chen@example.com" }]);
- *   }
+ * APP-OWNED: this app's own records. Called by `npm run seed`, `npm run seed:sandbox` and the
+ * "Load demo data" button after the PayPal demo data.
  */
-export async function seedAppData(): Promise<void> {
-  // The kit itself has no app records.
+import { seedSampleBookings } from "@/lib/deposit/sample-bookings";
+import { getPayPal } from "../paypal";
+
+export async function seedAppData(manifest: Record<string, string> = {}, save?: () => void): Promise<void> {
+  await seedSampleBookings(getPayPal(), manifest, save);
 }

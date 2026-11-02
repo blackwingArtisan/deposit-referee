@@ -100,6 +100,7 @@ describe("caps and allowlist", () => {
     expect((await guard.run(tool, { to: "a@example.com", amount: "400.00" }, ctx("r1"))).status).toBe("executed");
     const out = await guard.run(tool, { to: "b@example.com", amount: "250.00" }, ctx("r2"));
     expect(out).toMatchObject({ status: "denied", code: "OVER_DAILY_CAP" });
+    expect((out as { reason: string }).reason).toMatch(/^The app moves at most \$[\d,.]+ a day, and \$400\.00 has already moved today, so this \$250\.00 was stopped\. No money moved\.$/);
   });
 
   it("blocks blocked tools", async () => {

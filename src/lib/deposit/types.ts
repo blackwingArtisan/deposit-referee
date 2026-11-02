@@ -108,6 +108,8 @@ export interface Settlement {
 
 export interface Booking {
   id: string;
+  /** Seeded example data, labelled as such wherever it shows. */
+  sample?: boolean;
   item: string;
   renter: string;
   depositCents: number;

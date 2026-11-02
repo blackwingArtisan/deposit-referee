@@ -9,6 +9,9 @@ import type { Booking, BookingView, PendingApproval } from "./types";
 
 const bookings = () => collection<Booking>("bookings");
 
+/** The browser tests book under this name. Their rows stay out of what a visitor sees. */
+export const TEST_RENTER = "Test Renter";
+
 /** Settlements running in this process. A pending approval dies with the process. */
 export const activeSettlements = () => singleton("deposit:active-settlements", () => new Set<string>());
 
@@ -53,13 +56,14 @@ export function viewBooking(input: Booking): BookingView {
   return { ...booking, hold: booking.holdExpiresAt ? holdClock(booking.holdExpiresAt) : null, approval: pendingApproval(booking) };
 }
 
-/** Plain records, newest first. Reading them changes nothing. */
-export function allBookings(): Booking[] {
+/** Plain records, newest first. Reading them changes nothing. Pass `tests` to include test rows. */
+export function allBookings({ tests = false } = {}): Booking[] {
   return bookings()
     .list()
+    .filter((b) => tests || b.renter !== TEST_RENTER)
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
-export function listBookings(): BookingView[] {
-  return allBookings().map(viewBooking);
+export function listBookings(opts?: { tests?: boolean }): BookingView[] {
+  return allBookings(opts).map(viewBooking);
 }

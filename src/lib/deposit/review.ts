@@ -7,6 +7,7 @@ import { z } from "zod";
 import { compareImages } from "@/lib/ai";
 import { modelLabel } from "@/lib/ai/config";
 import type { ImageMediaType } from "@/lib/ai/images";
+import { failIfCreditOut } from "./credit-test";
 import { readPhoto } from "./photos";
 import type { Booking, DamageBox, DamageReview } from "./types";
 
@@ -100,7 +101,10 @@ export async function reviewPhotos(booking: Booking): Promise<DamageReview> {
     labels: ["Check-in photo", "Check-out photo"],
     question: QUESTION,
     schema: Verdict,
-    mock: () => (samePhoto ? MOCK_NO_DAMAGE : MOCK_VERDICT),
+    mock: () => {
+      failIfCreditOut(booking.id, "review");
+      return samePhoto ? MOCK_NO_DAMAGE : MOCK_VERDICT;
+    },
   });
   return toReview(data, booking.authorizedCents, { mocked, model: model ? modelLabel(model) : undefined, costUsd });
 }

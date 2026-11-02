@@ -62,16 +62,23 @@ export function DepositInsights() {
   const { kitFetch } = useKit();
   const { toast } = useToast();
   const [rows, setRows] = useState<DepositRow[] | null>(null);
+  const [samples, setSamples] = useState(0);
 
   useEffect(() => {
-    kitFetch<{ rows: DepositRow[] }>("/api/insights")
-      .then((r) => setRows(r.rows))
+    // Browser tests ask for their own rows with ?tests=1. Nobody else sees them.
+    const tests = new URLSearchParams(window.location.search).has("tests");
+    kitFetch<{ rows: DepositRow[]; samples: number }>(`/api/insights${tests ? "?tests=1" : ""}`)
+      .then((r) => {
+        setRows(r.rows);
+        setSamples(r.samples);
+      })
       .catch((e: Error) => toast({ title: "Could not load the dashboard", description: e.message, variant: "error" }));
   }, [kitFetch, toast]);
 
   return (
     <>
       <PageHeader title="Dashboard" description="What's held, charged and released by property, and where you changed the AI's number. Amounts come from PayPal, re-read when each deposit settled." />
+      {samples ? <p data-testid="sample-note" className="mb-4 text-sm text-zinc-600">{samples === 1 ? "1 booking here is a sample" : `${samples} bookings here are samples`}, loaded so there&rsquo;s something to look at. They&rsquo;re marked on the Bookings page.</p> : null}
       {StudioDashboard ? rows ? <StudioDashboard rows={rows} /> : null : <PlainDashboard rows={rows} />}
     </>
   );

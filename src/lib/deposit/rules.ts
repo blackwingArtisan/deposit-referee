@@ -67,6 +67,13 @@ export function renterDeadline(holdExpiresAt: string | undefined, now = Date.now
 export interface RenterClearance {
   cleared: boolean;
   reason: string;
+  /** Still waiting on the renter until this time. The browser shows it in the reader's own zone. */
+  until?: string;
+}
+
+/** A deadline in the reader's own time zone, with the zone named. Call it in the browser. */
+export function localTime(iso: string): string {
+  return new Date(iso).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "short" });
 }
 
 /** Whether the host may send this charge to the approval gate. A contest was heard if the host is looking at it. */
@@ -77,7 +84,7 @@ export function renterClearance(renter: { deadline: string; response?: { decisio
   if (response?.decision === "accepted") return { cleared: true, reason: "The renter accepted this charge." };
   if (response?.decision === "contested") return { cleared: true, reason: "The renter contested. Read their note before you decide." };
   if (now >= Date.parse(deadline)) return { cleared: true, reason: "The renter didn't answer in time." };
-  return { cleared: false, reason: `The renter has until ${new Date(deadline).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZone: "UTC" })} UTC to accept or contest.` };
+  return { cleared: false, reason: "The renter still has time to accept or contest.", until: deadline };
 }
 
 export interface HoldClock {
@@ -96,7 +103,7 @@ export function holdClock(expiresAt: string, now = Date.now()): HoldClock {
 }
 
 export function assertHoldOpen(expiresAt: string, now = Date.now()) {
-  if (holdClock(expiresAt, now).expired) throw new RuleError(`This hold expired on ${new Date(expiresAt).toUTCString()}. PayPal holds last ${HOLD_LIMIT_DAYS} days, so nothing can be captured from it.`);
+  if (holdClock(expiresAt, now).expired) throw new RuleError(`This hold has expired. PayPal holds last ${HOLD_LIMIT_DAYS} days, so nothing can be captured from it.`);
 }
 
 export function dollarsToCents(value: string): number {

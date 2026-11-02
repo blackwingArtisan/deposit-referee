@@ -16,10 +16,12 @@ export function ModeBadges({ className, vertical }: { className?: string; vertic
         {paypal.mode === "sandbox" ? <Landmark className="size-3.5" /> : <FlaskConical className="size-3.5" />}
         {paypal.mode === "sandbox" ? "PayPal sandbox" : "PayPal mock"}
       </span>
-      <span className={cn("inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 font-medium ring-1 ring-inset", ai.mode === "live" ? "bg-violet-50 text-violet-700 ring-violet-200" : "bg-zinc-100 text-zinc-700 ring-zinc-200")}>
-        <Sparkles className="size-3.5" />
-        {ai.mode === "live" ? ai.models.default : "AI mock"}
-      </span>
+      {(ai.mode === "live" ? [`Photos: ${ai.models.smart}`, `Agent: ${ai.models.default}`] : ["AI mock"]).map((label) => (
+        <span key={label} className={cn("inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 font-medium ring-1 ring-inset", ai.mode === "live" ? "bg-violet-50 text-violet-700 ring-violet-200" : "bg-zinc-100 text-zinc-700 ring-zinc-200")}>
+          <Sparkles className="size-3.5" />
+          {label}
+        </span>
+      ))}
       {ai.mode === "live" ? (
         <span className="inline-flex items-center gap-2 rounded-full bg-white px-2.5 py-1 text-zinc-600 ring-1 ring-inset ring-zinc-200" title="Today's AI spend vs. AI_DAILY_CAP_USD">
           <span className="h-1.5 w-12 overflow-hidden rounded-full bg-zinc-200">

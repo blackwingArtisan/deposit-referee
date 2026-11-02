@@ -242,7 +242,8 @@ describe("the renter's say", () => {
 
   it("a silent renter stops blocking once the window lapses, and the host can go ahead", async () => {
     const booking = await proposedBooking();
-    expect(renterClearance(booking.renterState, 15_000).cleared).toBe(false);
+    expect(renterClearance(booking.renterState, 15_000)).toMatchObject({ cleared: false, until: booking.renterState!.deadline });
+    expect(renterClearance(booking.renterState, 15_000).reason).not.toMatch(/UTC|GMT/);
     const deadline = Date.parse(booking.renterState!.deadline);
     expect(deadline - Date.now()).toBeLessThanOrEqual(RENTER_WINDOW_HOURS * 3_600_000);
     expect(renterClearance(booking.renterState, 15_000, deadline + 1).cleared).toBe(true);

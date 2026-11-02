@@ -12,7 +12,7 @@ import { singleton } from "../singleton";
 import { getBudget } from "./budget";
 import { modelLabel, SERVER_FALLBACK } from "./config";
 import { actualCostUsd, estimateInputTokens, worstCaseCostUsd } from "./cost";
-import { AiRefusalError, AiUnavailableError } from "./errors";
+import { AiBudgetExceededError, AiCreditError, AiRefusalError, AiUnavailableError } from "./errors";
 
 export type BetaCreateParams = Anthropic.Beta.Messages.MessageCreateParamsNonStreaming;
 export type BetaMessage = Anthropic.Beta.BetaMessage;
@@ -42,6 +42,21 @@ export function assertNotRefused(message: Pick<BetaMessage, "stop_reason" | "sto
   }
 }
 
+/** Anthropic reports an empty account as a 402 billing error, or as a 400 about the credit balance. */
+export function isCreditFailure(error: unknown): boolean {
+  if (!(error instanceof Anthropic.APIError)) return false;
+  return error.status === 402 || (error.status === 400 && /credit balance/i.test(error.message));
+}
+
+/** Reserves the worst case, and turns "over the limit" into a message the host can act on. */
+function reserveOrExplain(budget: ReturnType<typeof getBudget>, estimate: number) {
+  try {
+    return budget.reserve(estimate);
+  } catch (error) {
+    throw error instanceof AiBudgetExceededError ? new AiCreditError("daily limit") : error;
+  }
+}
+
 export interface CallMeta {
   /** Short label for the timeline, e.g. "extract receipt". */
   feature: string;
@@ -66,7 +81,7 @@ export async function guardedClaudeCall<M extends BetaMessage>(
   const p = withServerFallback(params);
   const estimate = worstCaseCostUsd(p.model, estimateInputTokens({ system: p.system, messages: p.messages, tools: p.tools }), p.max_tokens);
   const budget = getBudget();
-  const reservation = budget.reserve(estimate);
+  const reservation = reserveOrExplain(budget, estimate);
   const step = startStep({
     kind: "ai",
     title: `${modelLabel(p.model)} · ${meta.feature}`,
@@ -88,8 +103,9 @@ export async function guardedClaudeCall<M extends BetaMessage>(
     return { message, costUsd: cost };
   } catch (error) {
     if (!settled) budget.release(reservation);
-    step.fail(error);
-    throw error;
+    const failure = isCreditFailure(error) ? new AiCreditError() : error;
+    step.fail(failure);
+    throw failure;
   }
 }
 

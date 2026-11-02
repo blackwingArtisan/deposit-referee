@@ -24,8 +24,8 @@ export async function kitStatus(request: APIRequestContext) {
   return { sandbox: status.paypal.mode === "sandbox", live: status.ai.mode === "live", mode: status.paypal.mode as string };
 }
 
-/** Creates a booking, places the deposit, adds both photos and runs the review and the agent. */
-export async function toProposal(page: Page, request: APIRequestContext, opts: { item?: string; checkOut?: "demo" | "upload" | "clean" } = {}): Promise<Flow> {
+/** Creates a booking, places the deposit and adds both photos. */
+export async function toPhotos(page: Page, request: APIRequestContext, opts: { item?: string; checkOut?: "demo" | "upload" | "clean" } = {}): Promise<Flow> {
   const { sandbox, live, mode } = await kitStatus(request);
   const checkOut = opts.checkOut ?? "demo";
 
@@ -55,12 +55,17 @@ export async function toProposal(page: Page, request: APIRequestContext, opts: {
   await expect(page.getByTestId("photo-source").first()).toContainText("Greg Zaal, CC0 1.0");
   await expect(page.getByTestId("photo-source").nth(1)).toContainText({ upload: "Uploaded by the host", demo: "added digitally", clean: "same photo" }[checkOut]);
 
-  // The review, then the agent. It stops at its proposal.
+  return { id, sandbox, live, mode, booking };
+}
+
+/** Everything in toPhotos, then the review and the agent, which stops at its proposal. */
+export async function toProposal(page: Page, request: APIRequestContext, opts: Parameters<typeof toPhotos>[2] = {}): Promise<Flow> {
+  const flow = await toPhotos(page, request, opts);
   await page.getByTestId("run-review").click();
   await expect(page.getByTestId("review")).toBeVisible({ timeout: 90_000 });
   await expect(page.getByTestId("ai-proposal")).toBeVisible({ timeout: 90_000 });
   await expectNoSidewaysScroll(page);
-  return { id, sandbox, live, mode, booking };
+  return flow;
 }
 
 /** The renter's own page, in a separate browser session with none of the host's state. */
