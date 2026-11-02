@@ -119,13 +119,21 @@ function clampBox(box: DamageBox): DamageBox | null {
 }
 
 /** Turns the model's answer into a record we trust: whole cents, boxes on the photo, our own total. */
+/** A $0 finding is the model noticing a mark and declining to price it, so it isn't a charge. */
+const isCharge = (finding: Verdict["findings"][number]) => finding.charge_cents > 0;
+const chargesSomething = (verdict: Pick<Verdict, "new_damage" | "findings">) => verdict.new_damage && verdict.findings.some(isCharge);
+
+const overlaps = (a: DamageBox, b: DamageBox) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+
 export function toReview(verdict: Verdict, authorizedCents: number, meta: { mocked: boolean; model?: string; costUsd: number }): DamageReview {
-  const items = verdict.new_damage
-    ? verdict.findings.map((f) => ({ description: f.description, box: clampBox(f.box), chargeCents: Math.max(0, Math.round(f.charge_cents)) }))
+  const charged = chargesSomething(verdict);
+  const items = charged
+    ? verdict.findings.filter(isCharge).map((f) => ({ description: f.description, box: clampBox(f.box), chargeCents: Math.max(0, Math.round(f.charge_cents)) }))
     : [];
   const totalCents = items.reduce((sum, item) => sum + item.chargeCents, 0);
   // A finding the model listed and then declined to charge is the same thing: seen, not charged.
-  const noticed = verdict.new_damage ? verdict.worth_a_look : [...verdict.findings, ...verdict.worth_a_look];
+  const declined = verdict.findings.filter((f) => !charged || !isCharge(f));
+  const noticed = [...verdict.worth_a_look, ...declined.filter((f) => !verdict.worth_a_look.some((l) => overlaps(l.box, f.box)))];
   const worthALook = noticed
     .flatMap((f) => {
       const box = clampBox(f.box);
@@ -133,7 +141,7 @@ export function toReview(verdict: Verdict, authorizedCents: number, meta: { mock
     })
     .slice(0, MAX_WORTH_A_LOOK);
   return {
-    newDamage: verdict.new_damage,
+    newDamage: charged,
     items,
     worthALook,
     reasoning: verdict.reasoning,
@@ -165,8 +173,7 @@ export async function reviewPhotos(booking: Booking): Promise<DamageReview> {
       return mockVerdict();
     },
   });
-  const charged = data.new_damage && data.findings.length > 0;
-  const look = charged
+  const look = chargesSomething(data)
     ? null
     : await compareImages({
         images,

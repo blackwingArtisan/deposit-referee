@@ -48,6 +48,28 @@ describe("what the review keeps", () => {
     expect(review.worthALook).toHaveLength(1);
   });
 
+  it("treats a finding priced at zero as noticed, not charged", () => {
+    const zero = { ...MOCK_VERDICT, findings: [{ ...MOCK_VERDICT.findings[0], charge_cents: 0 }], worth_a_look: [] };
+    const review = toReview(zero, 30_000, meta);
+    expect(review).toMatchObject({ newDamage: false, items: [], suggestedCents: 0 });
+    expect(review.worthALook).toHaveLength(1);
+  });
+
+  it("keeps a priced finding as a charge and moves a zero one beside it to worth a look", () => {
+    const [priced] = MOCK_VERDICT.findings;
+    const mixed = { ...MOCK_VERDICT, findings: [priced, { ...priced, box: look.box, description: "Faint scuff", charge_cents: 0 }], worth_a_look: [] };
+    const review = toReview(mixed, 30_000, meta);
+    expect(review.items).toHaveLength(1);
+    expect(review.suggestedCents).toBe(priced.charge_cents);
+    expect(review.worthALook!.map((item) => item.description)).toEqual(["Faint scuff"]);
+  });
+
+  it("shows one mark once when both checks saw it, with the second check's figure", () => {
+    const declined = { ...MOCK_VERDICT.findings[0], box: look.box, charge_cents: 0 };
+    const review = toReview({ ...MOCK_VERDICT, findings: [declined], worth_a_look: [look] }, 30_000, meta);
+    expect(review.worthALook).toEqual([{ description: "Faint scuff", box: look.box, chargeCents: 7_500 }]);
+  });
+
   it("drops an item with no box on the photo, and keeps three at most", () => {
     const off = { ...look, box: { x: 2, y: 2, w: 0.1, h: 0.1 } };
     const review = toReview({ ...MOCK_VERDICT, worth_a_look: [off, look, look, look, look] }, 30_000, meta);

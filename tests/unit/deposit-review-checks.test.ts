@@ -34,6 +34,14 @@ describe("the two AI checks", () => {
     expect(review.worthALook).toEqual([{ description: "Faint scuff", box: look.box, chargeCents: 7_500 }]);
   });
 
+  it("runs the second check when the first says damage but prices it at zero", async () => {
+    const zero = { ...MOCK_VERDICT, findings: [{ ...MOCK_VERDICT.findings[0], charge_cents: 0 }] };
+    call.mockResolvedValueOnce(answer(zero, 0.01)).mockResolvedValueOnce(answer({ worth_a_look: [look] }, 0.02));
+    const review = await reviewPhotos(booking);
+    expect(call).toHaveBeenCalledTimes(2);
+    expect(review).toMatchObject({ newDamage: false, items: [], suggestedCents: 0 });
+  });
+
   it("keeps the charge check's answer when the second check fails", async () => {
     call.mockResolvedValueOnce(answer(MOCK_NO_DAMAGE, 0.01)).mockRejectedValueOnce(new Error("rate limited"));
     const review = await reviewPhotos(booking);
