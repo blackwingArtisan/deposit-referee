@@ -12,6 +12,7 @@
     "test:watch": "vitest",
     "test:sandbox": "SANDBOX_SMOKE=1 vitest run tests/unit/sandbox.smoke.test.ts",
     "test:e2e": "playwright test -c playwright.config.ts",
+    "test:e2e:studio": "NEXT_PUBLIC_SPONSOR_UI=1 E2E_PROD=1 playwright test -c playwright.config.ts",
     "test:e2e:sandbox": "playwright test -c playwright.sandbox.config.ts",
     "demo:record": "playwright test -c playwright.demo.config.ts",
     "demo:mp4": "bash scripts/webm-to-mp4.sh",

@@ -1,8 +1,8 @@
 # Deposit Referee
 
-> Hosts who rent out rooms, tools or gear hold a deposit with PayPal; AI compares the check-in and check-out photos and suggests a charge; the host approves the exact amount, and the rest goes back to the renter.
+> Hosts who rent out rooms, tools or gear hold a deposit with PayPal. AI compares the check-in and check-out photos, and an agent proposes a charge or a full release with its evidence, then stops. The renter can contest, the host approves, and only then does money move, inside limits set by code.
 
-**Status:** runs locally against the PayPal sandbox; not deployed yet · **Video (≤3 min):** <!-- TODO: YouTube link --> · **License:** MIT
+**Status:** live at https://deposit-referee.onrender.com on the PayPal sandbox with mock AI · **Video (≤3 min):** <!-- TODO: YouTube link --> · **License:** MIT
 
 ![Screenshot](docs/screenshot.png) <!-- TODO: add a 1440×900 screenshot of the main flow -->
 
@@ -15,11 +15,26 @@
 1. The host creates a booking with a deposit, for example $300 for a lakeside cabin.
 2. The renter places the deposit: a PayPal order with `intent=AUTHORIZE`. The money is held, not taken, for up to PayPal's 29-day limit.
 3. Check-in and check-out photos go on the booking, each with its source shown.
-4. Claude compares the two photos, itemizes new damage, draws a red box on it and suggests a charge with its reasons.
-5. The AI suggests, the host decides: the host sets the exact charge, and it waits at the approval gate. No money moves before that approval.
-6. PayPal captures exactly that amount, the rest of the hold is voided, and the result screen shows, for example, "$150 captured, $150 released", re-read from PayPal.
+4. Claude compares the two photos, itemizes new damage and draws a red box on it.
+5. The settlement agent reads that review, checks the order and the hold through PayPal's tools, and proposes a charge or a full release with its evidence. Then it stops. It has no tool that can move money.
+6. The renter opens their own link, sees the proposal, the photos and the reasons, and accepts or contests it. A contest stops the capture and brings their note back to the host. It's a note inside this app, not a PayPal dispute.
+7. The host can change any amount, since the AI's figures are proposals, not repair quotes. Raising a charge goes back to the renter. Then the host sends the charge or release to the Guard's approval step. No money moves before that approval, and declining moves nothing and keeps the booking open.
+8. PayPal captures exactly that amount, the rest of the hold is voided, and the result screen shows, for example, "$150 captured, $150 released", re-read from PayPal. With no damage the whole hold is voided and re-read: "$0 captured, $300 released".
 
-Money rules in code (`src/lib/deposit/rules.ts`): all amounts are integer cents, released is authorized minus captured and never comes from the AI, and a charge above the hold or on an expired hold is refused.
+The **Dashboard** shows what's held, charged and released by property, and where the host changed the AI's number.
+
+### Limits in code
+
+These live in `src/lib/deposit/rules.ts` and `src/agents/tools/capture-deposit.ts`, not in the prompt:
+
+- All amounts are integer cents, and released is authorized minus captured. It never comes from the AI, because a partly captured voided authorization still reads its full amount at PayPal.
+- A capture can't exceed the itemized lines or the amount held, whatever is asked. Both are checked when the host asks, again before the approval prompt, and again from PayPal's own numbers just before the capture.
+- The capture tool only runs for a charge the host asked for and approved. An agent calling it directly is refused.
+- A charge can't reach the approval step until the renter has accepted it, contested it (and the host has seen the note), or let their window lapse. The window is 48 hours, or ends an hour before the hold does. Accepting one amount doesn't cover a higher one.
+- After a contest the charge can only stay the same or go down.
+- A charge on an expired hold is refused.
+
+**Test the limit** on the booking page runs a script that asks for too much three ways, through the real tools and Guard. All three are refused and logged, and the hold doesn't change.
 
 ## How PayPal is used
 
@@ -36,17 +51,16 @@ All PayPal calls go to the **sandbox** (`https://api-m.sandbox.paypal.com`); the
 | Transaction Search | `GET /v1/reporting/transactions` | <!-- TODO or delete row --> |
 | Webhooks | `POST /v1/notifications/verify-webhook-signature` | Verified webhooks update the app's ledger and trigger <!-- TODO --> |
 | Vault v3 | `/v3/vault/setup-tokens`, `/payment-tokens` | <!-- TODO or delete row --> |
-| **PayPal Agent Toolkit** | `@paypal/agent-toolkit` 1.11 tools: <!-- TODO list the ones your agent uses --> | The agent's PayPal tools come from PayPal's Agent Toolkit (definitions, validation and sandbox execution), extended with guarded tools the toolkit lacks (<!-- TODO e.g. capture_authorization, void_authorization -->). |
+| **PayPal Agent Toolkit** | `@paypal/agent-toolkit` 1.11 tools: `get_order` | The settlement agent reads the order through PayPal's Agent Toolkit (definitions, validation and sandbox execution), plus guarded extensions the toolkit lacks: `get_authorization` for the agent, and `void_authorization` for the release after the host approves. |
 
-**Safety around money:** every money-moving agent call passes a guard. It enforces a per-action cap, a daily cap, a payee allowlist and idempotency (`PayPal-Request-Id`), and makes calls above <!-- TODO $50 --> wait for a human. Every decision goes to a hash-chained, append-only audit log.
+**Safety around money:** every money-moving agent call passes a guard. It enforces a per-action cap, a daily cap, a payee allowlist and idempotency (`PayPal-Request-Id`), and makes `capture_deposit` and `release_deposit` wait for the host at any amount. Every decision goes to a hash-chained, append-only audit log.
 
 ## How AI is used
 
 | Where | Model | What it does |
 |---|---|---|
-| <!-- TODO e.g. Settlement agent --> | Claude Haiku 5.5 (`claude-haiku-5-5`) | Plans the task and calls the PayPal tools in a loop; explains each step on the timeline |
-| <!-- TODO e.g. Receipt reading --> | Claude Sonnet 5.5 (`claude-sonnet-5-5`) | Vision: extracts structured data from photos |
-| <!-- TODO --> | | |
+| Settlement agent | Claude Haiku 5.5 (`claude-haiku-5-5`) | Reads the photo review and the hold in a tool loop, then proposes a charge or release with its evidence and stops; explains each step on the timeline |
+| Photo review | Claude Sonnet 5.5 (`claude-sonnet-5-5`) | Vision: compares the two photos, and returns itemized damage with boxes as structured data |
 
 - **Agent loop**: Claude's tool use via the Anthropic TypeScript SDK (`@anthropic-ai/sdk`), with adaptive thinking and summarized reasoning shown on the timeline.
 - **Structured output**: zod schemas through the Messages API's structured outputs (`output_config.format`).
@@ -58,7 +72,7 @@ All PayPal calls go to the **sandbox** (`https://api-m.sandbox.paypal.com`); the
 ## Architecture
 
 ```
-Browser (Next.js 16 / React 19, Tailwind, AG Grid)
+Browser (Next.js 16 / React 19, Tailwind, AG Grid, AG Studio behind a build switch)
   │  PayPal JS SDK v6 button ─────────────► PayPal sandbox checkout (buyer approval)
   │  SSE /api/events (live timeline)
   ▼
@@ -71,7 +85,14 @@ Next.js route handlers (Node)
   └─ .data/       local JSON: ledger, audit log, AI spend (mock PayPal state in mock mode)
 ```
 
-App code: `src/lib/deposit/` (rules, bookings, photos, AI review, settlement), `src/agents/tools/capture-deposit.ts` (the guarded charge), `src/components/deposit/`, `src/app/(app)/bookings/`, `src/app/api/bookings/`. The kit's `/example` and `/dashboard` pages are still in the code, but not in the nav.
+App code: `src/lib/deposit/` (rules, bookings, photos, AI review, proposal, renter, settlement, dashboard rows), `src/agents/settlement.ts` (the agent and the limit test), `src/agents/tools/` (the proposal tool, and the guarded capture and release), `src/components/deposit/`, `src/app/(app)/bookings/`, `src/app/(app)/insights/`, `src/app/renter/[token]/`, `src/app/api/bookings/`, `src/app/api/renter/`. The kit's open PayPal routes, `/api/agent/runs` and its demo pages are removed.
+
+### AG Studio
+
+The dashboard uses [AG Studio](https://www.ag-grid.com/) (`ag-studio`, `ag-studio-react` 3.0.0 from npm), used under evaluation and subject to its own licence. It sits behind a build-time switch, `NEXT_PUBLIC_SPONSOR_UI=1`:
+
+- **On:** a self-serve dashboard with tiles, charts, filters and a Customize mode. An optional `AG_STUDIO_LICENSE_KEY` is read at build time. Without one it logs a licence notice and shows a brief mark on hosts other than localhost.
+- **Off (the public site):** the same data in a plain AG Grid. `next.config.ts` aliases the packages to a stub, so no AG Studio code is built.
 
 ## Run locally
 
@@ -86,9 +107,9 @@ npm run seed                      # optional demo data
 
 Open http://localhost:3000. For the real sandbox set `PAYPAL_MODE=sandbox`, `PAYPAL_CLIENT_ID` and `PAYPAL_CLIENT_SECRET`. For real AI set `ANTHROPIC_API_KEY`.
 
-Checks: `npm run check` (lint, typecheck, unit tests, build), `npm run test:e2e` (mock PayPal, mock AI), `npm run test:sandbox`.
+Checks: `npm run check` (lint, typecheck, unit tests, build), `npm run test:e2e` (mock PayPal, mock AI), `npm run test:e2e:studio` (the same with AG Studio on, on a production build), `npm run test:sandbox`.
 
-`npm run test:e2e:sandbox` runs the whole deposit flow in a real browser on the PayPal sandbox with mock AI, then re-reads the order, capture and authorization straight from PayPal. It pays the deposit with PayPal's sandbox test card (`DEMO_TEST_CARD=1`). `E2E_AI_MODE=live npm run test:e2e:sandbox` does the same with one paid vision call.
+`npm run test:e2e:sandbox` runs the whole deposit flow in a real browser on the PayPal sandbox with mock AI, then re-reads the order, capture and authorization straight from PayPal. It pays the deposit with PayPal's sandbox test card (`DEMO_TEST_CARD=1`). `E2E_AI_MODE=live npm run test:e2e:sandbox` runs just the damage and no-damage flows with real Claude, so two vision calls and two short agent runs.
 
 ## Sandbox test accounts
 
@@ -114,11 +135,14 @@ Started from kit `b67af83`. Two kit bugs found while building this are fixed her
 - Local JSON storage: data resets on redeploy (fine for a demo, not for production).
 - Sandbox Transaction Search needs the reporting feature enabled on the PayPal app, and data can lag up to 3 hours; the app keeps its own ledger.
 - The optional PayPal remote MCP connector is read-only and untested.
-- There are no logins yet: one browser plays both host and renter, and anyone with the page could approve.
+- There are no logins yet: the renter's page is a private link the host shares by hand, and anyone with the host's page could approve.
+- The renter's contest is a note to the host inside this app. It doesn't open a PayPal dispute.
+- The AI's figures run low and aren't repair estimates. They're proposals the host can change.
+- `next dev` can reload endlessly on heavy pages (a kit issue, seen without AG Studio too), so run the AG Studio dashboard on a production build.
+- Dashboard data resets on each redeploy, like the rest of the local JSON store.
 - The wallet button needs a sandbox buyer login, so automated runs pay with the test card. The wallet path hasn't been run through to a hold.
 - Vision has only been shown to be reliable on obvious damage (TK-39 spike, 5 photo pairs). Subtle damage is untested.
 - The demo photos are CC0, and the floor gouge in the check-out photo is digitally added. See [PHOTO-CREDITS.md](PHOTO-CREDITS.md).
-- A no-damage booking can't be settled yet: releasing a whole deposit with no charge comes later.
 
 ## License
 

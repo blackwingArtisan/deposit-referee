@@ -3,6 +3,8 @@ import { defineConfig, devices } from "@playwright/test";
 /**
  * End-to-end tests (npm run test:e2e). Starts the dev server in PayPal MOCK mode with its own
  * data dir. AI is mocked unless E2E_AI_MODE=live (then real Claude, tiny spend).
+ * E2E_PROD=1 uses a production build instead: `next dev` can reload endlessly on heavy pages,
+ * and npm run test:e2e:studio needs that for AG Studio.
  */
 const PORT = Number(process.env.E2E_PORT ?? 3100);
 
@@ -20,10 +22,10 @@ export default defineConfig({
   },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 1000 } } }],
   webServer: {
-    command: `npx next dev --port ${PORT}`,
+    command: process.env.E2E_PROD ? `npx next build && npx next start --port ${PORT}` : `npx next dev --port ${PORT}`,
     url: `http://localhost:${PORT}/api/kit/status`,
     reuseExistingServer: !process.env.CI,
-    timeout: 120_000,
+    timeout: 300_000,
     env: {
       PAYPAL_MODE: process.env.E2E_PAYPAL_MODE ?? "mock",
       AI_MODE: process.env.E2E_AI_MODE ?? "mock",

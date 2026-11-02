@@ -20,6 +20,8 @@ export interface DepositRow {
   /** The host's decision minus the agent's total. */
   hostChange: number;
   hostChanged: "Yes" | "No";
+  /** 1 when the host changed the AI's number, so a dashboard can add them up. */
+  changedCount: number;
   contested: "Yes" | "No";
 }
 
@@ -60,6 +62,7 @@ export function toDepositRow(booking: Booking): DepositRow {
     aiProposed: proposal ? dollars(proposal.aiCents) : null,
     hostChange: dollars(change),
     hostChanged: change === 0 ? "No" : "Yes",
+    changedCount: change === 0 ? 0 : 1,
     contested: booking.renterState?.response?.decision === "contested" ? "Yes" : "No",
   };
 }
