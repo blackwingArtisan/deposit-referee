@@ -62,6 +62,7 @@ For each new damage, give a box around it in the check-out photo. Propose a fair
 Then fill in worth_a_look. Go over the check-out photo surface by surface (walls, floor, doors, cabinets, counters, tile, furniture) and compare each with the same spot in the check-in photo. If you find a specific mark (a scratch, scuff, chip, dent, crack, stain, burn or tear) that you can't see at check-in but aren't sure enough to charge for, don't charge it: list it in worth_a_look with a box around it in the check-out photo. The host will look at it, and it is never charged unless the host chooses to.
 - List only one specific mark you can point to and box, never a general difference in a surface.
 - Never list anything you can also see at check-in, or anything above that isn't damage: shadows, reflections, glare, moved things, ordinary wear.
+- worth_a_look is only for faint or small marks. Large or plainly visible damage that isn't at check-in is charged as above, not listed here.
 - Damage you charge for doesn't also go in worth_a_look.
 - Most stays have nothing worth a look, so an empty list is the normal answer.`;
 
