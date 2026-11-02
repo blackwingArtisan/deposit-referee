@@ -55,12 +55,13 @@ test("demo", async ({ page, request }) => {
   await caption(page, "AI compares them, and the host never has to describe the damage.", { wait: false });
   await tap(page, "run-review");
   await expect(page.getByTestId("review")).toBeVisible({ timeout: 90_000 });
-  await page.getByTestId("damage-box").first().scrollIntoViewIfNeeded();
+  await page.getByTestId("damage-box").first().evaluate((box) => box.scrollIntoView({ block: "center" }));
   await caption(page, "It boxes the new scratch in the check-out photo and gives its reasons.");
   const proposal = page.getByTestId("ai-proposal");
   await expect(proposal).toBeVisible({ timeout: 90_000 });
+  // The README picture: both photos and the timeline, with the caption left out.
+  await page.screenshot({ path: "docs/screenshot.png", style: "#__demo_caption { display: none !important; }" });
   await proposal.scrollIntoViewIfNeeded();
-  await page.screenshot({ path: "docs/screenshot.png" });
   await caption(page, "The settlement agent proposes charging $150, then stops. It has no tool that can move money.");
   clock.check("proposal");
 

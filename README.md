@@ -4,7 +4,7 @@
 
 **Status:** live at https://deposit-referee.onrender.com on the PayPal sandbox with mock AI · **Video (≤3 min):** <!-- TODO: YouTube link --> · **License:** MIT
 
-![The AI's proposal on a booking, with both photos and the live timeline](docs/screenshot.png)
+![The AI's finding on a booking, with both photos and the live timeline](docs/screenshot.png)
 
 ## The problem
 
