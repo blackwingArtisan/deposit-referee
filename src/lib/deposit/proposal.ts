@@ -58,6 +58,20 @@ export function recordProposal(request: ProposalRequest, ctx: { runId: string; h
 export interface HostLines {
   lines: { id: string; amountCents: number }[];
   add?: { description: string; amountCents: number };
+  /** One worth-a-look item from the photo review, by its place in that list. */
+  addLook?: number;
+}
+
+export const lookLineId = (index: number) => `look-${index}`;
+
+/** The host's choice, so it has no aiCents. It keeps the item's box as evidence, and the hold is still the ceiling. */
+function lookLine(booking: Booking, lines: ChargeLine[], heldCents: number, index: number): ChargeLine {
+  const look = booking.review?.worthALook?.[index];
+  if (!look) throw new HttpError(422, "That item isn't in the photo review.", "rule");
+  if (lines.some((line) => line.id === lookLineId(index))) throw new HttpError(422, "That item is already on the charge.", "rule");
+  const room = heldCents - itemizedCents(lines);
+  if (room <= 0) throw new HttpError(422, "The charge already uses the whole hold.", "rule");
+  return { id: lookLineId(index), description: look.description, box: look.box, amountCents: Math.min(look.chargeCents, room), note: "The AI flagged this but didn't charge it. The host added it." };
 }
 
 /**
@@ -72,6 +86,7 @@ export function saveHostLines(id: string, update: HostLines): Booking {
   const amounts = new Map(update.lines.map((line) => [line.id, line.amountCents]));
   const lines: ChargeLine[] = proposal.lines.map((line) => ({ ...line, amountCents: amounts.get(line.id) ?? line.amountCents }));
   if (update.add) lines.push({ id: `host-${lines.length}`, description: update.add.description, box: null, amountCents: update.add.amountCents });
+  if (update.addLook !== undefined) lines.push(lookLine(booking, lines, authorizedCents, update.addLook));
 
   const before = itemizedCents(proposal.lines);
   const total = itemizedCents(lines);

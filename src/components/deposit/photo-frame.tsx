@@ -2,6 +2,9 @@
 import { ExternalLink } from "lucide-react";
 import type { BookingPhoto, DamageItem } from "@/lib/deposit/types";
 
+/** Worth-a-look items go by letter, so they can't be mistaken for numbered charges. */
+export const lookLetter = (index: number) => String.fromCharCode(65 + index);
+
 function PhotoSourceLine({ photo }: { photo: BookingPhoto }) {
   const source = photo.source;
   if (source.kind === "upload") {
@@ -19,8 +22,8 @@ function PhotoSourceLine({ photo }: { photo: BookingPhoto }) {
   );
 }
 
-/** A photo, its source, and the AI's red boxes. Box positions are fractions, so they scale with the photo. */
-export function PhotoFrame({ label, photo, items = [] }: { label: string; photo: BookingPhoto; items?: Pick<DamageItem, "description" | "box">[] }) {
+/** A photo, its source, the AI's red boxes and its amber worth-a-look boxes. Box positions are fractions, so they scale with the photo. */
+export function PhotoFrame({ label, photo, items = [], looks = [] }: { label: string; photo: BookingPhoto; items?: Pick<DamageItem, "description" | "box">[]; looks?: Pick<DamageItem, "description" | "box">[] }) {
   return (
     <figure className="min-w-0">
       <figcaption className="mb-1.5 text-sm font-medium text-zinc-800">{label}</figcaption>
@@ -38,6 +41,20 @@ export function PhotoFrame({ label, photo, items = [] }: { label: string; photo:
             >
               {/* Sits above the box so it doesn't cover the damage, unless the box is at the top of the photo. */}
               <span className={`absolute left-[-3px] flex size-5 items-center justify-center bg-red-600 text-xs font-semibold text-white ${item.box.y > 0.06 ? "bottom-full" : "top-0"}`}>{i + 1}</span>
+            </div>
+          ) : null,
+        )}
+        {looks.map((look, i) =>
+          look.box ? (
+            <div
+              key={i}
+              data-testid="look-box"
+              role="img"
+              aria-label={`Worth a look ${lookLetter(i)}: ${look.description}`}
+              className="absolute rounded-[3px] border-[3px] border-dashed border-amber-400 shadow-[0_0_0_1.5px_rgba(0,0,0,0.45)]"
+              style={{ left: `${look.box.x * 100}%`, top: `${look.box.y * 100}%`, width: `${look.box.w * 100}%`, height: `${look.box.h * 100}%` }}
+            >
+              <span className={`absolute left-[-3px] flex size-5 items-center justify-center bg-amber-400 text-xs font-semibold text-amber-950 ${look.box.y > 0.06 ? "bottom-full" : "top-0"}`}>{lookLetter(i)}</span>
             </div>
           ) : null,
         )}

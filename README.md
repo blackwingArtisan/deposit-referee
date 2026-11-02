@@ -137,8 +137,8 @@ Started from kit `b67af83`. Two kit bugs found while building this are fixed her
 - `next dev` can reload endlessly on heavy pages (a kit issue, seen without AG Studio too), so run the AG Studio dashboard on a production build.
 - Rows booked under the test name `Test Renter` stay out of the lists. Add `?tests=1` to see them.
 - The wallet button needs a sandbox buyer login, so automated runs pay with the test card. The wallet path hasn't been run through to a hold.
-- Vision is reliable on obvious damage (TK-39 spike, 5 photo pairs) and cautious on subtle damage. In a blind test of 8 fresh pairs with the real prompt, it made no false charges on the 3 pairs with no new damage, but it charged none of the 5 pairs with subtle damage. In 4 of those 5 its reasons described the mark and declined to charge, and it missed a small tile chip completely. So read its reasons, and use **Add damage the AI missed** when it holds back.
-- The demo photos are CC0, and the floor gouge in the check-out photo is digitally added. See [PHOTO-CREDITS.md](PHOTO-CREDITS.md).
+- Vision is reliable on obvious damage (TK-39 spike, 5 photo pairs) and cautious on subtle damage. The charge rule stays strict, so a faint mark usually isn't charged. What the AI notices but won't charge shows as **Worth a look**, with an amber box, and the host can add it to the charge with one tap. It then goes to the renter and the approval gate like any other line. The AI can't charge one by itself, and the agent never sees them. Small marks can still be missed, so check the photos yourself and use **Add damage the AI missed**.
+- The demo photos are CC0, and the floor gouge and the faint floor marks in the check-out photos are digitally added. See [PHOTO-CREDITS.md](PHOTO-CREDITS.md).
 
 ## License
 

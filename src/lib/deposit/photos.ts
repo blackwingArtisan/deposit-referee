@@ -29,6 +29,13 @@ export const DEMO_CLEAN_CHECK_OUT: BookingPhoto = {
   source: { kind: "demo", ...SOURCE, note: "The same photo as check-in, to show a stay with no new damage." },
 };
 
+/** A faint scuff the AI should show the host but not charge. */
+export const DEMO_FAINT_CHECK_OUT: BookingPhoto = {
+  src: "/demo-photos/cabin-check-out-faint.jpg",
+  mediaType: "image/jpeg",
+  source: { kind: "demo", ...SOURCE, note: "Reframed from the original panorama. The faint floor scuff was added digitally for this demo." },
+};
+
 const SIGNATURES: { mediaType: BookingPhoto["mediaType"]; ext: string; matches: (b: Buffer) => boolean }[] = [
   { mediaType: "image/jpeg", ext: "jpg", matches: (b) => b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff },
   { mediaType: "image/png", ext: "png", matches: (b) => b.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) },

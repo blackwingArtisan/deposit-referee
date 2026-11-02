@@ -7,7 +7,8 @@ import { useKit } from "@/components/kit/kit-provider";
 import { useToast } from "@/components/toast";
 import { Badge, Button, Field, Input, MoneyInput } from "@/components/ui";
 import { centsToDollars, formatExactCents, itemizedCents, localTime, parseLineAmount, releasedCents, renterClearance } from "@/lib/deposit/rules";
-import type { BookingView, ChargeLine } from "@/lib/deposit/types";
+import type { BookingView, ChargeLine, DamageItem } from "@/lib/deposit/types";
+import { lookLetter } from "./photo-frame";
 
 function RenterPanel({ booking, chargeCents }: { booking: BookingView; chargeCents: number }) {
   const { toast } = useToast();
@@ -86,6 +87,32 @@ function AddLine({ disabled, onAdd }: { disabled: boolean; onAdd: (description: 
   );
 }
 
+/** What the AI noticed but wouldn't charge. Letters match the amber boxes on the check-out photo. */
+function WorthALook({ looks, onCharge, disabled, onAdd }: { looks: DamageItem[]; onCharge: (index: number) => boolean; disabled: boolean; onAdd: (index: number) => void }) {
+  return (
+    <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3" data-testid="worth-a-look">
+      <h4 className="text-sm font-semibold text-amber-950">Worth a look</h4>
+      <p className="mt-0.5 text-xs text-amber-900">The AI noticed {looks.length === 1 ? "this" : "these"} but wasn&rsquo;t sure enough to charge. Check the amber box on the check-out photo. Nothing here is charged unless you add it, and the renter sees anything you add.</p>
+      <ul className="mt-3 space-y-3">
+        {looks.map((look, i) => (
+          <li key={i} className="flex flex-wrap items-start justify-between gap-2 text-sm" data-testid={`look-${i}`}>
+            <span className="flex size-5 shrink-0 items-center justify-center bg-amber-400 text-xs font-semibold text-amber-950" aria-hidden>{lookLetter(i)}</span>
+            <div className="min-w-0 flex-1 basis-48 text-zinc-800">
+              <p>{look.description}</p>
+              <p className="mt-0.5 text-xs text-zinc-600">About {formatExactCents(look.chargeCents)} if you add it. You can change that.</p>
+            </div>
+            {onCharge(i) ? (
+              <Badge tone="success">On the charge</Badge>
+            ) : (
+              <Button variant="secondary" size="sm" icon={<Plus className="size-4" />} disabled={disabled} onClick={() => onAdd(i)} data-testid={`look-add-${i}`}>Add to charge</Button>
+            )}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 /** The agent has stopped. Everything from here is the host's call, and no money moves until they approve. */
 export function HostDecision({ booking, busy, act }: { booking: BookingView; busy: string | null; act: (name: string, failTitle: string, action: () => Promise<BookingView>) => Promise<void> }) {
   const { kitFetch } = useKit();
@@ -110,7 +137,8 @@ export function HostDecision({ booking, busy, act }: { booking: BookingView; bus
   const release = totalCents === 0 && !invalid;
   const blocked = !!busy || !!hold?.expired;
 
-  const saveLines = (add?: { description: string; amountCents: number }) => kitFetch<BookingView>(`${url}/lines`, { json: { lines: parsed.map((p) => ({ id: p.line.id, amountCents: p.cents ?? p.line.amountCents })), add } });
+  const saveLines = (more?: { add?: { description: string; amountCents: number }; addLook?: number }) => kitFetch<BookingView>(`${url}/lines`, { json: { lines: parsed.map((p) => ({ id: p.line.id, amountCents: p.cents ?? p.line.amountCents })), ...more } });
+  const looks = booking.review?.worthALook ?? [];
   const sendCharge = async () => {
     if (dirty) await saveLines();
     return kitFetch<BookingView>(`${url}/settle`, { json: { chargeCents: totalCents } });
@@ -136,6 +164,8 @@ export function HostDecision({ booking, busy, act }: { booking: BookingView; bus
         </div>
       </div>
 
+      {looks.length ? <WorthALook looks={looks} onCharge={(i) => proposal.lines.some((line) => line.id === `look-${i}`)} disabled={blocked || invalid || contested} onAdd={(i) => act("add-look", "Could not add it to the charge", () => saveLines({ addLook: i }))} /> : null}
+
       <div className="rounded-lg border border-zinc-200 px-4 py-3">
         <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
           <h4 className="text-sm font-semibold text-zinc-900">Itemized charge</h4>
@@ -151,7 +181,7 @@ export function HostDecision({ booking, busy, act }: { booking: BookingView; bus
           <p className="text-sm text-zinc-600">Nothing to charge.</p>
         )}
         <div className="mt-3 border-t border-zinc-100 pt-3">
-          <AddLine disabled={blocked} onAdd={(description, amountCents) => act("add-line", "Could not add the line", () => saveLines({ description, amountCents }))} />
+          <AddLine disabled={blocked} onAdd={(description, amountCents) => act("add-line", "Could not add the line", () => saveLines({ add: { description, amountCents } }))} />
         </div>
       </div>
 

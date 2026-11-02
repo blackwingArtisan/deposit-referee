@@ -237,6 +237,45 @@ test("no damage: the agent proposes a full release and the hold is voided", asyn
   console.log(`AI: mocked=${done.review!.mocked} vision cost=$${done.review!.costUsd.toFixed(4)} proposal=${done.proposal!.engine}`);
 });
 
+test("worth a look: the host adds a mark the AI wouldn't charge, and it goes through the renter and approval", async ({ page, request }) => {
+  const flow = await toProposal(page, request, { checkOut: "faint", item: "Lakeside cabin, weekend of Nov 20" });
+  const reviewed = await flow.booking();
+  const look = reviewed.review!.worthALook![0];
+  expect(look, "the AI should have flagged the faint mark").toBeTruthy();
+
+  // Shown to the host with its box, and nothing is charged for it.
+  expect(reviewed.proposal).toMatchObject({ kind: "release", aiCents: 0, lines: [] });
+  await expect(page.getByTestId("ai-proposal")).toContainText("releasing the whole $300.00");
+  await expect(page.getByTestId("worth-a-look")).toContainText("Nothing here is charged unless you add it");
+  await expect(page.getByTestId("look-box")).toHaveCount(1);
+  await expect(page.getByTestId("damage-box")).toHaveCount(0);
+  await expectNoSidewaysScroll(page);
+  await page.screenshot({ path: `screenshots/deposit-worth-a-look-${flow.live ? "live-ai" : "mock-ai"}.png`, fullPage: true });
+  await expectHoldUntouched(flow);
+
+  // One tap puts it on the charge, with its box, and nothing moves yet.
+  await page.getByTestId("look-add-0").click();
+  await expect(page.getByTestId("look-0")).toContainText("On the charge");
+  await expect(page.getByTestId("line-amount-look-0")).toHaveValue((look.chargeCents / 100).toFixed(2));
+  await expect(page.getByTestId("request-approval")).toBeDisabled();
+  const added = await flow.booking();
+  expect(added.proposal!.lines[0]).toMatchObject({ id: "look-0", box: look.box, amountCents: look.chargeCents });
+  expect(added.proposal!.lines[0].aiCents).toBeUndefined();
+  await expectHoldUntouched(flow);
+
+  // The renter sees it, with its box, and has to answer first.
+  const renter = await renterAccepts(page, added);
+  await expect(renter.getByTestId("renter-headline")).toContainText(`Proposed charge: ${dollars(look.chargeCents)}`);
+  await expect(renter.getByTestId("damage-box")).toHaveCount(1);
+  await expect(renter.getByTestId("damage-items")).toContainText("The host added it");
+  await expect(page.getByTestId("request-approval")).toBeEnabled({ timeout: 10_000 });
+
+  // Then the same approval gate as any other charge.
+  await approveCharge(page, flow, look.chargeCents, "deposit-worth-a-look-charged");
+  await expect(page.getByTestId("ruling")).toContainText("What was charged");
+  await renter.context().close();
+});
+
 test("a script that asks for too much is refused by code", async ({ page, request }) => {
   test.skip((await (await request.get("/api/kit/status")).json()).ai.mode === "live", "Keeps a live run cheap");
   const flow = await toProposal(page, request, { item: "Harbor loft, weekend of Nov 27" });

@@ -40,6 +40,8 @@ export interface DamageItem {
 export interface DamageReview {
   newDamage: boolean;
   items: DamageItem[];
+  /** Marks the AI noticed but wouldn't charge. No total includes these unless the host adds one. */
+  worthALook?: DamageItem[];
   reasoning: string;
   confidence: "high" | "medium" | "low";
   /** Sum of the items, limited to the hold. Added up in code. */

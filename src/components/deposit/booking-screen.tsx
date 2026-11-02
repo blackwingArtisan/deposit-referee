@@ -159,7 +159,7 @@ export function BookingScreen() {
   const { status, review, proposal, settlement, photos, authorizedCents = booking.depositCents } = booking;
   const deciding = status === "proposed" || status === "contested";
 
-  const addDemoPhoto = (slot: PhotoSlot, clean?: boolean) => run(`photo:${slot}`, "Could not add the photo", () => kitFetch<BookingView>(`${url}/photos`, { json: { slot, clean } }));
+  const addDemoPhoto = (slot: PhotoSlot, kind?: { clean?: boolean; faint?: boolean }) => run(`photo:${slot}`, "Could not add the photo", () => kitFetch<BookingView>(`${url}/photos`, { json: { slot, ...kind } }));
 
   async function uploadPhoto(slot: PhotoSlot, event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -224,7 +224,7 @@ export function BookingScreen() {
                     {SLOTS.map(({ slot, label }) => {
                       const photo = photos[slot];
                       return photo ? (
-                        <PhotoFrame key={slot} label={label} photo={photo} items={slot === "check_out" ? review?.items : undefined} />
+                        <PhotoFrame key={slot} label={label} photo={photo} items={slot === "check_out" ? review?.items : undefined} looks={slot === "check_out" ? review?.worthALook : undefined} />
                       ) : (
                         <div key={slot} className="flex flex-col gap-2 rounded-lg border border-dashed border-zinc-300 p-4">
                           <p className="text-sm font-medium text-zinc-800">{label}</p>
@@ -232,9 +232,14 @@ export function BookingScreen() {
                             Use demo photo
                           </Button>
                           {slot === "check_out" ? (
-                            <Button variant="ghost" size="sm" disabled={!!busy} onClick={() => addDemoPhoto(slot, true)} data-testid="demo-photo-clean">
-                              Use demo photo, no damage
-                            </Button>
+                            <>
+                              <Button variant="ghost" size="sm" disabled={!!busy} onClick={() => addDemoPhoto(slot, { clean: true })} data-testid="demo-photo-clean">
+                                Use demo photo, no damage
+                              </Button>
+                              <Button variant="ghost" size="sm" disabled={!!busy} onClick={() => addDemoPhoto(slot, { faint: true })} data-testid="demo-photo-faint">
+                                Use demo photo, faint mark
+                              </Button>
+                            </>
                           ) : null}
                           <label className="inline-flex h-8 cursor-pointer items-center justify-center gap-2 rounded-lg px-3 text-sm font-medium text-zinc-700 hover:bg-zinc-100 focus-within:ring-2 focus-within:ring-brand-300">
                             <Upload className="size-4" /> Upload photo
@@ -251,7 +256,11 @@ export function BookingScreen() {
                 <Step n={3} title="AI compares the photos" done={!!review}>
                   {review ? (
                     <div className="space-y-3" data-testid="review">
-                      <DamageItems lines={review.items.map((item) => ({ description: item.description, amountCents: item.chargeCents }))} />
+                      {!review.items.length && review.worthALook?.length ? (
+                        <p className="text-sm text-zinc-700">Nothing the AI would charge for, but it flagged something worth a look.</p>
+                      ) : (
+                        <DamageItems lines={review.items.map((item) => ({ description: item.description, amountCents: item.chargeCents }))} />
+                      )}
                       <p className="text-sm leading-relaxed text-zinc-700">{review.reasoning}</p>
                       <div className="flex flex-wrap items-center gap-2">
                         <Badge tone={review.mocked ? "warning" : "brand"}>{review.mocked ? "Simulated AI result" : review.model}</Badge>
