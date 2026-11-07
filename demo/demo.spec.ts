@@ -87,7 +87,7 @@ test("demo", async ({ page, request }) => {
   await note.pressSequentially("The scratch is real, but it's one board. That's too much.", { delay: 14 });
   await phone.getByTestId("contest").click();
   await expect(phone.getByTestId("renter-contested")).toBeVisible();
-  await sleep(1800);
+  await sleep(2600);
   await closePhone(page);
   clock.check("contest");
 
@@ -125,7 +125,10 @@ test("demo", async ({ page, request }) => {
   const ruling = page.getByTestId("ruling-headline");
   await expect(ruling).toContainText("$90 captured", { timeout: 60_000 });
   await expect(ruling).toContainText("$210 released");
+  await highlight(page, ruling, 2400);
   await caption(page, `$90 captured, $210 released, re-read from PayPal${sandbox ? "'s sandbox" : ""}.`, { ms: 4200 });
+  await page.getByTestId("ruling-host-reason").scrollIntoViewIfNeeded();
+  await caption(page, "The record keeps the photos, the reasons and the PayPal ids.", { ms: 3200 });
   clock.check("ruling");
 
   // Close: the host's record.
@@ -133,8 +136,8 @@ test("demo", async ({ page, request }) => {
   const row = page.getByRole("row").filter({ hasText: "Cedar cabin" }).last();
   await expect(row).toBeVisible({ timeout: 30_000 });
   await caption(page, `Every deposit in one place: what the AI said, what the host charged.`, { wait: false });
-  await highlight(page, row, 2600);
-  await sleep(2600);
+  await highlight(page, row, 3000);
+  await sleep(3400);
   clock.check("end");
 });
 
