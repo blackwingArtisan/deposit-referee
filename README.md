@@ -4,7 +4,7 @@
 
 **Status:** live at https://deposit-referee.onrender.com on the PayPal sandbox with Claude (Sonnet 5.5 for the photos, Haiku 5.5 for the agent), under an app-side daily AI spend cap · **Video (≤3 min):** <!-- TODO: YouTube link --> · **License:** MIT
 
-**Holds:** PayPal guarantees an authorized deposit for 3 days and lets it be captured until day 29. That suits stays and gear rentals; it doesn't suit long leases.
+**Holds:** PayPal guarantees an authorized deposit for 3 days and lets it be captured until day 29. A charge after day 3 refreshes the hold first (a PayPal reauthorization). That suits stays and gear rentals; it doesn't suit long leases.
 
 ![The AI's finding on a booking, with both photos and the live timeline](docs/screenshot.png)
 
@@ -37,6 +37,7 @@ These live in `src/lib/deposit/rules.ts` and `src/agents/tools/capture-deposit.t
 - A charge can't reach the approval step until the renter has accepted it, contested it (and the host has seen the note), or let their window lapse. The window is 48 hours, or ends an hour before the hold does. Accepting one amount doesn't cover a higher one.
 - After a contest the charge can only stay the same or go down.
 - A charge on an expired hold is refused.
+- A charge more than 3 days after the hold was placed, past PayPal's honor period, first refreshes the hold: the capture tool reauthorizes the same amount and charges the new authorization, and the PayPal calls show **Hold refreshed**. A release voids the original hold, which voids both. If PayPal refuses the reauthorization, the original hold is charged as before. The sandbox can't age a hold, so this is proven by unit tests on a mocked clock (`tests/unit/hold-refresh.test.ts`), not on the sandbox.
 
 **Test the limit** (under **For judges** on the booking page) has a scripted agent call the capture tool for one cent over the hold, through the real tool and Guard. It's refused by code before PayPal, logged, and the hold doesn't change. Unit tests cover the other routes in: a proposal over the hold, a capture over the itemized lines, and an agent capturing without the host.
 

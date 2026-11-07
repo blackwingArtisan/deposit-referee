@@ -75,6 +75,6 @@ export function listBookings(opts?: { tests?: boolean }): BookingListItem[] {
 
 /** Every PayPal id that belongs to a booking here, samples and test rows included. */
 export function ownPaypalIds(): Set<string> {
-  const ids = allBookings({ tests: true }).flatMap((b) => [b.orderId, b.authorizationId, b.settlement?.captureId]);
+  const ids = allBookings({ tests: true }).flatMap((b) => [b.orderId, b.authorizationId, b.refreshedAuthorizationId, b.settlement?.captureId]);
   return new Set(ids.filter((id): id is string => !!id));
 }

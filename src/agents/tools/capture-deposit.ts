@@ -9,10 +9,13 @@
 import { z } from "zod";
 import { defineTool } from "@/lib/agent/tool";
 import { captureAuthorization } from "@/lib/agent/tools/extensions";
-import { requireBooking } from "@/lib/deposit/bookings";
-import { assertCaptureLimits, assertHoldOpen, centsToDollars, dollarsToCents, formatExactCents, itemizedCents, releasedCents, renterClearance, RuleError } from "@/lib/deposit/rules";
+import { requireBooking, saveBooking } from "@/lib/deposit/bookings";
+import { assertCaptureLimits, assertHoldOpen, centsToDollars, dollarsToCents, formatExactCents, HONOR_DAYS, itemizedCents, releasedCents, renterClearance, RuleError } from "@/lib/deposit/rules";
+import { timeline } from "@/lib/events/bus";
 import { moneyFromMinor } from "@/lib/money";
 import type { PayPalApi } from "@/lib/paypal/api";
+import { PayPalApiError } from "@/lib/paypal/errors";
+import type { Authorization } from "@/lib/paypal/types";
 
 export const CAPTURE_DEPOSIT = "capture_deposit";
 
@@ -34,7 +37,31 @@ async function readCapturableHold(paypal: PayPalApi, bookingId: string, chargeCe
   if (auth.status !== "CREATED") throw new RuleError(`This hold is ${auth.status}, so no new charge can be taken from it.`);
   const authorizedCents = dollarsToCents(auth.amount.value);
   assertCaptureLimits(chargeCents, itemized, authorizedCents);
-  return { authorizationId, authorizedCents };
+  return { authorizationId, authorizedCents, auth };
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * PayPal guarantees a hold's funds for its first 3 days. After that a capture usually still
+ * works but isn't promised, so the hold is refreshed first: a reauthorization of the same amount,
+ * with a new id and a fresh 3 days. If PayPal refuses, the original hold is charged as before.
+ */
+export async function holdToCapture(paypal: PayPalApi, bookingId: string, auth: Authorization, now = Date.now()): Promise<string> {
+  const booking = requireBooking(bookingId);
+  if (booking.refreshedAuthorizationId) return booking.refreshedAuthorizationId;
+  if (now - Date.parse(auth.create_time) <= HONOR_DAYS * DAY_MS) return auth.id;
+  const amount = formatExactCents(dollarsToCents(auth.amount.value));
+  try {
+    const fresh = await paypal.payments.reauthorize(auth.id, { amount: auth.amount });
+    saveBooking({ ...requireBooking(bookingId), refreshedAuthorizationId: fresh.id });
+    timeline.emit({ kind: "info", status: "succeeded", title: "Hold refreshed", detail: `The hold was more than ${HONOR_DAYS} days old, so PayPal reauthorized ${amount} before the charge. Authorization ${fresh.id}.` });
+    return fresh.id;
+  } catch (e) {
+    const reason = e instanceof PayPalApiError ? (e.issue ?? e.name) : (e as Error).message;
+    timeline.emit({ kind: "info", status: "info", title: "Hold not refreshed", detail: `PayPal didn't reauthorize the hold (${reason}), so the charge comes from the original ${amount} hold.` });
+    return auth.id;
+  }
 }
 
 export const captureDeposit = defineTool({
@@ -57,7 +84,8 @@ export const captureDeposit = defineTool({
   },
   execute: async (i, ctx) => {
     // Checked again: time passes while the host decides.
-    const { authorizationId, authorizedCents } = await readCapturableHold(ctx.paypal, i.booking_id, i.amount_cents);
+    const { authorizedCents, auth } = await readCapturableHold(ctx.paypal, i.booking_id, i.amount_cents);
+    const authorizationId = await holdToCapture(ctx.paypal, i.booking_id, auth);
     return captureAuthorization.execute(
       { authorization_id: authorizationId, amount: centsToDollars(i.amount_cents), currency_code: "USD", final_capture: i.amount_cents === authorizedCents },
       ctx,

@@ -123,6 +123,8 @@ export interface Booking {
   renterToken: string;
   orderId?: string;
   authorizationId?: string;
+  /** Set once the hold was refreshed after PayPal's 3-day honor period. Charges come from this one; a release voids the original, which voids both. */
+  refreshedAuthorizationId?: string;
   authorizedCents?: number;
   holdExpiresAt?: string;
   photos: Partial<Record<PhotoSlot, BookingPhoto>>;
