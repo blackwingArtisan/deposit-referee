@@ -6,6 +6,8 @@ import { fromMinor, toMinor } from "@/lib/money";
 
 /** PayPal authorizations stop being capturable after 29 days. */
 export const HOLD_LIMIT_DAYS = 29;
+/** PayPal guarantees the funds for the first 3 days (the honor period); after that a capture can fail. */
+export const HONOR_DAYS = 3;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 /** Matches the Guard's per-action cap in app.config.ts. */
@@ -89,6 +91,8 @@ export function renterClearance(renter: { deadline: string; response?: { decisio
 
 export interface HoldClock {
   expiresAt: string;
+  /** End of PayPal's honor period: the authorization is 29 days long, so this is 26 days before it ends. */
+  guaranteedUntil: string;
   limitDays: number;
   /** Whole days left, rounded up. 0 once expired. */
   daysLeft: number;
@@ -99,7 +103,8 @@ export function holdClock(expiresAt: string, now = Date.now()): HoldClock {
   const end = Date.parse(expiresAt);
   if (Number.isNaN(end)) throw new RuleError(`Invalid hold expiry: ${expiresAt}`);
   const expired = now >= end;
-  return { expiresAt, limitDays: HOLD_LIMIT_DAYS, daysLeft: expired ? 0 : Math.ceil((end - now) / DAY_MS), expired };
+  const guaranteedUntil = new Date(end - (HOLD_LIMIT_DAYS - HONOR_DAYS) * DAY_MS).toISOString();
+  return { expiresAt, guaranteedUntil, limitDays: HOLD_LIMIT_DAYS, daysLeft: expired ? 0 : Math.ceil((end - now) / DAY_MS), expired };
 }
 
 export function assertHoldOpen(expiresAt: string, now = Date.now()) {

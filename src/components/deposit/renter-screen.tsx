@@ -86,6 +86,7 @@ export function RenterScreen() {
             <div>
               <h2 className="mb-1 text-sm font-semibold text-zinc-900">Why</h2>
               <p className="text-sm leading-relaxed text-zinc-700" data-testid="renter-rationale">{proposal.rationale}</p>
+              {proposal.hostReason ? <p className="mt-2 text-sm text-zinc-800" data-testid="renter-host-reason"><span className="font-medium">The host&rsquo;s note:</span> {proposal.hostReason}</p> : null}
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 <Badge tone={proposal.simulated ? "warning" : "brand"}>{proposal.engine}</Badge>
                 {view.confidence ? <Badge>Photo review confidence: {view.confidence}</Badge> : null}
@@ -102,7 +103,7 @@ export function RenterScreen() {
         <div data-testid="renter-contested" className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950">
           <p className="font-semibold">Your note went to the host. The charge is stopped until they decide.</p>
           <p className="mt-1">&ldquo;{response.note}&rdquo;</p>
-          <p className="mt-2 text-xs">This is a note to the host inside this app, not a PayPal dispute. If you&rsquo;re charged and still disagree, you can open a dispute with PayPal.</p>
+          <p className="mt-2 text-xs">From now on the host can only keep this charge at {formatExactCents(response.amountCents)} or lower it, never raise it. This is a note inside this app, not a PayPal dispute. If you&rsquo;re charged and still disagree, you can open a dispute with PayPal.</p>
         </div>
       ) : null}
 

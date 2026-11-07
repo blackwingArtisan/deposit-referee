@@ -8,9 +8,9 @@ import { PageHeader } from "@/components/shell/app-shell";
 import { useToast } from "@/components/toast";
 import { Badge, Button, Card, CardBody, CardHeader, Field, Input, MoneyInput } from "@/components/ui";
 import { dollarsToCents, formatCents, MAX_DEPOSIT_CENTS, MIN_DEPOSIT_CENTS } from "@/lib/deposit/rules";
-import type { BookingView } from "@/lib/deposit/types";
+import type { BookingListItem, BookingView } from "@/lib/deposit/types";
 
-function outcome(booking: BookingView): string {
+function outcome(booking: BookingListItem): string {
   const s = booking.settlement;
   if (booking.status === "settled" && s?.capturedCents !== undefined && s.releasedCents !== undefined) return `${formatCents(s.capturedCents)} captured, ${formatCents(s.releasedCents)} released`;
   if (booking.status === "draft") return "Waiting for deposit";
@@ -23,14 +23,14 @@ export default function BookingsPage() {
   const { kitFetch } = useKit();
   const { toast } = useToast();
   const router = useRouter();
-  const [bookings, setBookings] = useState<BookingView[]>([]);
+  const [bookings, setBookings] = useState<BookingListItem[]>([]);
   const [busy, setBusy] = useState(false);
   // On a slow phone the form is on screen before React is running. The fields are uncontrolled so
   // React keeps what was already typed, and the button waits so the form can't submit natively.
   const hydrated = useSyncExternalStore(noSubscription, () => true, () => false);
 
   useEffect(() => {
-    kitFetch<{ bookings: BookingView[] }>("/api/bookings")
+    kitFetch<{ bookings: BookingListItem[] }>("/api/bookings")
       .then((r) => setBookings(r.bookings))
       .catch((e: Error) => toast({ title: "Could not load bookings", description: e.message, variant: "error" }));
   }, [kitFetch, toast]);

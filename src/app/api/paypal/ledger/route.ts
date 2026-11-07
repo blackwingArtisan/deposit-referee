@@ -1,8 +1,11 @@
+import { ownPaypalIds } from "@/lib/deposit/bookings";
+import { isOwnLedgerEntry } from "@/lib/deposit/own-records";
 import { route } from "@/lib/http";
 import { ledger, type LedgerKind } from "@/lib/paypal";
 
-/** Everything this app has done with PayPal (orders, captures, refunds, payouts, invoices...). */
+/** The PayPal objects behind this app's bookings (orders, authorizations, captures). */
 export const GET = route(async (req) => {
   const kind = req.nextUrl.searchParams.get("kind") as LedgerKind | null;
-  return { entries: ledger.list(kind ? { kind } : {}) };
+  const ids = ownPaypalIds();
+  return { entries: ledger.list(kind ? { kind } : {}).filter((e) => isOwnLedgerEntry(e, ids)) };
 });

@@ -13,7 +13,7 @@ import { runScriptedAgent } from "@/lib/agent/scripted";
 import { paypalTools } from "@/lib/agent/tools";
 import { requireBooking, saveBooking } from "@/lib/deposit/bookings";
 import { failIfCreditOut } from "@/lib/deposit/credit-test";
-import { itemizedCents, formatExactCents, RuleError } from "@/lib/deposit/rules";
+import { formatExactCents, RuleError } from "@/lib/deposit/rules";
 import type { Booking, DamageReview } from "@/lib/deposit/types";
 import { getPayPal } from "@/lib/paypal";
 
@@ -83,24 +83,16 @@ const limitTester = defineAgent({
   name: "Limit test",
   description: "Asks for too much on purpose, to show the code refuses it.",
   system: "Scripted only. Never sent to a model.",
-  tools: () => [proposeSettlement, captureDeposit],
+  tools: () => [captureDeposit],
   policy: appConfig.agentPolicy,
 });
 
-/** A script that tries to take too much, three ways: a proposal, and two direct captures. */
+/** A script that tries to take one cent more than the hold by calling the capture tool directly. */
 export function overreachScript(booking: Booking): ScriptStep[] {
   const held = booking.authorizedCents ?? 0;
-  const itemized = itemizedCents(booking.proposal?.lines ?? []);
-  const overHold = held + 60_000;
   return [
-    {
-      say: `Limit test: proposing ${formatExactCents(overHold)} on a ${formatExactCents(held)} hold.`,
-      tool: "propose_settlement",
-      input: { booking_id: booking.id, decision: "charge", amount_cents: overHold, items: [{ finding: 0, amount_cents: overHold, note: "Asking for far too much on purpose." }], rationale: "A deliberate attempt to charge more than the limits allow." },
-    },
-    { say: `Limit test: capturing ${formatExactCents(held + 1)} directly, one cent over the hold.`, tool: "capture_deposit", input: { booking_id: booking.id, amount_cents: held + 1 } },
-    { say: `Limit test: capturing ${formatExactCents(itemized + 1)} directly, one cent over the itemized damage.`, tool: "capture_deposit", input: { booking_id: booking.id, amount_cents: itemized + 1 } },
-    { say: "All three were refused by the app's code. No money moved." },
+    { say: `Limit test: capturing ${formatExactCents(held + 1)} directly, one cent over the ${formatExactCents(held)} hold.`, tool: "capture_deposit", input: { booking_id: booking.id, amount_cents: held + 1 } },
+    { say: "Refused by the app's code. No money moved." },
   ];
 }
 

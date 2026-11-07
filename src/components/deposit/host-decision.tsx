@@ -118,6 +118,7 @@ export function HostDecision({ booking, busy, act }: { booking: BookingView; bus
   const { kitFetch } = useKit();
   const { toast } = useToast();
   const [edits, setEdits] = useState<Record<string, string>>({});
+  const [reason, setReason] = useState<string | undefined>(undefined);
   const { proposal, hold, authorizedCents = booking.depositCents } = booking;
   if (!proposal) return null;
 
@@ -137,16 +138,19 @@ export function HostDecision({ booking, busy, act }: { booking: BookingView; bus
   const release = totalCents === 0 && !invalid;
   const blocked = !!busy || !!hold?.expired;
 
-  const saveLines = (more?: { add?: { description: string; amountCents: number }; addLook?: number }) => kitFetch<BookingView>(`${url}/lines`, { json: { lines: parsed.map((p) => ({ id: p.line.id, amountCents: p.cents ?? p.line.amountCents })), ...more } });
+  const reasonChanged = reason !== undefined && reason.trim() !== (proposal.hostReason ?? "");
+  const changedFromAi = totalCents !== proposal.aiCents || !!proposal.hostReason;
+  const saveLines = (more?: { add?: { description: string; amountCents: number }; addLook?: number }) =>
+    kitFetch<BookingView>(`${url}/lines`, { json: { lines: parsed.map((p) => ({ id: p.line.id, amountCents: p.cents ?? p.line.amountCents })), ...(reason?.trim() ? { reason: reason.trim() } : {}), ...more } });
   const looks = booking.review?.worthALook ?? [];
   const sendCharge = async () => {
-    if (dirty) await saveLines();
+    if (dirty || reasonChanged) await saveLines();
     return kitFetch<BookingView>(`${url}/settle`, { json: { chargeCents: totalCents } });
   };
   const sendRelease = () => kitFetch<BookingView>(`${url}/settle`, { json: { release: true } });
   const limitTest = async () => {
     const after = await kitFetch<BookingView>(`${url}/limit-test`, { method: "POST" });
-    toast({ title: "Every attempt was refused", description: "No money moved. See the timeline.", variant: "success", durationMs: 5000 });
+    toast({ title: `Refused: ${formatExactCents(authorizedCents + 1)} is more than the hold`, description: "The app's code stopped it before PayPal. No money moved.", variant: "success", durationMs: 5000 });
     return after;
   };
 
@@ -180,6 +184,13 @@ export function HostDecision({ booking, busy, act }: { booking: BookingView; bus
         ) : (
           <p className="text-sm text-zinc-600">Nothing to charge.</p>
         )}
+        {changedFromAi ? (
+          <div className="mt-3">
+            <Field label="Why you changed the AI's figure (the renter sees this)" htmlFor="host-reason">
+              <Input id="host-reason" value={reason ?? proposal.hostReason ?? ""} maxLength={160} disabled={!!busy} onChange={(e) => setReason(e.target.value)} placeholder="For example: only one board needs sanding" data-testid="host-reason" />
+            </Field>
+          </div>
+        ) : null}
         <div className="mt-3 border-t border-zinc-100 pt-3">
           <AddLine disabled={blocked} onAdd={(description, amountCents) => act("add-line", "Could not add the line", () => saveLines({ add: { description, amountCents } }))} />
         </div>
@@ -213,12 +224,16 @@ export function HostDecision({ booking, busy, act }: { booking: BookingView; bus
       </div>
       {raised && contested ? <p className="flex items-center gap-1.5 text-sm text-red-700"><CircleAlert className="size-4" /> The renter contested this charge, so it can only go down now.</p> : null}
 
-      <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-brand-50/70 px-3 py-2 text-xs text-zinc-700">
-        <p className="flex items-center gap-1.5"><ShieldCheck className="size-4 shrink-0 text-brand" aria-hidden /> Code limit: no capture above the itemized lines ({formatExactCents(savedCents)}) or the hold ({formatExactCents(authorizedCents)}), whatever the AI asks.</p>
-        <Button variant="ghost" size="sm" disabled={!!busy} loading={busy === "limit-test"} onClick={() => act("limit-test", "The limit test could not run", limitTest)} data-testid="limit-test">
-          Test the limit
-        </Button>
-      </div>
+      <p className="flex items-center gap-1.5 text-xs text-zinc-600"><ShieldCheck className="size-4 shrink-0 text-brand" aria-hidden /> Code limit: no capture above the itemized lines ({formatExactCents(savedCents)}) or the hold ({formatExactCents(authorizedCents)}), whatever the AI asks.</p>
+      <details className="text-xs text-zinc-500" data-testid="for-judges">
+        <summary className="cursor-pointer select-none hover:text-zinc-800">For judges</summary>
+        <div className="mt-2 flex flex-wrap items-center gap-2 rounded-lg bg-zinc-50 px-3 py-2">
+          <span>Have an agent try to capture {formatExactCents(authorizedCents + 1)}, one cent over the hold, through the real tool and Guard.</span>
+          <Button variant="secondary" size="sm" disabled={!!busy} loading={busy === "limit-test"} onClick={() => act("limit-test", "The limit test could not run", limitTest)} data-testid="limit-test">
+            Test the limit
+          </Button>
+        </div>
+      </details>
     </div>
   );
 }

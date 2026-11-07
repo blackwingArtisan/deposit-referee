@@ -44,7 +44,7 @@ export async function toPhotos(page: Page, request: APIRequestContext, opts: { i
   if (!sandbox) await page.getByTestId("mock-approve").click();
   const hold = page.getByTestId("hold-panel");
   await expect(hold).toContainText("$300 on hold. Nothing has been charged.", { timeout: 30_000 });
-  await expect(hold).toContainText("PayPal holds last 29 days");
+  await expect(hold).toContainText("PayPal guarantees the funds for 3 days");
 
   // Both photos, each with its source.
   await page.getByTestId("demo-photo-check_in").click();

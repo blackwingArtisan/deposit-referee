@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from "react";
 import { useParams } from "next/navigation";
-import { Bot, CircleAlert, Clock, ImagePlus, Lock, ScanSearch, Upload } from "lucide-react";
+import { Bot, ChevronDown, CircleAlert, Clock, ImagePlus, Landmark, Lock, ScanSearch, Upload } from "lucide-react";
 import { ApprovalPrompt } from "@/components/agent/approval-prompt";
 import { ToolCallTimeline } from "@/components/agent/tool-call-timeline";
 import { useKit } from "@/components/kit/kit-provider";
@@ -10,10 +10,11 @@ import { useTimeline } from "@/components/kit/use-timeline";
 import { CheckoutButton } from "@/components/paypal/checkout-button";
 import { PageHeader } from "@/components/shell/app-shell";
 import { useToast } from "@/components/toast";
-import { Badge, Button, Card, CardBody, CardHeader, EmptyState, SkeletonCard } from "@/components/ui";
-import { formatCents, formatExactCents } from "@/lib/deposit/rules";
+import { Badge, Button, Card, CardBody, EmptyState, SkeletonCard } from "@/components/ui";
+import { formatCents, formatExactCents, HONOR_DAYS } from "@/lib/deposit/rules";
 import { bookingSteps } from "@/lib/deposit/timeline";
 import type { BookingStatus, BookingView, PhotoSlot } from "@/lib/deposit/types";
+import type { TimelineStep } from "@/lib/events/types";
 import type { Money } from "@/lib/money";
 import { DamageItems } from "./damage-items";
 import { HostDecision } from "./host-decision";
@@ -68,17 +69,41 @@ function Notice({ tone, children }: { tone: "error" | "muted"; children: ReactNo
 function HoldPanel({ booking }: { booking: BookingView }) {
   const { hold, authorizedCents } = booking;
   if (!hold || authorizedCents === undefined) return null;
-  if (hold.expired) return <Notice tone="error">This hold ended on {longDate(hold.expiresAt)}. PayPal holds last {hold.limitDays} days, so it can&rsquo;t be charged.</Notice>;
+  if (hold.expired) return <Notice tone="error">This hold ended on {longDate(hold.expiresAt)}, so it can&rsquo;t be charged.</Notice>;
   return (
     <div data-testid="hold-panel" className="flex items-start gap-3 rounded-lg bg-brand-50/70 px-4 py-3">
       <Lock className="mt-0.5 size-4 shrink-0 text-brand" />
       <div className="text-sm text-zinc-700">
         <p className="font-medium text-zinc-900">{formatCents(authorizedCents)} on hold. Nothing has been charged.</p>
-        <p className="mt-0.5">
-          PayPal holds last {hold.limitDays} days. This one ends on {longDate(hold.expiresAt)}, {hold.daysLeft === 1 ? "1 day" : `${hold.daysLeft} days`} from now. A charge after that is refused.
+        <p className="mt-0.5" data-testid="hold-length">
+          PayPal guarantees the funds for {HONOR_DAYS} days, until {longDate(hold.guaranteedUntil)}. After that a charge usually still works, until {longDate(hold.expiresAt)}, when the hold ends.
         </p>
       </div>
     </div>
+  );
+}
+
+/** The PayPal calls behind this booking, folded into one line until the host asks for them. */
+function PayPalCalls({ steps }: { steps: TimelineStep[] }) {
+  const [open, setOpen] = useState(false);
+  const calls = steps.filter((s) => s.paypal);
+  const last = calls.at(-1);
+  return (
+    <Card data-testid="paypal-calls">
+      <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} className="flex w-full items-center gap-3 px-5 py-3 text-left" data-testid="paypal-calls-toggle">
+        <Landmark className="size-4 shrink-0 text-brand" aria-hidden />
+        <span className="text-sm font-semibold text-zinc-900">PayPal calls ({calls.length})</span>
+        {last ? <span className="hidden min-w-0 truncate text-sm text-zinc-500 sm:inline">Last: {last.title}</span> : null}
+        <span className="ml-auto inline-flex shrink-0 items-center gap-1 text-xs font-medium text-zinc-500">
+          {open ? "Hide" : "Show every call"} <ChevronDown className={`size-3.5 transition-transform ${open ? "rotate-180" : ""}`} />
+        </span>
+      </button>
+      {open ? (
+        <CardBody className="border-t border-zinc-100">
+          <ToolCallTimeline steps={steps} autoScroll={false} className="max-h-[560px]" />
+        </CardBody>
+      ) : null}
+    </Card>
   );
 }
 
@@ -168,14 +193,7 @@ export function BookingScreen() {
   }
 
   const approval = booking.approval;
-  const timeline = (
-    <Card className="flex flex-col">
-      <CardHeader title="Live timeline" description="Every PayPal call and decision, as it happens." />
-      <CardBody className="flex-1">
-        <ToolCallTimeline steps={timelineSteps} className="max-h-[420px] min-h-[320px] xl:max-h-[760px]" />
-      </CardBody>
-    </Card>
-  );
+  const timeline = <PayPalCalls steps={timelineSteps} />;
 
   return (
     <>
@@ -188,7 +206,7 @@ export function BookingScreen() {
 
       {booking.sample ? (
         <div className="mb-6" data-testid="sample-note">
-          <Notice tone="muted">This is a sample booking. Its hold and any charge are {kit?.paypal.mode === "sandbox" ? "real objects on the PayPal sandbox" : "on mock PayPal"}, and the AI text is a simulated result. It was loaded with the demo data, so its timeline is short.</Notice>
+          <Notice tone="muted">This is a sample booking. Its hold and any charge are {kit?.paypal.mode === "sandbox" ? "real objects on the PayPal sandbox" : "on mock PayPal"}. Its photo findings were written for the sample, not made by Claude on this booking. It was loaded with the demo data, so it has few PayPal calls.</Notice>
         </div>
       ) : null}
 
@@ -198,7 +216,7 @@ export function BookingScreen() {
           {timeline}
         </div>
       ) : (
-        <div className="grid grid-cols-[minmax(0,1fr)] gap-6 xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
+        <div className="mx-auto max-w-5xl space-y-6">
           <Card>
             <CardBody className="space-y-8 py-6">
               <Step n={1} title="Renter places the deposit" done={status !== "draft"}>
@@ -263,7 +281,8 @@ export function BookingScreen() {
                       )}
                       <p className="text-sm leading-relaxed text-zinc-700">{review.reasoning}</p>
                       <div className="flex flex-wrap items-center gap-2">
-                        <Badge tone={review.mocked ? "warning" : "brand"}>{review.mocked ? "Simulated AI result" : review.model}</Badge>
+                        <Badge tone={review.mocked ? "warning" : "brand"} data-testid="review-engine">{review.mocked ? (booking.sample ? "Sample result" : "Simulated AI result") : `${review.model} · compare images`}</Badge>
+                        {review.mocked ? null : <Badge data-testid="review-cost">Cost ${review.costUsd.toFixed(3)}</Badge>}
                         <Badge>Confidence: {review.confidence}</Badge>
                       </div>
                       {review.cappedToHold ? <Notice tone="muted">The items add up to more than the hold, so a charge stops at {formatCents(authorizedCents)}.</Notice> : null}
@@ -319,7 +338,7 @@ export function BookingScreen() {
               ) : null}
             </CardBody>
           </Card>
-          <div className="xl:sticky xl:top-6 xl:self-start">{timeline}</div>
+          {timeline}
         </div>
       )}
     </>

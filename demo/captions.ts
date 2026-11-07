@@ -10,36 +10,110 @@ import type { Locator, Page } from "@playwright/test";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-/** Bottom-centre caption. Waits `ms` (reading time) unless wait=false. */
+/** Height of the caption band at the bottom of the frame. Pages get the same padding, so it never covers content. */
+export const BAND_PX = 96;
+
+/**
+ * A caption in a dark band across the bottom of the frame. The page is padded by the band's
+ * height and toasts are lifted above it, so the caption never sits on what it describes.
+ * Waits `ms` (reading time) unless wait=false.
+ */
 export async function caption(page: Page, text: string, opts: { ms?: number; wait?: boolean } = {}) {
   const ms = opts.ms ?? Math.min(6000, 1400 + text.length * 45);
   await page.evaluate(
-    ({ text, ms }) => {
+    ({ text, ms, band }) => {
+      if (!document.getElementById("__demo_band_style")) {
+        const style = document.createElement("style");
+        style.id = "__demo_band_style";
+        style.textContent = `body{padding-bottom:${band + 16}px!important} html{scroll-padding-bottom:${band + 16}px} [aria-live="polite"].fixed{bottom:${band + 12}px!important}`;
+        document.head.appendChild(style);
+      }
       let el = document.getElementById("__demo_caption");
       if (!el) {
         el = document.createElement("div");
         el.id = "__demo_caption";
         Object.assign(el.style, {
-          position: "fixed", left: "50%", bottom: "36px", transform: "translateX(-50%) translateY(10px)", zIndex: "2147483647",
-          maxWidth: "min(1000px, calc(100vw - 48px))", padding: "16px 26px", borderRadius: "18px",
-          background: "rgba(9,9,11,0.9)", color: "#fff", font: "600 24px/1.35 ui-sans-serif, system-ui, -apple-system, sans-serif",
-          textAlign: "center", boxShadow: "0 20px 50px rgba(0,0,0,.35)", opacity: "0", transition: "opacity .3s, transform .3s", pointerEvents: "none",
+          position: "fixed", left: "0", right: "0", bottom: "0", height: `${band}px`, zIndex: "2147483647",
+          display: "flex", alignItems: "center", justifyContent: "center", padding: "0 48px",
+          background: "#09090b", color: "#fff", font: "600 25px/1.3 ui-sans-serif, system-ui, -apple-system, sans-serif",
+          textAlign: "center", pointerEvents: "none",
         });
+        const span = document.createElement("span");
+        span.style.transition = "opacity .25s";
+        el.appendChild(span);
         document.body.appendChild(el);
       }
-      el.textContent = text;
-      requestAnimationFrame(() => {
-        el!.style.opacity = "1";
-        el!.style.transform = "translateX(-50%) translateY(0)";
-      });
+      const span = el.firstElementChild as HTMLElement;
+      span.textContent = text;
+      span.style.opacity = "1";
       clearTimeout((window as unknown as { __demoCaptionTimer?: number }).__demoCaptionTimer);
       (window as unknown as { __demoCaptionTimer?: number }).__demoCaptionTimer = window.setTimeout(() => {
-        el!.style.opacity = "0";
+        span.style.opacity = "0";
       }, ms);
     },
-    { text, ms },
+    { text, ms, band: BAND_PX },
   );
   if (opts.wait !== false) await sleep(ms);
+}
+
+/** Zooms in on one element (say, the AI's box) for a moment, then back out. */
+export async function zoomOn(page: Page, target: Locator, opts: { scale?: number; ms?: number } = {}) {
+  const { scale = 2.6, ms = 3200 } = opts;
+  await target.evaluate((el) => el.scrollIntoView({ block: "center" }));
+  await sleep(400);
+  const handle = await target.elementHandle();
+  await page.evaluate(
+    ({ el, scale }) => {
+      const frame = (el as HTMLElement).parentElement!;
+      const a = (el as HTMLElement).getBoundingClientRect();
+      const f = frame.getBoundingClientRect();
+      frame.dataset.demoZoom = "1";
+      Object.assign(frame.style, { position: "relative", zIndex: "40", transition: "transform .8s ease", transformOrigin: `${a.left - f.left + a.width / 2}px ${a.top - f.top + a.height / 2}px`, boxShadow: "0 30px 80px rgba(0,0,0,.45)" });
+      requestAnimationFrame(() => (frame.style.transform = `scale(${scale})`));
+    },
+    { el: handle, scale },
+  );
+  await sleep(ms);
+  await page.evaluate(() => {
+    const frame = document.querySelector<HTMLElement>("[data-demo-zoom]");
+    if (frame) frame.style.transform = "scale(1)";
+  });
+  await sleep(900);
+  await page.evaluate(() => {
+    const frame = document.querySelector<HTMLElement>("[data-demo-zoom]");
+    if (frame) Object.assign(frame.style, { zIndex: "", boxShadow: "", transform: "" });
+    delete frame?.dataset.demoZoom;
+  });
+}
+
+/** Shows a page the way a renter sees it on their phone: a 375px-wide screen in the middle of the frame. */
+export async function openPhone(page: Page, url: string) {
+  await page.evaluate(
+    ({ url, band }) => {
+      const wrap = document.createElement("div");
+      wrap.id = "__demo_phone";
+      Object.assign(wrap.style, {
+        position: "fixed", inset: "0", bottom: `${band}px`, zIndex: "2147483600", display: "flex", alignItems: "center", justifyContent: "center",
+        background: "radial-gradient(ellipse at top, #134e4a, #09090b 75%)", opacity: "0", transition: "opacity .4s",
+      });
+      const phone = document.createElement("div");
+      Object.assign(phone.style, { width: "399px", height: `calc(100% - 28px)`, padding: "12px", borderRadius: "44px", background: "#111", boxShadow: "0 30px 80px rgba(0,0,0,.6), inset 0 0 0 2px #333" });
+      const frame = document.createElement("iframe");
+      frame.src = url;
+      Object.assign(frame.style, { width: "375px", height: "100%", border: "0", borderRadius: "32px", background: "#fff" });
+      phone.appendChild(frame);
+      wrap.appendChild(phone);
+      document.body.appendChild(wrap);
+      requestAnimationFrame(() => (wrap.style.opacity = "1"));
+    },
+    { url, band: BAND_PX },
+  );
+  await sleep(500);
+  return page.frameLocator("#__demo_phone iframe");
+}
+
+export async function closePhone(page: Page) {
+  await page.evaluate(() => document.getElementById("__demo_phone")?.remove());
 }
 
 /** Full-screen title card (intro/outro). */

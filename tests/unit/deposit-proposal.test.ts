@@ -70,18 +70,17 @@ describe("the limits are code", () => {
     expect(() => assertCaptureLimits(0, 10_000, 20_000)).toThrow();
   });
 
-  it("a script asking for too much is refused every time, and the hold is untouched", async () => {
+  it("a script asking for one cent over the hold is refused, and the hold is untouched", async () => {
     const booking = await proposedBooking();
     const steps = overreachScript(booking);
-    expect(steps.filter((step) => step.tool)).toHaveLength(3);
+    expect(steps.filter((step) => step.tool).map((step) => step.input)).toEqual([{ booking_id: booking.id, amount_cents: booking.authorizedCents! + 1 }]);
 
     await runLimitTest(booking.id, "test");
 
     const log = getAuditLog().list().filter((entry) => entry.actor === "agent:limit-test");
     const refused = log.filter((entry) => entry.action === "tool.failed");
-    expect(refused.map((entry) => entry.tool)).toEqual(["propose_settlement", "capture_deposit", "capture_deposit"]);
-    expect(refused[1].reason).toMatch(/more than/);
-    expect(refused[2].reason).toMatch(/itemized/);
+    expect(refused.map((entry) => entry.tool)).toEqual(["capture_deposit"]);
+    expect(refused[0].reason).toMatch(/more than the \$200 hold/);
     expect(log.filter((entry) => entry.action === "tool.executed")).toEqual([]);
     expect(requireBooking(booking.id).proposal?.aiCents).toBe(15_000);
     expect(requireBooking(booking.id).status).toBe("proposed");
@@ -267,5 +266,17 @@ describe("the dashboard row", () => {
     getApprovals().decide((await waitForApproval(booking.id)).id, "approved");
     await finished;
     expect(toDepositRow(requireBooking(booking.id))).toMatchObject({ held: 0, charged: 100, released: 100, aiProposed: 150, hostChange: -50, hostChanged: "Yes" });
+  });
+});
+
+describe("the host's reason for a change", () => {
+  it("is saved with the lower figure and shown to the renter", async () => {
+    const booking = await proposedBooking();
+    const [line] = booking.proposal!.lines;
+    const saved = saveHostLines(booking.id, { lines: [{ id: line.id, amountCents: 9_000 }], reason: "  Only one board needs sanding.  " });
+    expect(saved.proposal).toMatchObject({ aiCents: 15_000, hostReason: "Only one board needs sanding." });
+    expect(renterView(saved.renterToken).proposal?.hostReason).toBe("Only one board needs sanding.");
+    // A later save without a reason keeps the one already given.
+    expect(saveHostLines(booking.id, { lines: [{ id: line.id, amountCents: 8_000 }] }).proposal?.hostReason).toBe("Only one board needs sanding.");
   });
 });

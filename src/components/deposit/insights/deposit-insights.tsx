@@ -8,7 +8,7 @@ import { useKit } from "@/components/kit/kit-provider";
 import { PageHeader } from "@/components/shell/app-shell";
 import { useToast } from "@/components/toast";
 import { Stat } from "@/components/ui";
-import type { DepositRow } from "@/lib/deposit/insights";
+import { aiVersusHost, usd, type DepositRow } from "@/lib/deposit/insights";
 
 /**
  * Sponsor UI sits behind a build-time switch. With NEXT_PUBLIC_SPONSOR_UI unset, the page shows
@@ -19,8 +19,6 @@ const StudioDashboard =
   process.env.NEXT_PUBLIC_SPONSOR_UI === "1"
     ? dynamic(() => import("./studio-dashboard"), { ssr: false, loading: () => <p className="text-sm text-zinc-500">Loading the dashboard.</p> })
     : null;
-
-const usd = (value: number) => `$${value.toFixed(2)}`;
 
 const amount = (field: keyof DepositRow, headerName: string): ColDef<DepositRow> => ({
   field,
@@ -38,8 +36,7 @@ const COLUMNS: ColDef<DepositRow>[] = [
   amount("held", "Held"),
   amount("charged", "Charged"),
   amount("released", "Released"),
-  amount("aiProposed", "AI proposed"),
-  amount("hostChange", "Host change"),
+  { colId: "aiVersusHost", headerName: "AI's figure vs yours", minWidth: 330, flex: 1, valueGetter: (p) => (p.data ? aiVersusHost(p.data) : ""), tooltipValueGetter: (p) => p.value as string },
   { field: "contested", headerName: "Contested", minWidth: 110 },
 ];
 

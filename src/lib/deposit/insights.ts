@@ -66,3 +66,14 @@ export function toDepositRow(booking: Booking): DepositRow {
     contested: booking.renterState?.response?.decision === "contested" ? "Yes" : "No",
   };
 }
+
+/** "$90.00", and "−$60.00" with a real minus sign for a cut. */
+export const usd = (value: number) => `${value < 0 ? "\u2212" : ""}$${Math.abs(value).toFixed(2)}`;
+
+/** "AI said $150.00, you charged $90.00 (−$60.00)". Blank before the agent has proposed. */
+export function aiVersusHost(row: Pick<DepositRow, "aiProposed" | "hostChange" | "stage">): string {
+  if (row.aiProposed === null) return "";
+  if (row.hostChange === 0) return `Kept the AI's ${usd(row.aiProposed)}`;
+  const verb = row.stage === "Settled" ? "charged" : "set";
+  return `AI said ${usd(row.aiProposed)}, you ${verb} ${usd(row.aiProposed + row.hostChange)} (${row.hostChange > 0 ? "+" : ""}${usd(row.hostChange)})`;
+}

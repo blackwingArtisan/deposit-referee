@@ -5,7 +5,7 @@ import { getApprovals } from "@/lib/agent/approvals";
 import { collection } from "@/lib/store/collection";
 import { singleton } from "@/lib/singleton";
 import { holdClock } from "./rules";
-import type { Booking, BookingView, PendingApproval } from "./types";
+import type { Booking, BookingListItem, BookingView, PendingApproval } from "./types";
 
 const bookings = () => collection<Booking>("bookings");
 
@@ -64,6 +64,17 @@ export function allBookings({ tests = false } = {}): Booking[] {
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
-export function listBookings(opts?: { tests?: boolean }): BookingView[] {
-  return allBookings(opts).map(viewBooking);
+/** The list anyone can read. It never carries a renter's link, which is the only key to their page. */
+export function listBookings(opts?: { tests?: boolean }): BookingListItem[] {
+  return allBookings(opts).map((b) => {
+    const view: Partial<BookingView> = viewBooking(b);
+    delete view.renterToken;
+    return view as BookingListItem;
+  });
+}
+
+/** Every PayPal id that belongs to a booking here, samples and test rows included. */
+export function ownPaypalIds(): Set<string> {
+  const ids = allBookings({ tests: true }).flatMap((b) => [b.orderId, b.authorizationId, b.settlement?.captureId]);
+  return new Set(ids.filter((id): id is string => !!id));
 }

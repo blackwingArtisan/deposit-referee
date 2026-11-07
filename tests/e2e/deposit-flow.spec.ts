@@ -41,6 +41,7 @@ async function approveCharge(page: Page, flow: Flow, chargeCents: number, screen
   await expect(page.getByTestId("ruling-headline")).toHaveText(`${headline(chargeCents)} captured, ${headline(releaseCents)} released`);
   await expect(ruling.getByTestId("damage-box").first()).toBeVisible();
   // The void on the timeline shows what was released, not the whole hold.
+  await page.getByTestId("paypal-calls-toggle").click();
   await expect(page.getByTestId("timeline-step").filter({ hasText: "void_authorization" })).toContainText(dollars(releaseCents));
   await expect(ruling.locator("img").nth(1)).toHaveJSProperty("complete", true);
   await expect(page.getByTestId("ruling-headline")).toBeInViewport();
@@ -281,8 +282,9 @@ test("a script that asks for too much is refused by code", async ({ page, reques
   const flow = await toProposal(page, request, { item: "Harbor loft, weekend of Nov 27" });
   const before = await flow.booking();
 
+  await page.getByTestId("for-judges").locator("summary").click();
   await page.getByTestId("limit-test").click();
-  await expect(page.getByText("Every attempt was refused")).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByText("Refused: $300.01 is more than the hold")).toBeVisible({ timeout: 20_000 });
 
   const after = await flow.booking();
   expect(after.status).toBe("proposed");
@@ -293,8 +295,8 @@ test("a script that asks for too much is refused by code", async ({ page, reques
   const log = (audit.entries as { seq: number; actor: string; action: string; tool?: string }[])
     .filter((e) => e.actor === "agent:limit-test")
     .sort((a, b) => a.seq - b.seq)
-    .slice(-6);
-  expect(log.filter((e) => e.action === "tool.failed").map((e) => e.tool)).toEqual(["propose_settlement", "capture_deposit", "capture_deposit"]);
+    .slice(-2);
+  expect(log.filter((e) => e.action === "tool.failed").map((e) => e.tool)).toEqual(["capture_deposit"]);
   expect(log.filter((e) => e.action === "tool.executed")).toEqual([]);
   await page.screenshot({ path: `screenshots/deposit-limit-test-${flow.mode}.png`, fullPage: true });
 });

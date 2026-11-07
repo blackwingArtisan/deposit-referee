@@ -53,6 +53,7 @@ export function Ruling({ booking }: { booking: BookingView }) {
           <div>
             <h3 className="mb-2 text-sm font-semibold text-zinc-900">Why</h3>
             <p className="text-sm leading-relaxed text-zinc-700">{proposal?.rationale ?? review.reasoning}</p>
+            {proposal?.hostReason ? <p className="mt-2 text-sm text-zinc-800" data-testid="ruling-host-reason"><span className="font-medium">Host&rsquo;s change:</span> {proposal.hostReason}</p> : null}
           </div>
         </div>
       ) : null}

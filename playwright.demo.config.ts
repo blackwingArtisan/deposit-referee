@@ -2,11 +2,13 @@ import { defineConfig, devices } from "@playwright/test";
 
 /**
  * Demo recording (npm run demo:record). Builds the app, starts it, records demo/demo.spec.ts as
- * 1440x900 .webm and copies it to videos/. Mock PayPal unless PAYPAL_MODE=sandbox (or
+ * 1920x1080 .webm and copies it to videos/. Mock PayPal unless PAYPAL_MODE=sandbox (or
  * DEMO_PAYPAL_MODE=sandbox); AI is mocked unless DEMO_AI_MODE=live.
  */
 const PORT = Number(process.env.DEMO_PORT ?? 3400);
-const SIZE = { width: 1440, height: 900 };
+/** 16:9 at 1080p: the page lays out at 1440 wide and renders at 4/3 pixel density, so text stays sharp. */
+const SIZE = { width: 1440, height: 810 };
+const VIDEO = { width: 1920, height: 1080 };
 const PAYPAL_MODE = process.env.DEMO_PAYPAL_MODE ?? process.env.PAYPAL_MODE ?? "mock";
 // Sandbox has no reset route, so start clean here and fill the ledger with the shared seed data.
 const SANDBOX_SETUP = PAYPAL_MODE === "sandbox" ? "rm -rf .data-demo && npx tsx scripts/seed.ts --sandbox && " : "";
@@ -21,11 +23,11 @@ export default defineConfig({
   use: {
     baseURL: `http://localhost:${PORT}`,
     viewport: SIZE,
-    deviceScaleFactor: 1,
-    video: { mode: "on", size: SIZE },
+    deviceScaleFactor: 4 / 3,
+    video: { mode: "on", size: VIDEO },
     launchOptions: { slowMo: 80 },
   },
-  projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"], viewport: SIZE, deviceScaleFactor: 1 } }],
+  projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"], viewport: SIZE, deviceScaleFactor: 4 / 3 } }],
   webServer: {
     // Production build: no dev reloads or overlays in the recording.
     command: `${SANDBOX_SETUP}npx next build && npx next start --port ${PORT}`,

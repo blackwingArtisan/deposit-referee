@@ -1,27 +1,31 @@
 # Deposit Referee
 
-> Hosts who rent out rooms, tools or gear hold a deposit with PayPal. AI compares the check-in and check-out photos, and an agent proposes a charge or a full release with its evidence, then stops. The renter can contest, the host approves, and only then does money move, inside limits set by code.
+> **For hosts who rent out a cabin, a room or gear on their own, with no AirCover.** A guest leaves, there's a new scratch, and the guest says it was already there. With Deposit Referee the money stays on a PayPal hold; only what you approve is captured. Claude compares the check-in and check-out photos and boxes the new damage, the renter sees the same evidence and can contest, and nothing moves until the host approves, inside limits set by code.
 
-**Status:** live at https://deposit-referee.onrender.com on the PayPal sandbox with mock AI · **Video (≤3 min):** <!-- TODO: YouTube link --> · **License:** MIT
+**Status:** live at https://deposit-referee.onrender.com on the PayPal sandbox with Claude (Sonnet 5.5 for the photos, Haiku 5.5 for the agent), under an app-side daily AI spend cap · **Video (≤3 min):** <!-- TODO: YouTube link --> · **License:** MIT
+
+**Holds:** PayPal guarantees an authorized deposit for 3 days and lets it be captured until day 29. That suits stays and gear rentals; it doesn't suit long leases.
 
 ![The AI's finding on a booking, with both photos and the live timeline](docs/screenshot.png)
 
 ## The problem
 
-Anyone who rents out a cabin, a room or a set of tools knows this argument. A renter leaves, the host finds a long scratch in the floor, and each side remembers it differently. If the host already has the deposit, the renter has to chase it back. If the host doesn't, there's no easy way to charge for real damage. Deposit Referee keeps the money on a PayPal hold, puts the evidence on one page both sides can read, and charges only what the host approves.
+Airbnb's AirCover and Turo's protection plans settle damage inside their platforms. A host who rents out a cabin from their own website, or lends out a trailer or a camera kit, has nothing like that. Anyone who does knows this argument. A renter leaves, the host finds a long scratch in the floor, and each side remembers it differently. If the host already has the deposit, the renter has to chase it back. If the host doesn't, there's no easy way to charge for real damage. Deposit Referee keeps the money on a PayPal hold, puts the evidence on one page both sides can read, and charges only what the host approves.
 
 ## What it does
 
 1. The host creates a booking with a deposit, for example $300 for a lakeside cabin.
-2. The renter places the deposit: a PayPal order with `intent=AUTHORIZE`. The money is held, not taken, for up to PayPal's 29-day limit.
+2. The renter places the deposit: a PayPal order with `intent=AUTHORIZE`. The money is held, not taken. PayPal guarantees the funds for 3 days and lets the hold be captured until day 29; the booking page shows both dates.
 3. Check-in and check-out photos go on the booking, each with its source shown.
 4. Claude compares the two photos, itemizes new damage and draws a red box on it.
 5. The settlement agent reads that review, checks the order and the hold through PayPal's tools, and proposes a charge or a full release with its evidence. Then it stops. It has no tool that can move money.
 6. The renter opens their own link, sees the proposal, the photos and the reasons, and accepts or contests it. A contest stops the capture and brings their note back to the host. It's a note inside this app, not a PayPal dispute.
-7. The host can change any amount, since the AI's figures are proposals, not repair quotes. Raising a charge goes back to the renter. Then the host sends the charge or release to the Guard's approval step. No money moves before that approval, and declining moves nothing and keeps the booking open.
+7. The host can change any amount, since the AI's figures are proposals, not repair quotes, and adds a one-line reason the renter sees. Raising a charge goes back to the renter. Then the host sends the charge or release to the Guard's approval step. No money moves before that approval, and declining moves nothing and keeps the booking open.
 8. PayPal captures exactly that amount, the rest of the hold is voided, and the result screen shows, for example, "$150 captured, $150 released", re-read from PayPal. With no damage the whole hold is voided and re-read: "$0 captured, $300 released".
 
-The **Dashboard** shows what's held, charged and released by property, and where the host changed the AI's number.
+The **Dashboard** shows what's held, charged and released by property, and for each booking what the AI said and what the host charged (for example "AI said $150.00, you charged $90.00 (−$60.00)").
+
+The booking page keeps the PayPal calls folded into one line, **PayPal calls (n)**; one click shows every call with its HTTP status and `debug_id`.
 
 ### Limits in code
 
@@ -34,11 +38,11 @@ These live in `src/lib/deposit/rules.ts` and `src/agents/tools/capture-deposit.t
 - After a contest the charge can only stay the same or go down.
 - A charge on an expired hold is refused.
 
-**Test the limit** on the booking page runs a script that asks for too much three ways, through the real tools and Guard. All three are refused and logged, and the hold doesn't change.
+**Test the limit** (under **For judges** on the booking page) has a scripted agent call the capture tool for one cent over the hold, through the real tool and Guard. It's refused by code before PayPal, logged, and the hold doesn't change. Unit tests cover the other routes in: a proposal over the hold, a capture over the itemized lines, and an agent capturing without the host.
 
 ## How PayPal is used
 
-All PayPal calls go to the **sandbox** (`https://api-m.sandbox.paypal.com`); there is no live mode in the code. Every call shows on the in-app timeline with its HTTP status and PayPal `debug_id`.
+All PayPal calls go to the **sandbox** (`https://api-m.sandbox.paypal.com`); there is no live mode in the code. Every call shows under **PayPal calls** on the booking page with its HTTP status and PayPal `debug_id`.
 
 | PayPal API | Endpoint(s) | Where and why |
 |---|---|---|
@@ -61,7 +65,7 @@ All PayPal calls go to the **sandbox** (`https://api-m.sandbox.paypal.com`); the
 - **Structured output**: zod schemas through the Messages API's structured outputs (`output_config.format`).
 - **Cost control**: a hard daily spend cap (worst case reserved before every call), per-IP rate limits, and Haiku for everything except the photo comparison.
 - **When the AI can't run**: if the account is out of credit or the daily cap is spent, the host gets a plain message. No money moves, the deposit stays on hold, and the same booking can carry on later.
-- **Mock mode**: without an API key the app runs a clearly labelled scripted agent, so the demo works anywhere.
+- **Mock mode**: without an API key the app runs a clearly labelled scripted agent, so the demo works anywhere. The hosted demo runs real Claude; each photo review shows its model and cost.
 
 **Built with AI.** This project was built with **Claude Code** (Anthropic's coding agent), which wrote the code under human direction. It started from a shared starter kit that Claude Code also wrote. The product idea, scope and review were human decisions.
 
@@ -128,10 +132,11 @@ Started from kit `b67af83`. Two kit bugs found while building this are fixed her
 
 - Sandbox only; no live payments are possible.
 - Buyer approval in sandbox needs a sandbox buyer login, so automated tests cover that step in mock mode.
-- Local JSON storage: data resets on redeploy (fine for a demo, not for production). Every start reloads the sample bookings, so the dashboard is never empty. They're marked **Sample**, and their AI text is simulated.
+- Local JSON storage: data resets on redeploy (fine for a demo, not for production). Every start reloads the sample bookings, so the dashboard is never empty. They're marked **Sample**, and their photo findings were written for the sample rather than made by Claude.
+- The sandbox app's credentials are shared with other demo apps, so the ledger, the Activity page and the timelines show only the PayPal records behind this app's own bookings.
 - Sandbox Transaction Search needs the reporting feature enabled on the PayPal app, and data can lag up to 3 hours; the app keeps its own ledger.
 - The optional PayPal remote MCP connector is read-only and untested.
-- There are no logins yet: the renter's page is a private link the host shares by hand, and anyone with the host's page could approve.
+- There are no logins yet: the renter's page is a private link the host shares by hand, and anyone with the host's page could approve. The bookings list never includes renter links, but a single booking's page does, because the host needs it.
 - The renter's contest is a note to the host inside this app. It doesn't open a PayPal dispute.
 - The AI's figures run low and aren't repair estimates. They're proposals the host can change.
 - `next dev` can reload endlessly on heavy pages (a kit issue, seen without AG Studio too), so run the AG Studio dashboard on a production build.

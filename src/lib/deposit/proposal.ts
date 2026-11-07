@@ -60,6 +60,8 @@ export interface HostLines {
   add?: { description: string; amountCents: number };
   /** One worth-a-look item from the photo review, by its place in that list. */
   addLook?: number;
+  /** Why the host changed the AI's figures, in one line. */
+  reason?: string;
 }
 
 export const lookLineId = (index: number) => `look-${index}`;
@@ -96,7 +98,7 @@ export function saveHostLines(id: string, update: HostLines): Booking {
 
   return saveBooking({
     ...booking,
-    proposal: { ...proposal, lines },
+    proposal: { ...proposal, lines, hostReason: update.reason?.trim() || proposal.hostReason },
     renterState: raised ? { deadline: renterDeadline(booking.holdExpiresAt) } : booking.renterState,
     settlement: undefined,
   });

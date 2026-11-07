@@ -60,7 +60,7 @@ function proposalFor(sample: Sample, now: number): Proposal {
   const clean = !sample.aiCents;
   const verdict = clean ? MOCK_NO_DAMAGE : MOCK_VERDICT;
   const lines: ChargeLine[] = verdict.findings.map((f, i) => ({ id: `ai-${i}`, description: f.description, box: f.box, amountCents: sample.chargedCents ?? f.charge_cents, aiCents: f.charge_cents, note: "Sample figure." }));
-  return { runId: `sample_${sample.key}`, kind: clean ? "release" : "charge", aiCents: sample.aiCents ?? 0, lines, rationale: verdict.reasoning, proposedAt: new Date(now).toISOString(), engine: "Simulated agent", simulated: true };
+  return { runId: `sample_${sample.key}`, kind: clean ? "release" : "charge", aiCents: sample.aiCents ?? 0, lines, rationale: verdict.reasoning, proposedAt: new Date(now).toISOString(), engine: "Sample proposal", simulated: true };
 }
 
 function renterStateFor(sample: Sample, auth: Authorization, now: number): RenterState | undefined {

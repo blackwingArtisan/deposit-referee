@@ -96,8 +96,8 @@ export function Hero() {
               {l.secondaryCta.label}
             </ButtonLink>
           </div>
-          <p className="mt-6 flex items-center gap-2 text-sm text-zinc-500">
-            <ShieldCheck className="size-4 text-emerald-600" /> Caps, approvals and an audit log on every money-moving step.
+          <p className="mt-6 flex items-start gap-2 text-sm text-zinc-500" data-testid="hold-note">
+            <Lock className="mt-0.5 size-4 shrink-0 text-emerald-600" /> {l.holdNote}
           </p>
         </div>
         <DepositPreview />

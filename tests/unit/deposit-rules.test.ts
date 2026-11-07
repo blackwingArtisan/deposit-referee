@@ -47,7 +47,7 @@ describe("the 29-day hold", () => {
   const iso = (days: number) => new Date(now + days * 86_400_000).toISOString();
 
   it("counts down in whole days", () => {
-    expect(holdClock(iso(29), now)).toMatchObject({ limitDays: 29, daysLeft: 29, expired: false });
+    expect(holdClock(iso(29), now)).toMatchObject({ limitDays: 29, daysLeft: 29, expired: false, guaranteedUntil: iso(3) });
     expect(holdClock(iso(0.5), now)).toMatchObject({ daysLeft: 1, expired: false });
   });
 

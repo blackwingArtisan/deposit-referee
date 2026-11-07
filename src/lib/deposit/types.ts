@@ -76,6 +76,8 @@ export interface Proposal {
   proposedAt: string;
   engine: string;
   simulated: boolean;
+  /** The host's one-line reason for changing the AI's figures. The renter sees it. */
+  hostReason?: string;
 }
 
 export interface RenterResponse {
@@ -145,6 +147,9 @@ export interface BookingView extends Booking {
   approval: PendingApproval | null;
 }
 
+/** One row of the bookings list: no renter link. */
+export type BookingListItem = Omit<BookingView, "renterToken">;
+
 /** What the renter's page receives. No PayPal ids, no host controls. */
 export interface RenterView {
   item: string;
@@ -153,7 +158,7 @@ export interface RenterView {
   status: BookingStatus;
   chargeCents: number;
   releaseCents: number;
-  proposal: Pick<Proposal, "kind" | "lines" | "rationale" | "engine" | "simulated"> | null;
+  proposal: Pick<Proposal, "kind" | "lines" | "rationale" | "engine" | "simulated" | "hostReason"> | null;
   confidence: DamageReview["confidence"] | null;
   photos: Booking["photos"];
   renterState: RenterState | null;

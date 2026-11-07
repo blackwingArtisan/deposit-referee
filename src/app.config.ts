@@ -21,21 +21,22 @@ export const appConfig = {
   ],
 
   landing: {
-    eyebrow: "For hosts who rent out rooms, tools and gear",
-    headline: "Stop arguing over damage deposits.",
+    eyebrow: "For hosts who rent out cabins, rooms or gear on their own, with no AirCover",
+    headline: "A $300 deposit. A new scratch. Two different stories.",
     subheadline:
-      "The renter's deposit sits on hold with PayPal, not in your account. AI compares the check-in and check-out photos and marks the damage. You approve the exact charge, and the rest goes straight back.",
+      "When you rent outside Airbnb or Turo, no platform settles the argument. Here the money stays on a PayPal hold; only what you approve is captured. Claude compares the check-in and check-out photos and boxes the new damage, and the renter sees the same evidence and can contest before anything moves.",
+    holdNote: "A PayPal hold is guaranteed for 3 days and capturable until day 29, so it suits stays and gear rentals, not long leases.",
     primaryCta: { label: "Open bookings", href: "/bookings" },
-    secondaryCta: { label: "See activity", href: "/activity" },
+    secondaryCta: { label: "See the dashboard", href: "/insights" },
     steps: [
-      { title: "Hold the deposit", body: "The renter approves a PayPal hold. Nothing is charged, and it lasts up to 29 days." },
-      { title: "Compare the photos", body: "AI looks at check-in and check-out, draws a red box on new damage and suggests a charge with its reasons." },
-      { title: "Approve the charge", body: "You set the exact amount. PayPal takes that and releases everything else." },
+      { title: "Hold the deposit", body: "The renter approves a PayPal hold. Nothing is charged. PayPal guarantees it for 3 days, and it can be captured until day 29." },
+      { title: "Compare the photos", body: "Claude looks at check-in and check-out, draws a red box on new damage and suggests a charge with its reasons." },
+      { title: "Approve the charge", body: "The renter can accept or contest. You set the exact amount, PayPal captures that and releases the rest." },
     ],
     features: [
-      { title: "Money stays on hold", body: "The deposit is authorized, not taken. Only the amount you approve is ever captured." },
-      { title: "Evidence on the page", body: "Both photos side by side, the damage marked, and reasons a renter can read." },
-      { title: "Every step on record", body: "Each PayPal call and approval goes into a log that shows if anything was changed." },
+      { title: "Money stays on hold", body: "The deposit is authorized, not taken. Only the amount you approve is ever captured, and the app's code refuses anything over the hold." },
+      { title: "Evidence both sides read", body: "Both photos side by side, the damage boxed, and reasons the renter sees on their own link before any charge." },
+      { title: "Not another inspection tool", body: "Damage-inspection apps stop at a report. This one keeps the money on a PayPal hold until the host and renter have seen the same evidence." },
     ],
   },
 

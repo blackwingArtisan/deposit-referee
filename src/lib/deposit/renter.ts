@@ -32,7 +32,7 @@ export function renterView(token: string): RenterView {
     status,
     chargeCents,
     releaseCents: releasedCents(held, Math.min(chargeCents, held)),
-    proposal: proposal ? { kind: proposal.kind, lines: proposal.lines, rationale: proposal.rationale, engine: proposal.engine, simulated: proposal.simulated } : null,
+    proposal: proposal ? { kind: proposal.kind, lines: proposal.lines, rationale: proposal.rationale, engine: proposal.engine, simulated: proposal.simulated, hostReason: proposal.hostReason } : null,
     confidence: review?.confidence ?? null,
     photos: booking.photos,
     renterState: renterState ?? null,

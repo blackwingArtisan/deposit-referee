@@ -140,3 +140,16 @@ test("Customize: a host can filter the dashboard and rebuild it by dragging", as
   await expect(widgets).toHaveCount(before + 1);
   expect(JSON.stringify((await report()).pages[0].widgets["by-property"].dataMapping)).toContain("deposits.month");
 });
+
+test("lists carry no renter links, and the ledger holds only this app's PayPal records", async ({ request }) => {
+  const created = await (await request.post("/api/bookings", { data: { item: "Token check, weekend of Oct 30", renter: "Test Renter", depositCents: 10_000 } })).json();
+  expect(created.renterToken).toBeTruthy();
+  const list = await (await request.get("/api/bookings?tests=1")).text();
+  expect(list).toContain(created.id);
+  expect(list).not.toContain("renterToken");
+  expect(list).not.toContain(created.renterToken);
+
+  const { entries } = (await (await request.get("/api/paypal/ledger")).json()) as { entries: { kind: string; description?: string }[] };
+  expect(entries.filter((e) => !["order", "authorization", "capture"].includes(e.kind))).toEqual([]);
+  expect(entries.filter((e) => /Lumen|Riverbend|Northfold|Gift card/.test(e.description ?? ""))).toEqual([]);
+});
