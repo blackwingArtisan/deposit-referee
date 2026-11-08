@@ -24,7 +24,7 @@ test("out of AI credit: the host sees why, no money moves, and a retry works", a
   await expect(page.getByTestId("run-review")).toBeEnabled();
   await page.screenshot({ path: "screenshots/ai-credit-review.png", fullPage: true });
   expect((await flow.booking()).status).toBe("held");
-  await expect(page.getByTestId("hold-panel")).toContainText("Nothing has been charged.");
+  await expect(page.getByTestId("hold-panel")).toContainText("nothing charged");
   await moneyUntouched(request, flow);
 
   // The comparison ran, then the agent couldn't.

@@ -112,7 +112,7 @@ function Details({ step }: { step: TimelineStep }) {
 function CompactRow({ step }: { step: TimelineStep }) {
   const Icon = KIND_ICON[step.kind] ?? CircleDot;
   return (
-    <li className="relative flex animate-fade-in items-center gap-3 py-1 pl-1 text-xs text-zinc-500">
+    <li className="relative flex animate-fade-in items-center gap-3 py-1 pl-1 text-xs text-zinc-500" data-paypal-call={step.paypal ? "" : undefined}>
       <span className="z-10 flex size-6 shrink-0 items-center justify-center rounded-full bg-white ring-1 ring-zinc-200">
         {step.status === "running" ? <Loader2 className="size-3 animate-spin" /> : <Icon className="size-3" />}
       </span>
@@ -132,7 +132,7 @@ function StepCard({ step, onApprovalDecided }: { step: TimelineStep; onApprovalD
   const awaiting = step.status === "awaiting_approval" && step.approval?.state === "pending";
 
   return (
-    <li className="relative flex animate-slide-up gap-3 pb-4" data-testid="timeline-step" data-kind={step.kind} data-status={step.status}>
+    <li className="relative flex animate-slide-up gap-3 pb-4" data-testid="timeline-step" data-kind={step.kind} data-status={step.status} data-paypal-call={step.paypal ? "" : undefined}>
       <span className={cn("z-10 flex size-9 shrink-0 items-center justify-center rounded-full ring-1", RAIL[step.status])}>
         <Icon className="size-4" />
       </span>

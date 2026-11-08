@@ -17,6 +17,8 @@ export interface EventContext {
   runId?: string;
   /** "user", "agent:<runId>", "system", "webhook" */
   actor: string;
+  /** App record the work belongs to (e.g. a booking), so its events can be kept with it. */
+  bookingId?: string;
 }
 
 const storage = singleton("events:als", () => new AsyncLocalStorage<EventContext>());
@@ -46,6 +48,7 @@ class TimelineBus {
       ts: new Date().toISOString(),
       channel: input.channel ?? ctx.channel,
       runId: input.runId ?? ctx.runId,
+      bookingId: input.bookingId ?? ctx.bookingId,
     };
     this.buffer.push(event);
     if (this.buffer.length > this.max) this.buffer.splice(0, this.buffer.length - this.max);

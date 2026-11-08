@@ -1,13 +1,14 @@
 import { z } from "zod";
 import { requireBooking, saveBooking, viewBooking } from "@/lib/deposit/bookings";
 import { dollarsToCents } from "@/lib/deposit/rules";
-import { HttpError, readJson, route } from "@/lib/http";
+import { HttpError, readJson } from "@/lib/http";
+import { bookingRoute } from "@/lib/deposit/booking-route";
 import { getPayPal } from "@/lib/paypal";
 
 const Body = z.object({ orderId: z.string().min(5) });
 
 /** The renter approved: place the hold. Money is held, not taken. */
-export const POST = route<RouteContext<"/api/bookings/[id]/deposit/authorize">>(async (req, ctx) => {
+export const POST = bookingRoute<RouteContext<"/api/bookings/[id]/deposit/authorize">>(async (req, ctx) => {
   const booking = requireBooking((await ctx.params).id);
   const { orderId } = await readJson(req, Body);
   if (booking.status !== "draft") throw new HttpError(409, "This deposit has already been placed.", "conflict");

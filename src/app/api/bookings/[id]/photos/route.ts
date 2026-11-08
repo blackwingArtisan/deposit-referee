@@ -1,7 +1,8 @@
 import { z } from "zod";
 import { requireBooking, saveBooking, viewBooking } from "@/lib/deposit/bookings";
 import { DEMO_CLEAN_CHECK_OUT, DEMO_FAINT_CHECK_OUT, DEMO_PHOTOS, saveUpload } from "@/lib/deposit/photos";
-import { HttpError, readJson, route } from "@/lib/http";
+import { HttpError, readJson } from "@/lib/http";
+import { bookingRoute } from "@/lib/deposit/booking-route";
 
 const Body = z.object({
   slot: z.enum(["check_in", "check_out"]),
@@ -13,7 +14,7 @@ const Body = z.object({
   faint: z.boolean().optional(),
 });
 
-export const POST = route<RouteContext<"/api/bookings/[id]/photos">>(async (req, ctx) => {
+export const POST = bookingRoute<RouteContext<"/api/bookings/[id]/photos">>(async (req, ctx) => {
   const booking = requireBooking((await ctx.params).id);
   const { slot, dataUrl, clean, faint } = await readJson(req, Body);
   if (booking.status !== "held") throw new HttpError(409, "Photos can only be added after the deposit is on hold and before the AI review.", "conflict");
