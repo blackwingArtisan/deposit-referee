@@ -1,11 +1,12 @@
 /**
- * The demo video (npm run demo:record): a booking, the renter approving the hold in PayPal's own
- * window, Claude comparing the photos, the renter accepting one item and contesting the other, the
- * split capture, every PayPal call, and an end card read back from PayPal. A caption is on screen
- * in every frame. Saves a .webm to videos/. For PayPal's real card form, record with
- * DEMO_PAYPAL_MODE=sandbox; mock PayPal shows a stand-in window.
+ * The demo video (npm run demo:record): a booking, the renter placing the hold from their own page
+ * on a phone, Claude comparing the photos, the renter accepting one item and contesting the other,
+ * the approval card, the split capture, every PayPal call, and an end card read back from PayPal.
+ * A caption is on screen in every frame. Saves a .webm to videos/. For PayPal's real card form,
+ * record on the sandbox: DEMO_BASE_URL=https://deposit-referee.onrender.com records the hosted
+ * site with live AI; DEMO_PAYPAL_MODE=sandbox records a local one. Mock PayPal shows a stand-in.
  */
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type FrameLocator, type Page } from "@playwright/test";
 import { caption, closePhone, DemoClock, highlight, openPhone, titleCard, zoomOn } from "./captions";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -21,19 +22,29 @@ async function tap(page: Page, testId: string) {
   await target.click();
 }
 
-/** The renter fills PayPal's own card form (an iframe on the page), with PayPal's sandbox test card. */
-async function payInPayPal(page: Page) {
+/** How long the approval card stays on screen before the host clicks Approve. */
+const APPROVAL_HOLD_MS = 4_000;
+/** The most the card form (or the mock's stand-in window) may be on screen. */
+const FORM_MAX_MS = 6_000;
+
+/**
+ * The renter fills PayPal's own card form (an iframe inside the renter's page), with PayPal's
+ * sandbox test card. Returns when the form opened, so the caller can time it on screen.
+ */
+async function payInPayPal(phone: FrameLocator): Promise<number> {
   // PayPal's button can take a moment to wire up after it draws, so click until its form opens.
-  const frames = page.locator('iframe[src*="/smart/card-fields"]');
-  const button = page.getByTestId("paypal-guest-button").locator("paypal-basic-card-button");
+  const frames = phone.locator('iframe[src*="/smart/card-fields"]');
+  const button = phone.getByTestId("paypal-guest-button").locator("paypal-basic-card-button");
   await button.waitFor({ state: "visible", timeout: 30_000 });
   await sleep(1_500);
   for (let i = 0; i < 4 && !(await frames.count()); i++) {
     await button.click({ timeout: 30_000 });
     await frames.first().waitFor({ state: "attached", timeout: 5_000 }).catch(() => {});
   }
-  const form = page.frameLocator('iframe[src*="/smart/card-fields"]');
-  await form.getByLabel("Email").fill("renter@example.com", { timeout: 30_000 });
+  const form = phone.frameLocator('iframe[src*="/smart/card-fields"]');
+  await form.getByLabel("Email").waitFor({ state: "visible", timeout: 30_000 });
+  const opened = Date.now();
+  await form.getByLabel("Email").fill("renter@example.com");
   await form.getByLabel("Card number").fill("4111111111111111");
   await form.getByLabel("Expires").fill("12/30");
   await form.getByLabel("CSC").fill("123");
@@ -43,14 +54,16 @@ async function payInPayPal(page: Page) {
   await form.getByLabel("City").fill("Austin");
   await form.getByLabel("State").selectOption("TX");
   await form.getByLabel(/ZIP/i).fill("78701");
-  const phone = form.getByLabel(/Mobile|Phone/i).first();
-  if (await phone.isVisible().catch(() => false)) await phone.fill("5125550100");
+  const mobile = form.getByLabel(/Mobile|Phone/i).first();
+  if (await mobile.isVisible().catch(() => false)) await mobile.fill("5125550100");
   await form.getByRole("button", { name: /^Pay \$/ }).click();
+  return opened;
 }
 
 test("demo", async ({ page, request }) => {
   const clock = new DemoClock(148);
-  // Mock mode starts clean and seeds here. On the sandbox the config has already seeded.
+  // Mock mode starts clean and seeds here. On the sandbox the config has already seeded, and the
+  // hosted site seeds itself on start; these routes are mock-only, so there they do nothing.
   await request.post("/api/dev/reset");
   await request.post("/api/dev/seed");
   const status = await (await request.get("/api/kit/status")).json();
@@ -72,22 +85,39 @@ test("demo", async ({ page, request }) => {
   const id = new URL(page.url()).pathname.split("/").pop()!;
   clock.check("booking");
 
-  // 2. The renter approves the hold in PayPal's window: 4 to 8 seconds on screen.
-  await say(page, "The renter approves a $300 hold in PayPal's own window. Nothing is charged.");
-  const shown = Date.now();
-  if (sandbox) await payInPayPal(page);
-  else {
-    await tap(page, "simulate-paypal-approval");
-    await expect(page.getByTestId("mock-approve")).toBeVisible();
-    await sleep(Math.max(0, 4_500 - (Date.now() - shown)));
-    await page.getByTestId("mock-approve").click();
+  // 2. The host waits; the renter places the hold from their own page, on their phone.
+  await expect(page.getByTestId("waiting-headline")).toBeVisible();
+  await highlight(page, page.getByTestId("waiting-for-hold"), 1400);
+  await say(page, "The host's page waits for the renter's hold. The host never sees a card form.", 2200);
+  const { renterToken } = await (await page.request.get(`/api/bookings/${id}`)).json();
+  const renter = await openPhone(page, `/renter/${renterToken}`);
+  await expect(renter.getByTestId("renter-headline")).toHaveText("Place your $300 deposit hold", { timeout: 20_000 });
+  await say(page, "The renter opens their link and places a $300 hold with PayPal. Nothing is charged.", 2000);
+  // PayPal's card form (or the mock's stand-in) is on screen for at most 6 seconds.
+  let formOpened: number;
+  if (sandbox) {
+    await say(page, "PayPal's own card form, with PayPal's sandbox test card.");
+    formOpened = await payInPayPal(renter);
+  } else {
+    await renter.getByTestId("simulate-paypal-approval").click();
+    await expect(renter.getByTestId("mock-approve")).toBeVisible();
+    formOpened = Date.now();
+    await say(page, "PayPal's own card form, with PayPal's sandbox test card.", 3_500);
+    await renter.getByTestId("mock-approve").click();
   }
+  const held = renter.getByTestId("renter-hold-headline");
+  await expect(held).toHaveText("$300 authorized, nothing charged", { timeout: 45_000 });
+  const formMs = Date.now() - formOpened;
+  console.log(`[demo] card form on screen ${(formMs / 1000).toFixed(1)}s`);
+  expect.soft(formMs, "the card form is on screen at most 6 s").toBeLessThanOrEqual(FORM_MAX_MS);
+  await say(page, "$300 authorized, nothing charged.", 1800);
+  await closePhone(page);
   const authId = page.getByTestId("hold-authorization-id");
   await expect(authId).toHaveText(/\w{10,}/, { timeout: 45_000 });
   const authorizationId = (await authId.textContent())!.trim();
   await authId.scrollIntoViewIfNeeded();
   await highlight(page, authId, 2600);
-  await say(page, `PayPal authorization ${authorizationId}: $300 held, guaranteed 3 days, capturable until day 29.`, 3800);
+  await say(page, `The host's page picks it up: PayPal authorization ${authorizationId}, guaranteed 3 days, capturable until day 29.`, 3800);
   clock.check("hold");
 
   // 3. The comparison, captioned while Claude works.
@@ -97,7 +127,7 @@ test("demo", async ({ page, request }) => {
   await tap(page, "demo-photo-two");
   await expect(page.getByTestId("photo-source")).toHaveCount(2);
   await tap(page, "run-review");
-  await say(page, status.ai.mode === "live" ? "Claude Sonnet 5.5 compares the two photos and boxes only what's new. This takes about 20 seconds." : "Claude compares the two photos and boxes only what's new.");
+  await say(page, status.ai.mode === "live" ? "Claude Sonnet 5.5 compares the two photos and boxes only what's new. Each step shows as it happens." : "Claude compares the two photos and boxes only what's new. Each step shows as it happens.");
   await expect(page.getByTestId("review")).toBeVisible({ timeout: 90_000 });
   await say(page, "Two new marks: a gouge in the floor and a stain on the rug.");
   await zoomOn(page, page.getByTestId("damage-box").first(), { scale: 2.4, ms: 2600 });
@@ -133,9 +163,16 @@ test("demo", async ({ page, request }) => {
   const prompt = page.getByTestId("approval-prompt");
   await say(page, `The ${whole(acceptedCents)} they accepted can be charged now. Nothing moves until the host approves.`);
   await expect(prompt).toBeVisible({ timeout: 30_000 });
-  await prompt.scrollIntoViewIfNeeded();
+  // The approval card is held on screen for 4 seconds: each line, the renter's answer and the Guard's reason.
+  await prompt.evaluate((el) => el.scrollIntoView({ block: "center" }));
+  const cardShown = Date.now();
+  await highlight(page, prompt, 1600);
+  await say(page, `Each line with its price row and the renter's answer. ${await prompt.getByTestId("approval-money").textContent()}.`);
+  await sleep(Math.max(0, APPROVAL_HOLD_MS - (Date.now() - cardShown)));
   await highlight(page, prompt.getByTestId("approve-button"), 900);
+  console.log(`[demo] approval card held ${((Date.now() - cardShown) / 1000).toFixed(1)}s`);
   await prompt.getByTestId("approve-button").click();
+  await say(page, `Approved. PayPal captures the ${whole(acceptedCents)} the renter accepted.`);
   const part = page.getByTestId("part-capture");
   await expect(part).toContainText(`${whole(acceptedCents)}`, { timeout: 60_000 });
   await part.scrollIntoViewIfNeeded();
