@@ -163,7 +163,22 @@ test("a first visit lands on the researched problem, labelled samples with their
   for (const point of await page.getByTestId("pain-point").all()) expect(await point.getByRole("link").count()).toBeGreaterThan(0);
   await expect(page.getByText(/only PayPal|unique to PayPal/i)).toHaveCount(0);
   await expect(page.getByTestId("deposit-preview")).toContainText("Proposed $150.00 of the $300.00 hold");
+  // The blind test and the rule for marks the AI isn't sure of are on the landing page too.
+  await expect(page.getByTestId("landing-blind-headline")).toHaveText("10 new photo pairs, 0 false charges");
+  await expect(page.getByTestId("landing-blind-row")).toHaveCount(3);
+  await expect(page.getByTestId("landing-look-rule")).toContainText("Worth a look, nothing charged");
+  await expect(page.getByTestId("landing-look-rule")).toContainText("never charged unless you add it");
+  // How this differs: every named tool links to its own page, and the three differences are stated.
+  const tools = page.getByTestId("differs-tool");
+  await expect(tools).toHaveCount(7);
+  for (const name of ["Witnessed", "RentSolve AI", "CheckEasy", "VerifyAI", "Truvi", "Waivo", "Obligo"]) await expect(tools.filter({ hasText: name })).toHaveCount(1);
+  for (const tool of await tools.all()) expect(await tool.getByRole("link").getAttribute("href")).toMatch(/^https:\/\//);
+  await expect(page.getByTestId("differs-ours")).toHaveText([/The hold stays on PayPal/, /Several captures on one hold/, /The renter contests line by line/]);
   await expectNoSidewaysScroll(page);
+  const wide = page.viewportSize();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expectNoSidewaysScroll(page);
+  if (wide) await page.setViewportSize(wide);
 
   await page.goto("/insights");
   const panel = page.getByTestId("blind-test");
