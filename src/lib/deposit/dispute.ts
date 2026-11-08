@@ -92,11 +92,15 @@ async function submit(id: string, channel: string, runId: string) {
     saveBooking({ ...now, dispute: { ...now.dispute!, evidence: { ...now.dispute!.evidence!, error: failureReason(result) } } });
     return;
   }
-  // What the host sees next is PayPal's own status, read back.
+  // What the host sees next is PayPal's own status, read back before the pack is marked sent, so
+  // the page (which stops asking once it is sent) never shows "sent" next to the old status.
   const { file_name } = result.output as { file_name: string };
-  const now = requireBooking(id);
-  saveBooking({ ...now, dispute: { ...now.dispute!, evidence: { ...now.dispute!.evidence!, submittedAt: new Date().toISOString(), fileName: file_name, error: undefined } } });
-  await readBack(id, now.dispute!.disputeId);
+  try {
+    await readBack(id, requireBooking(id).dispute!.disputeId);
+  } finally {
+    const now = requireBooking(id);
+    saveBooking({ ...now, dispute: { ...now.dispute!, evidence: { ...now.dispute!.evidence!, submittedAt: new Date().toISOString(), fileName: file_name, error: undefined } } });
+  }
 }
 
 /** Sends the evidence pack to the approval gate. Resolves when it has finished. */
