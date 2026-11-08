@@ -7,7 +7,7 @@ import { AppLogo } from "../shell/app-logo";
 
 /**
  * Landing page sections. Content comes from appConfig.landing; reorder or replace freely.
- *   <SiteHeader /> <Hero /> <HowItWorks /> <Features /> <CtaBand /> <SiteFooter />
+ *   <SiteHeader /> <Hero /> <PainPoints /> <HowItWorks /> <Features /> <CtaBand /> <SiteFooter />
  */
 
 export function SiteHeader() {
@@ -86,7 +86,20 @@ export function Hero() {
           <span className="inline-flex items-center gap-2 rounded-full border border-brand-200 bg-white/80 px-3 py-1 text-sm font-medium text-brand-700 shadow-sm">
             <Sparkles className="size-4" /> {l.eyebrow}
           </span>
-          <h1 className="mt-6 text-4xl font-semibold leading-[1.08] tracking-tight text-zinc-950 sm:text-5xl lg:text-[56px]">{l.headline}</h1>
+          <h1 className="mt-6 text-4xl font-semibold leading-[1.08] tracking-tight text-zinc-950 sm:text-5xl lg:text-[56px]" data-testid="landing-headline">
+            {l.headline}
+          </h1>
+          <p className="mt-3 text-sm text-zinc-500" data-testid="headline-sources">
+            Sources:{" "}
+            {l.headlineSources.map((s, i) => (
+              <span key={s.href}>
+                {i ? " · " : ""}
+                <a href={s.href} target="_blank" rel="noreferrer" className="underline decoration-zinc-300 underline-offset-2 hover:text-zinc-800">
+                  {s.label}
+                </a>
+              </span>
+            ))}
+          </p>
           <p className="mt-5 max-w-xl text-lg leading-relaxed text-zinc-600">{l.subheadline}</p>
           <div className="mt-8 flex flex-wrap gap-3">
             <ButtonLink href={l.primaryCta.href} size="lg">
@@ -118,6 +131,39 @@ export function HowItWorks() {
               <span className="flex size-9 items-center justify-center rounded-full bg-brand text-sm font-semibold text-brand-foreground">{i + 1}</span>
               <h3 className="mt-4 text-lg font-semibold text-zinc-900">{s.title}</h3>
               <p className="mt-2 text-[15px] leading-relaxed text-zinc-600">{s.body}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/** The problem, from the research, each with what the app does about it and where the figure came from. */
+export function PainPoints() {
+  return (
+    <section id="why" className="py-20" data-testid="pain-points">
+      <div className="mx-auto max-w-6xl px-4 sm:px-6">
+        <p className="text-sm font-semibold uppercase tracking-wider text-brand">Why hosts need this</p>
+        <h2 className="mt-2 text-3xl font-semibold tracking-tight text-zinc-950">What goes wrong with a damage deposit today</h2>
+        <div className="mt-10 grid gap-6 md:grid-cols-2">
+          {appConfig.landing.painPoints.map((p) => (
+            <div key={p.title} className="min-w-0 rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm" data-testid="pain-point">
+              <h3 className="font-semibold text-zinc-900">{p.title}</h3>
+              <p className="mt-2 text-[15px] leading-relaxed text-zinc-600">{p.body}</p>
+              <p className="mt-3 flex gap-2 text-[15px] leading-relaxed text-zinc-800">
+                <Check className="mt-1 size-4 shrink-0 text-brand" aria-hidden /> {p.answer}
+              </p>
+              <p className="mt-3 text-xs text-zinc-500">
+                {p.sources.map((s, i) => (
+                  <span key={s.href + s.label}>
+                    {i ? " · " : ""}
+                    <a href={s.href} target="_blank" rel="noreferrer" className="underline decoration-zinc-300 underline-offset-2 hover:text-zinc-800">
+                      {s.label}
+                    </a>
+                  </span>
+                ))}
+              </p>
             </div>
           ))}
         </div>

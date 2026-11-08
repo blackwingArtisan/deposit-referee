@@ -3,7 +3,7 @@
  * with the switch off it's the plain grid and no AG Studio code reaches the browser.
  */
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { expectNoSidewaysScroll, kitStatus, toProposal } from "./booking-flow";
+import { expectCallsSurviveReload, expectNoSidewaysScroll, kitStatus, toProposal } from "./booking-flow";
 
 const SPONSOR_UI = process.env.NEXT_PUBLIC_SPONSOR_UI === "1";
 
@@ -153,4 +153,32 @@ test("lists carry no renter links, and the ledger holds only this app's PayPal r
   // A renter's dispute on one of this app's captures is one of its records too.
   expect(entries.filter((e) => !["order", "authorization", "capture", "dispute"].includes(e.kind))).toEqual([]);
   expect(entries.filter((e) => /Lumen|Riverbend|Northfold|Gift card/.test(e.description ?? ""))).toEqual([]);
+});
+
+test("a first visit lands on the researched problem, labelled samples with their PayPal calls, and the blind test", async ({ page, request }) => {
+  await page.goto("/");
+  await expect(page.getByTestId("landing-headline")).toHaveText("More than half of hosts have had a guest damage their place.");
+  await expect(page.getByTestId("headline-sources").getByRole("link")).toHaveCount(2);
+  await expect(page.getByTestId("pain-point")).toHaveCount(4);
+  for (const point of await page.getByTestId("pain-point").all()) expect(await point.getByRole("link").count()).toBeGreaterThan(0);
+  await expect(page.getByText(/only PayPal|unique to PayPal/i)).toHaveCount(0);
+  await expect(page.getByTestId("deposit-preview")).toContainText("Proposed $150.00 of the $300.00 hold");
+  await expectNoSidewaysScroll(page);
+
+  await page.goto("/insights");
+  const panel = page.getByTestId("blind-test");
+  await expect(panel).toContainText("10 new photo pairs, 0 false charges.");
+  await expect(panel).toContainText("0 charged, 0 flagged");
+
+  // The samples are there on a fresh site, including a booking with no damage and the whole deposit released.
+  // On mock the seed route loads them; the hosted site seeds them on every start; a local sandbox run doesn't.
+  const { sandbox } = await kitStatus(request);
+  if (sandbox && !process.env.E2E_BASE_URL) return;
+  if (!sandbox) expect((await request.post("/api/dev/seed")).ok()).toBe(true);
+  await page.goto("/bookings/bk_sample_hilltop");
+  await expect(page.getByTestId("sample-note")).toContainText("sample booking");
+  await expect(page.getByTestId("ruling-headline")).toContainText("$0 captured, $250 released");
+  await page.goto("/bookings/bk_sample_harbor");
+  await expect(page.getByTestId("ruling-headline")).toContainText("$210 captured");
+  await expectCallsSurviveReload(page, 2);
 });

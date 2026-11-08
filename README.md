@@ -8,6 +8,17 @@
 
 ![The AI's finding on a booking, with both photos and the live timeline](docs/screenshot.png)
 
+## Why this matters
+
+**More than half of hosts have had a guest damage their place**: 53% in an [Aviva poll of 1,000 UK hosts (2019, reported by YourMoney)](https://www.yourmoney.com/insurance/theft-warning-for-home-share-hosts/), and 60% in the past year in a [Hospitable survey (2026)](https://en.10minhotel.com/?p=215240). Hosts who rent a cabin, a room or gear from their own website have no platform protection, so they keep the deposit and risk a chargeback, or let it go.
+
+- **Hosts often pay for damage themselves.** Of the hosts with guest damage, 66% paid for the repairs themselves ([Hospitable, 2026](https://en.10minhotel.com/?p=215240)). Airbnb's host damage protection applies when you host on Airbnb ([Airbnb Help Center](https://www.airbnb.com/help/article/3733)). Here the deposit sits on a PayPal hold, so there is money to draw on without a platform.
+- **Nobody can prove what was there before.** "It was already there" came up in 7 of the 14 host and guest stories we read; one forum reply puts it as "They have to show the table was damage free prior to your rental" ([Rick Steves Travel Forum, 2024](https://community.ricksteves.com/travel-forum/tourist-scams/sos-airbnb-host-accused-me-of-damage)). In the same Aviva poll of 1,000 UK guests, 13% who broke something blamed someone else ([YourMoney](https://www.yourmoney.com/insurance/theft-warning-for-home-share-hosts/)). Here both sides can add check-in photos, and Claude boxes only what is new at check-out.
+- **Charges look inflated and fall apart under questions.** In the same forum thread, a claim of about 600 EUR fell to 150 EUR once the guest asked for receipts, then lapsed. Here every line has its photo and a price-table row, and the renter can contest one line instead of the whole deposit.
+- **Card holds run out, and a kept deposit invites a chargeback.** Online card holds through Stripe usually last 7 days ([Stripe docs](https://docs.stripe.com/payments/capture-later)); hosts warn of "the security deposit getting hit with a chargeback" ([OwnerRez forum, 2024](https://www.ownerrez.com/forums/general-help/airbnb-reservation-and-api-connected-damage-deposit-collected-directly-via-stripe)). A PayPal authorization is valid for 29 days and you can capture from it more than once ([PayPal docs](https://developer.paypal.com/docs/checkout/standard/customize/authorization/)). Here the renter's accept is on record and the evidence pack is ready if they dispute. That lowers the chargeback risk; it can't remove it.
+
+Partial capture itself isn't unique to PayPal (Stripe can capture less than the hold too). What this app uses is the 29-day authorization and several captures on one hold, so the items a renter accepts are charged at once and the contested ones wait on the same hold.
+
 ## The problem
 
 Airbnb's AirCover and Turo's protection plans settle damage inside their platforms. A host who rents out a cabin from their own website, or lends out a trailer or a camera kit, has nothing like that. Anyone who does knows this argument. A renter leaves, the host finds a long scratch in the floor, and each side remembers it differently. If the host already has the deposit, the renter has to chase it back. If the host doesn't, there's no easy way to charge for real damage. Deposit Referee keeps the money on a PayPal hold, puts the evidence on one page both sides can read, and charges only what the host approves.
