@@ -6,16 +6,20 @@
 import { getApprovals } from "@/lib/agent/approvals";
 import { HttpError } from "@/lib/http";
 import { requireBookingByToken, saveBooking } from "./bookings";
+import { DEMO_RENTER_CHECK_IN, saveUpload } from "./photos";
 import { itemizedCents, releasedCents } from "./rules";
 import { requestPartCapture } from "./split";
 import { heldCents, splitOf } from "./split-rules";
-import type { Booking, RenterResponse, RenterView } from "./types";
+import type { Booking, PhotoSlot, RenterResponse, RenterView } from "./types";
 
 const OPEN = ["proposed", "contested", "awaiting_approval"];
 
 function chargeOf(booking: Booking): number {
   return booking.proposal ? itemizedCents(booking.proposal.lines) : 0;
 }
+
+/** The renter's own photos count only if the comparison can weigh them, so they close when it runs. */
+const canAddPhotos = (booking: Booking) => booking.status === "held";
 
 function canRespond(booking: Booking): boolean {
   return OPEN.includes(booking.status) && chargeOf(booking) > 0 && booking.settlement?.kind !== "release";
@@ -38,12 +42,26 @@ export function renterView(token: string): RenterView {
     proposal: proposal ? { kind: proposal.kind, lines: proposal.lines, rationale: proposal.rationale, engine: proposal.engine, simulated: proposal.simulated, hostReason: proposal.hostReason } : null,
     confidence: review?.confidence ?? null,
     photos: booking.photos,
+    renterPhotos: booking.renterPhotos ?? {},
+    canAddPhotos: canAddPhotos(booking),
     renterState: renterState ?? null,
     canAccept: canRespond(booking) && !response,
     canContest: canRespond(booking) && response?.decision !== "contested",
     settled: status === "settled" && settlement?.capturedCents !== undefined && settlement.releasedCents !== undefined ? { capturedCents: settlement.capturedCents, releasedCents: settlement.releasedCents } : null,
     split: split ? { acceptedCents: split.acceptedCents, contestedCents: split.contestedCents, chargedCents: booking.partCapture?.capturedCents } : null,
   };
+}
+
+/** Adds or replaces the renter's own check-in or check-out photo. No dataUrl: the demo close-up at check-in. */
+export function addRenterPhoto(token: string, slot: PhotoSlot, dataUrl?: string): RenterView {
+  const booking = requireBookingByToken(token);
+  if (!canAddPhotos(booking)) {
+    throw new HttpError(409, booking.status === "draft" ? "You can add photos once the deposit is on hold." : "The host has already compared the photos, so new ones can't be added. If you disagree with a charge, say so in your note.", "conflict");
+  }
+  const photo = dataUrl ? saveUpload(booking.id, slot, dataUrl, "renter") : slot === "check_in" ? DEMO_RENTER_CHECK_IN : undefined;
+  if (!photo) throw new HttpError(400, "Choose a photo to upload.", "invalid_photo");
+  saveBooking({ ...booking, renterPhotos: { ...booking.renterPhotos, [slot]: photo } });
+  return renterView(token);
 }
 
 /** Records the renter's answer. A contest also turns down any approval the host has waiting. */

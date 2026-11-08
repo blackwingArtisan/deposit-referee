@@ -4,7 +4,7 @@ import { useEffect, useRef, type ReactNode } from "react";
 import { formatCents } from "@/lib/deposit/rules";
 import type { BookingView } from "@/lib/deposit/types";
 import { DamageItems } from "./damage-items";
-import { PhotoFrame } from "./photo-frame";
+import { PhotoFrame, RENTER_SLOTS } from "./photo-frame";
 
 function Reference({ label, value }: { label: string; value?: string }) {
   return (
@@ -80,6 +80,10 @@ export function Ruling({ booking, calls }: { booking: BookingView; calls?: React
       <div className="mt-7 grid gap-5 md:grid-cols-2">
         {photos.check_in ? <PhotoFrame label="Check-in" photo={photos.check_in} /> : null}
         {photos.check_out ? <PhotoFrame label="Check-out" photo={photos.check_out} items={lines.length ? lines : review?.items} /> : null}
+        {RENTER_SLOTS.map(({ slot, label }) => {
+          const photo = booking.renterPhotos?.[slot];
+          return photo ? <PhotoFrame key={slot} label={label} photo={photo} on="renter_check_out" items={slot === "check_out" ? (lines.length ? lines : review?.items) : undefined} /> : null;
+        })}
       </div>
 
       {review ? (

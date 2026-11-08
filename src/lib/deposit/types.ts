@@ -16,13 +16,16 @@ export type BookingStatus =
 
 export type PhotoSource =
   | { kind: "demo"; title: string; author: string; licence: string; pageUrl: string; note: string }
-  | { kind: "upload"; addedAt: string };
+  | { kind: "upload"; addedAt: string; by?: "renter" };
 
 export interface BookingPhoto {
   src: string;
   mediaType: "image/jpeg" | "image/png" | "image/webp";
   source: PhotoSource;
 }
+
+/** Which check-out photo a finding is boxed on: the host's, unless the renter's own shows it. */
+export type FindingPhoto = "check_out" | "renter_check_out";
 
 /** Fractions of the check-out photo, 0 to 1. */
 export interface DamageBox {
@@ -39,6 +42,8 @@ export interface DamageItem {
   chargeCents: number;
   /** The price-table row the amount came from. */
   price?: PriceRow;
+  /** The photo the box is on. Absent means the host's check-out photo. */
+  photo?: FindingPhoto;
 }
 
 export interface DamageReview {
@@ -55,6 +60,8 @@ export interface DamageReview {
   mocked: boolean;
   model?: string;
   costUsd: number;
+  /** The renter's own photos the comparison weighed. */
+  renterPhotos?: PhotoSlot[];
 }
 
 /** One line of the charge. The capture limit is the sum of these lines. */
@@ -69,6 +76,8 @@ export interface ChargeLine {
   note?: string;
   /** The price-table row the AI's amount came from. */
   price?: PriceRow;
+  /** The photo the box is on. Absent means the host's check-out photo. */
+  photo?: FindingPhoto;
 }
 
 /** What the settlement agent stopped with. `lines` can be changed by the host; `aiCents` never changes. */
@@ -154,6 +163,8 @@ export interface Booking {
   authorizedCents?: number;
   holdExpiresAt?: string;
   photos: Partial<Record<PhotoSlot, BookingPhoto>>;
+  /** The renter's own photos, added on their page before the comparison. */
+  renterPhotos?: Partial<Record<PhotoSlot, BookingPhoto>>;
   review?: DamageReview;
   proposal?: Proposal;
   /** Why the agent stopped without a proposal. */
@@ -190,6 +201,9 @@ export interface RenterView {
   proposal: Pick<Proposal, "kind" | "lines" | "rationale" | "engine" | "simulated" | "hostReason"> | null;
   confidence: DamageReview["confidence"] | null;
   photos: Booking["photos"];
+  renterPhotos: NonNullable<Booking["renterPhotos"]>;
+  /** Until the host compares the photos, the renter can add or replace their own. */
+  canAddPhotos: boolean;
   renterState: RenterState | null;
   canAccept: boolean;
   canContest: boolean;

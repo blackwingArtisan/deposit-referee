@@ -5,7 +5,7 @@
  * because the wallet button needs a buyer login. AI is mocked unless E2E_AI_MODE=live.
  */
 import { expect, test, type Page } from "@playwright/test";
-import { dollars, expectCallsSurviveReload, expectNoSidewaysScroll, headline, openAsRenter, renterAccepts, renterContests, setCharge, toProposal, type Flow } from "./booking-flow";
+import { dollars, expectCallsSurviveReload, expectNoSidewaysScroll, headline, openAsRenter, renterAccepts, renterContests, setCharge, toPhotos, toProposal, type Flow } from "./booking-flow";
 import { readPayPalObjects, tryCapture } from "./paypal-reread";
 import { priceOf } from "../../src/lib/deposit/prices";
 
@@ -445,5 +445,46 @@ test("split: the renter accepts one item and contests the other; the accepted pa
     expect(further.status).toBe(422);
     console.log(`PayPal re-read (split): order ${order.id} ${order.status}; capture ${first.capture!.id} ${first.capture!.status} ${first.capture!.amount.value} (accepted items); capture ${capture!.id} ${capture!.status} ${capture!.amount.value} (contested part); authorization ${authorization.id} ${authorization.status}; further $1.00 capture refused: ${further.status} ${further.issue}`);
   }
+  await renter.context().close();
+});
+
+test("renter photos: the renter's own check-in close-up is weighed, and each finding names its photo", { tag: "@live-ai" }, async ({ page, request }) => {
+  const flow = await toPhotos(page, request, { checkOut: "two", item: "Lakeside cabin, weekend of Dec 4" });
+  const held = await flow.booking();
+  await expect(page.getByTestId("renter-photo-invite")).toBeVisible();
+
+  // Before the host compares, the renter adds their own photo from their page.
+  const renter = await openAsRenter(page, held);
+  await expect(renter.getByTestId("renter-photos")).toContainText("Add them before the host compares the photos");
+  await renter.getByTestId("renter-upload-check_in").setInputFiles({ name: "note.jpg", mimeType: "image/jpeg", buffer: Buffer.from("not really a photo") });
+  await expect(renter.getByText("Upload a JPEG, PNG or WebP photo.")).toBeVisible();
+  await renter.getByTestId("renter-demo-check_in").click();
+  await expect(renter.getByAltText("Renter's check-in photo")).toBeVisible();
+  await expectNoSidewaysScroll(renter);
+
+  await page.reload();
+  await expect(page.getByTestId("renter-photo-check_in")).toBeVisible();
+  await page.getByTestId("run-review").click();
+  await expect(page.getByTestId("review")).toBeVisible({ timeout: 90_000 });
+  await expect(page.getByTestId("review-renter-photos")).toContainText("renter’s own check-in photo");
+  const reviewed = await flow.booking();
+  expect(reviewed.review!.renterPhotos).toEqual(["check_in"]);
+  // Every finding names the photo it was seen in.
+  const items = reviewed.review!.items;
+  await expect(page.getByTestId("review").getByTestId("finding-photo")).toHaveCount(items.filter((item) => item.box).length);
+  for (const item of items) expect([undefined, "renter_check_out"]).toContain(item.photo);
+  if (!flow.live) {
+    // The renter's photo shows the stain was there on arrival, so only the gouge is charged.
+    expect(items.map((item) => item.price)).toEqual([{ type: "scratch", size: "large" }]);
+    await expect(page.getByTestId("review").getByTestId("finding-photo")).toHaveText(["Seen in the host's check-out photo"]);
+  }
+  await page.screenshot({ path: `screenshots/deposit-renter-photos-${flow.mode}-${flow.live ? "live-ai" : "mock-ai"}.png`, fullPage: true });
+  console.log(`Renter photos (${flow.live ? "live AI" : "mock AI"}): ${items.length} charged: ${items.map((item) => `${item.price?.type}/${item.price?.size} on ${item.photo ?? "check_out"}`).join(", ") || "none"}; worth a look ${reviewed.review!.worthALook?.length ?? 0}; reasoning: ${reviewed.review!.reasoning}`);
+
+  // Once compared, the renter's photos are fixed, and they see them as weighed.
+  await renter.reload();
+  await expect(renter.getByTestId("renter-photos")).toContainText("The comparison weighed these");
+  await expect(renter.getByTestId("renter-upload-check_in")).toHaveCount(0);
+  await renter.screenshot({ path: `screenshots/renter-own-photos-${flow.live ? "live-ai" : "mock-ai"}.png`, fullPage: true });
   await renter.context().close();
 });

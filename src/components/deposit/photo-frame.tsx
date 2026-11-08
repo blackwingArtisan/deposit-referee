@@ -1,6 +1,15 @@
 /* eslint-disable @next/next/no-img-element -- photos come from an API route and have no known size */
 import { ExternalLink } from "lucide-react";
-import type { BookingPhoto, DamageItem } from "@/lib/deposit/types";
+import type { BookingPhoto, DamageItem, FindingPhoto } from "@/lib/deposit/types";
+
+/** The renter's own photos, as each screen labels them. */
+export const RENTER_SLOTS = [
+  { slot: "check_in", label: "Renter's check-in photo" },
+  { slot: "check_out", label: "Renter's check-out photo" },
+] as const;
+
+/** Where a finding was seen, in words: every finding names its source photo. */
+export const findingPhotoLabel = (photo?: FindingPhoto) => (photo === "renter_check_out" ? "the renter's own check-out photo" : "the host's check-out photo");
 
 /** Worth-a-look items go by letter, so they can't be mistaken for numbered charges. */
 export const lookLetter = (index: number) => String.fromCharCode(65 + index);
@@ -8,7 +17,7 @@ export const lookLetter = (index: number) => String.fromCharCode(65 + index);
 function PhotoSourceLine({ photo }: { photo: BookingPhoto }) {
   const source = photo.source;
   if (source.kind === "upload") {
-    return <p className="mt-1.5 text-xs text-zinc-500" data-testid="photo-source">Uploaded by the host on {new Date(source.addedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}.</p>;
+    return <p className="mt-1.5 text-xs text-zinc-500" data-testid="photo-source">Uploaded by the {source.by ?? "host"} on {new Date(source.addedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}.</p>;
   }
   return (
     <p className="mt-1.5 text-xs leading-relaxed text-zinc-500" data-testid="photo-source">
@@ -23,14 +32,16 @@ function PhotoSourceLine({ photo }: { photo: BookingPhoto }) {
 }
 
 /** A photo, its source, the AI's red boxes and its amber worth-a-look boxes. Box positions are fractions, so they scale with the photo. */
-export function PhotoFrame({ label, photo, items = [], looks = [] }: { label: string; photo: BookingPhoto; items?: Pick<DamageItem, "description" | "box">[]; looks?: Pick<DamageItem, "description" | "box">[] }) {
+/** `on` is which check-out photo this is; only boxes drawn on it show. Numbering stays the list's. */
+export function PhotoFrame({ label, photo, items = [], looks = [], on = "check_out" }: { label: string; photo: BookingPhoto; items?: Pick<DamageItem, "description" | "box" | "photo">[]; looks?: Pick<DamageItem, "description" | "box" | "photo">[]; on?: FindingPhoto }) {
+  const here = (item: Pick<DamageItem, "photo">) => (item.photo ?? "check_out") === on;
   return (
     <figure className="min-w-0">
       <figcaption className="mb-1.5 text-sm font-medium text-zinc-800">{label}</figcaption>
       <div className="relative overflow-hidden rounded-lg bg-zinc-100">
         <img src={photo.src} alt={label} className="block h-auto w-full" />
         {items.map((item, i) =>
-          item.box ? (
+          item.box && here(item) ? (
             <div
               key={i}
               data-testid="damage-box"
@@ -45,7 +56,7 @@ export function PhotoFrame({ label, photo, items = [], looks = [] }: { label: st
           ) : null,
         )}
         {looks.map((look, i) =>
-          look.box ? (
+          look.box && here(look) ? (
             <div
               key={i}
               data-testid="look-box"
