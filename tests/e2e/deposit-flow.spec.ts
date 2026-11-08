@@ -426,10 +426,18 @@ test("split: the renter accepts one item and contests the other; the accepted pa
     // Both captures, straight from PayPal.
     const first = await readPayPalObjects(done.orderId!, done.authorizationId!, part.captureId!);
     const { order, authorization, capture } = await readPayPalObjects(done.orderId!, done.authorizationId!, done.settlement!.captureId!);
-    expect(order.purchase_units[0].payments.captures.map((c) => [c.id, c.amount.value])).toEqual([
-      [part.captureId, (acceptedCents / 100).toFixed(2)],
-      [capture!.id, (chargeCents / 100).toFixed(2)],
-    ]);
+    // PayPal doesn't promise an order for the order's captures, so compare them as a set.
+    const byId = (rows: string[][]) => [...rows].sort((x, y) => x[0].localeCompare(y[0]));
+    expect(byId(order.purchase_units[0].payments.captures.map((c) => [c.id, c.amount.value]))).toEqual(
+      byId([
+        [part.captureId!, (acceptedCents / 100).toFixed(2)],
+        [capture!.id, (chargeCents / 100).toFixed(2)],
+      ]),
+    );
+    // And each capture on its own, by id.
+    expect(first.capture!.amount.value).toBe((acceptedCents / 100).toFixed(2));
+    expect(first.capture!.final_capture).toBe(false);
+    expect(capture!.amount.value).toBe((chargeCents / 100).toFixed(2));
     expect(first.capture!.status).toBe("COMPLETED");
     expect(capture!.status).toBe("COMPLETED");
     expect(authorization.status).toBe("VOIDED");
