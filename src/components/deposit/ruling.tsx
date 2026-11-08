@@ -1,3 +1,6 @@
+"use client";
+
+import { useEffect, useRef, type ReactNode } from "react";
 import { formatCents } from "@/lib/deposit/rules";
 import type { BookingView } from "@/lib/deposit/types";
 import { DamageItems } from "./damage-items";
@@ -12,8 +15,31 @@ function Reference({ label, value }: { label: string; value?: string }) {
   );
 }
 
+/** Scrolls the headline back into view only when it's off screen, so a reload at the top doesn't jump. */
+function showHeadline(headline: HTMLElement | null) {
+  if (!headline) return;
+  const { top, bottom } = headline.getBoundingClientRect();
+  if (top < 0 || bottom > window.innerHeight) headline.scrollIntoView({ block: "start" });
+}
+
 /** The result screen. Every number here was re-read from PayPal after the money moved. */
-export function Ruling({ booking }: { booking: BookingView }) {
+export function Ruling({ booking, calls }: { booking: BookingView; calls?: ReactNode }) {
+  const headlineRef = useRef<HTMLHeadingElement>(null);
+  // The host approves far down the page. When the result appears, bring its headline into view.
+  useEffect(() => showHeadline(headlineRef.current), []);
+  // Opening the PayPal calls makes the list grow, which can push the headline off the top. For a
+  // moment after the toggle is clicked, put it back in view whenever the list changes size.
+  const callsRef = useRef<HTMLDivElement>(null);
+  const keepUntil = useRef(0);
+  useEffect(() => {
+    const calls = callsRef.current;
+    if (!calls) return;
+    const observer = new ResizeObserver(() => {
+      if (Date.now() < keepUntil.current) showHeadline(headlineRef.current);
+    });
+    observer.observe(calls);
+    return () => observer.disconnect();
+  }, []);
   const { settlement, review, proposal, photos, authorizedCents } = booking;
   const captured = settlement?.capturedCents;
   const released = settlement?.releasedCents;
@@ -24,7 +50,7 @@ export function Ruling({ booking }: { booking: BookingView }) {
 
   return (
     <section data-testid="ruling" className="rounded-2xl border border-zinc-200/80 bg-white p-5 sm:p-8">
-      <h2 data-testid="ruling-headline" className="text-4xl font-semibold tracking-tight tabular-nums sm:text-6xl">
+      <h2 ref={headlineRef} data-testid="ruling-headline" className="text-4xl font-semibold tracking-tight tabular-nums sm:text-6xl">
         <span className="text-red-700">{formatCents(captured)} captured</span>
         <span className="text-zinc-400">, </span>
         <span className="text-emerald-700">{formatCents(released)} released</span>
@@ -38,6 +64,16 @@ export function Ruling({ booking }: { booking: BookingView }) {
         <div className="bg-red-600" style={{ width: `${capturedShare}%` }} />
         <div className="flex-1 bg-emerald-500" />
       </div>
+
+      {/* Right under the result, so opening the calls keeps the result in view. */}
+      {calls ? (
+        <div ref={callsRef} className="mt-5" onClickCapture={(e) => {
+            // Only the show/hide toggle; a click on one call's details leaves the page where it is.
+            if ((e.target as HTMLElement).closest('[data-testid="paypal-calls-toggle"]')) keepUntil.current = Date.now() + 2_000;
+          }}>
+          {calls}
+        </div>
+      ) : null}
 
       <div className="mt-7 grid gap-5 md:grid-cols-2">
         {photos.check_in ? <PhotoFrame label="Check-in" photo={photos.check_in} /> : null}

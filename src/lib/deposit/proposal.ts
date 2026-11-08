@@ -10,20 +10,25 @@ import type { Booking, ChargeLine, Proposal } from "./types";
 export interface ProposalRequest {
   booking_id: string;
   decision: "charge" | "release";
-  amount_cents: number;
-  items: { finding: number; amount_cents: number; note: string }[];
+  /** The findings the agent stands behind. Their amounts come from the price table, not the agent. */
+  items: { finding: number; note: string }[];
   rationale: string;
 }
 
-/** Each finding at most once, and never above the amount the photo review gave it. */
-function linesFrom(booking: Booking, request: ProposalRequest): ChargeLine[] {
+/**
+ * Each finding at most once, at its price-table amount. If they add up to more than the hold,
+ * the last ones are trimmed to fit, in code, so the agent never picks a number.
+ */
+function linesFrom(booking: Booking, request: ProposalRequest, heldCents: number): ChargeLine[] {
   const findings = booking.review?.items ?? [];
-  return request.items.map(({ finding, amount_cents, note }, index) => {
+  let room = heldCents;
+  return request.items.flatMap(({ finding, note }, index) => {
     const item = findings[finding];
     if (!item) throw new RuleError(`Finding ${finding} isn't in the photo review.`);
     if (request.items.findIndex((other) => other.finding === finding) !== index) throw new RuleError(`Finding ${finding} is listed twice.`);
-    if (amount_cents > item.chargeCents) throw new RuleError(`Finding ${finding} is itemized at ${item.chargeCents} cents, so it can't be proposed at ${amount_cents}.`);
-    return { id: `ai-${finding}`, description: item.description, box: item.box, amountCents: amount_cents, aiCents: amount_cents, note };
+    const amount = Math.min(item.chargeCents, room);
+    room -= amount;
+    return amount > 0 ? [{ id: `ai-${finding}`, description: item.description, box: item.box, amountCents: amount, aiCents: amount, note, price: item.price }] : [];
   });
 }
 
@@ -34,18 +39,18 @@ export function recordProposal(request: ProposalRequest, ctx: { runId: string; h
 
   let lines: ChargeLine[] = [];
   if (request.decision === "release") {
-    if (request.amount_cents !== 0) throw new RuleError("A full release charges nothing, so its amount must be 0.");
+    if (request.items.length) throw new RuleError("A full release charges nothing, so it has no items.");
   } else {
-    lines = linesFrom(booking, request);
-    if (itemizedCents(lines) !== request.amount_cents) throw new RuleError(`The items add up to ${itemizedCents(lines)} cents, not ${request.amount_cents}.`);
-    assertCaptureLimits(request.amount_cents, itemizedCents(booking.review.items.map((i) => ({ amountCents: i.chargeCents }))), ctx.heldCents);
+    lines = linesFrom(booking, request, ctx.heldCents);
+    if (!lines.length) throw new RuleError("A charge needs at least one finding from the photo review.");
+    assertCaptureLimits(itemizedCents(lines), itemizedCents(booking.review.items.map((i) => ({ amountCents: i.chargeCents }))), ctx.heldCents);
   }
   if (booking.status !== "reviewed") throw new RuleError("This booking already has a proposal. Stop here.");
 
   const proposal: Proposal = {
     runId: ctx.runId,
     kind: request.decision,
-    aiCents: request.amount_cents,
+    aiCents: itemizedCents(lines),
     lines,
     rationale: request.rationale,
     proposedAt: new Date().toISOString(),

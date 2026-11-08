@@ -7,6 +7,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { dollars, expectNoSidewaysScroll, headline, openAsRenter, renterAccepts, renterContests, setCharge, toProposal, type Flow } from "./booking-flow";
 import { readPayPalObjects, tryCapture } from "./paypal-reread";
+import { priceOf } from "../../src/lib/deposit/prices";
 
 const DEPOSIT_CENTS = 30_000;
 
@@ -17,6 +18,18 @@ async function expectHoldUntouched(flow: Flow) {
   expect(authorization.status).toBe("CREATED");
   expect(order.purchase_units[0].payments.captures ?? []).toEqual([]);
   console.log(`PayPal re-read: authorization ${authorization.id} still ${authorization.status}, nothing captured`);
+}
+
+/**
+ * Scrolls so the calls toggle is at the top of the screen and the headline just above it, out of
+ * view, as on a tall page with real AI text. The padding makes a mock page tall enough to do that.
+ */
+async function scrollHeadlineAway(page: Page) {
+  await page.getByTestId("paypal-calls-toggle").evaluate((el) => {
+    document.body.style.paddingBottom = "3000px";
+    window.scrollTo(0, el.getBoundingClientRect().top + window.scrollY - 2);
+  });
+  await expect(page.getByTestId("ruling-headline")).not.toBeInViewport();
 }
 
 async function approveCharge(page: Page, flow: Flow, chargeCents: number, screenshot: string) {
@@ -40,6 +53,10 @@ async function approveCharge(page: Page, flow: Flow, chargeCents: number, screen
   await expect(ruling).toBeVisible({ timeout: 60_000 });
   await expect(page.getByTestId("ruling-headline")).toHaveText(`${headline(chargeCents)} captured, ${headline(releaseCents)} released`);
   await expect(ruling.getByTestId("damage-box").first()).toBeVisible();
+  // The result opens at its headline, wherever the host clicked Approve.
+  await expect(page.getByTestId("ruling-headline")).toBeInViewport();
+  // Opening the calls with the headline scrolled away brings it back into view.
+  await scrollHeadlineAway(page);
   // The void on the timeline shows what was released, not the whole hold.
   await page.getByTestId("paypal-calls-toggle").click();
   await expect(page.getByTestId("timeline-step").filter({ hasText: "void_authorization" })).toContainText(dollars(releaseCents));
@@ -89,6 +106,17 @@ test("the agent proposes and stops, the renter accepts, the host approves", asyn
   const drawn = review!.items[0].box!;
   expect(await box.evaluate((el) => (el as HTMLElement).style.left)).toBe(`${drawn.x * 100}%`);
 
+  // The amount comes from the price table, and the screen says which row.
+  // Real AI can find several marks: each is priced from its row, and together they stop at the hold.
+  let room = DEPOSIT_CENTS;
+  for (const line of proposal!.lines) {
+    expect(line.price, "every AI line names its price-table row").toBeTruthy();
+    expect(line.amountCents).toBe(Math.min(priceOf(line.price!), room));
+    room -= line.amountCents;
+  }
+  await expect(page.getByTestId("price-row").first()).toContainText("Price table:");
+  if (!flow.live) await expect(page.getByTestId("price-row").first()).toContainText("Price table: Scratch or gouge, large, $150");
+
   // It stopped: no approval is waiting, and the host can't send it until the renter has had their say.
   expect(reviewed.status).toBe("proposed");
   expect(reviewed.approval).toBeNull();
@@ -108,6 +136,16 @@ test("the agent proposes and stops, the renter accepts, the host approves", asyn
   const capped = ai >= DEPOSIT_CENTS;
   if (capped) await setCharge(page, reviewed, "150.00");
   await approveCharge(page, flow, capped ? 15_000 : ai, "deposit-result");
+
+  // On a phone too, opening the PayPal calls keeps the result in view.
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.reload();
+  await scrollHeadlineAway(page);
+  await page.getByTestId("paypal-calls-toggle").click();
+  await expect(page.getByTestId("timeline-step").first()).toBeVisible();
+  await expect(page.getByTestId("ruling-headline")).toBeInViewport();
+  await expectNoSidewaysScroll(page);
+  await page.setViewportSize({ width: 1440, height: 1000 });
 
   const done = await flow.booking();
   await expect(renter.getByTestId("renter-headline")).toContainText("released", { timeout: 10_000 });
@@ -250,6 +288,10 @@ test("worth a look: the host adds a mark the AI wouldn't charge, and it goes thr
   await expect(page.getByTestId("worth-a-look")).toContainText("Nothing here is charged unless you add it");
   await expect(page.getByTestId("look-box")).toHaveCount(1);
   await expect(page.getByTestId("damage-box")).toHaveCount(0);
+  // A faint mark is never charged, and if the host adds it, the price still comes from the table.
+  expect(reviewed.review!.items).toEqual([]);
+  expect(look.chargeCents).toBe(priceOf(look.price!));
+  await expect(page.getByTestId("worth-a-look").getByTestId("price-row")).toContainText("Price table:");
   await expectNoSidewaysScroll(page);
   await page.screenshot({ path: `screenshots/deposit-worth-a-look-${flow.live ? "live-ai" : "mock-ai"}.png`, fullPage: true });
   await expectHoldUntouched(flow);
