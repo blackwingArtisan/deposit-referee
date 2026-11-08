@@ -87,7 +87,7 @@ function HoldPanel({ booking }: { booking: BookingView }) {
 }
 
 /** The PayPal calls behind this booking, folded into one line until the host asks for them. */
-function PayPalCalls({ steps }: { steps: TimelineStep[] }) {
+function PayPalCalls({ steps, loading }: { steps: TimelineStep[]; loading: boolean }) {
   const [open, setOpen] = useState(false);
   const calls = steps.filter((s) => s.paypal);
   const last = calls.at(-1);
@@ -95,8 +95,11 @@ function PayPalCalls({ steps }: { steps: TimelineStep[] }) {
     <Card data-testid="paypal-calls">
       <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} className="flex w-full items-center gap-3 px-5 py-3 text-left" data-testid="paypal-calls-toggle">
         <Landmark className="size-4 shrink-0 text-brand" aria-hidden />
-        <span className="text-sm font-semibold text-zinc-900">PayPal calls ({calls.length})</span>
-        {last ? <span className="hidden min-w-0 truncate text-sm text-zinc-500 sm:inline">Last: {last.title}</span> : null}
+        {/* No count until the booking's saved calls are in, so a slow first load never reads as "(0)". */}
+        <span className="text-sm font-semibold text-zinc-900" aria-busy={loading}>
+          PayPal calls{loading ? "" : ` (${calls.length})`}
+        </span>
+        {loading ? <span className="text-sm text-zinc-500" data-testid="paypal-calls-loading">Loading…</span> : last ? <span className="hidden min-w-0 truncate text-sm text-zinc-500 sm:inline">Last: {last.title}</span> : null}
         <span className="ml-auto inline-flex shrink-0 items-center gap-1 text-xs font-medium text-zinc-500">
           {open ? "Hide" : "Show every call"} <ChevronDown className={`size-3.5 transition-transform ${open ? "rotate-180" : ""}`} />
         </span>
@@ -116,6 +119,7 @@ export function BookingScreen() {
   const { toast } = useToast();
   const { events } = useTimeline();
   const [saved, setSaved] = useState<TimelineEvent[]>([]);
+  const [savedLoaded, setSavedLoaded] = useState(false);
   const [booking, setBooking] = useState<BookingView | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -147,7 +151,8 @@ export function BookingScreen() {
     if (!savedKey) return;
     kitFetch<{ events: TimelineEvent[] }>(`/api/bookings/${id}/activity`)
       .then((r) => setSaved(r.events))
-      .catch(() => undefined);
+      .catch(() => undefined)
+      .finally(() => setSavedLoaded(true));
   }, [id, kitFetch, savedKey]);
 
   // On a phone the approval card and the result appear far from the button that asked for them.
@@ -207,7 +212,7 @@ export function BookingScreen() {
   }
 
   const approval = booking.approval;
-  const timeline = <PayPalCalls steps={timelineSteps} />;
+  const timeline = <PayPalCalls steps={timelineSteps} loading={!savedLoaded} />;
   const canReplace = !photoChangeBlocked(booking);
 
   return (

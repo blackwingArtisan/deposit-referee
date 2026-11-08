@@ -56,7 +56,15 @@ export async function expectCallsSurviveReload(page: Page, min = 1) {
  * PayPal's sandbox card. The form is PayPal's iframe on the page, so a recording shows it.
  */
 export async function payInPayPalCardForm(page: Page, opts: { pause?: number } = {}) {
-  await page.getByTestId("paypal-guest-button").locator("paypal-basic-card-button").click({ timeout: 30_000 });
+  // PayPal draws its card button before it wires the click up, and an early click opens nothing.
+  // Click until PayPal's card form is on the page.
+  const button = page.getByTestId("paypal-guest-button").locator("paypal-basic-card-button");
+  const frames = page.locator('iframe[src*="/smart/card-fields"]');
+  await button.waitFor({ state: "visible", timeout: 30_000 });
+  for (let i = 0; i < 4 && !(await frames.count()); i++) {
+    await button.click({ timeout: 30_000 });
+    await frames.first().waitFor({ state: "attached", timeout: 6_000 }).catch(() => {});
+  }
   const form = page.frameLocator('iframe[src*="/smart/card-fields"]');
   await form.getByLabel("Email").fill("renter@example.com", { timeout: 30_000 });
   await form.getByLabel("Card number").pressSequentially("4111111111111111", { delay: opts.pause ? 40 : 0 });
