@@ -115,10 +115,9 @@ describe("the AI's answer", () => {
     expect(toReview(MOCK_VERDICT, 10_000, meta)).toMatchObject({ suggestedCents: 10_000, cappedToHold: true });
   });
 
-  it("prices from the table and keeps boxes on the photo", () => {
-    const review = toReview({ ...MOCK_VERDICT, findings: [{ ...MOCK_VERDICT.findings[0], damage_type: "stain", size: "small", box: { x: 0.9, y: -0.2, w: 0.5, h: 0.4 } }] }, 20_000, meta);
-    expect(review.suggestedCents).toBe(5_000);
-    expect(review.items[0].price).toEqual({ type: "stain", size: "small" });
+  it("keeps charges in whole cents and boxes on the photo", () => {
+    const review = toReview({ ...MOCK_VERDICT, findings: [{ description: "x", charge_cents: 1999.6, box: { x: 0.9, y: -0.2, w: 0.5, h: 0.4 } }] }, 20_000, meta);
+    expect(review.suggestedCents).toBe(2000);
     expect(review.items[0].box).toEqual({ x: 0.9, y: 0, w: expect.closeTo(0.1), h: 0.4 });
   });
 

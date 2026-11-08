@@ -15,8 +15,7 @@ import { getPayPal } from "@/lib/paypal";
 import { heldBooking, holdStatus, paypal, waitForApproval } from "./deposit-fixtures";
 
 const meta = { mocked: true, costUsd: 0 };
-const look = { description: "Faint scuff", box: { x: 0.2, y: 0.3, w: 0.1, h: 0.1 }, damage_type: "marking" as const, size: "small" as const };
-const lookItem = { description: "Faint scuff", box: look.box, chargeCents: 3_000, price: { type: "marking", size: "small" } };
+const look = { description: "Faint scuff", box: { x: 0.2, y: 0.3, w: 0.1, h: 0.1 }, charge_cents: 7_500 };
 const toolContext = () => ({ runId: `test_${Math.random()}`, actor: "agent:test", channel: "test", guard: new Guard({ paypal: getPayPal(), policy: appConfig.agentPolicy }) });
 
 /** The AI noticed something, charged nothing, and the agent proposed a release. */
@@ -34,9 +33,9 @@ beforeEach(async () => {
 describe("what the review keeps", () => {
   it("never counts a worth-a-look item as a charge", () => {
     const review = toReview({ ...MOCK_VERDICT, worth_a_look: [look] }, 30_000, meta);
-    expect(review.suggestedCents).toBe(15_000);
+    expect(review.suggestedCents).toBe(MOCK_VERDICT.findings[0].charge_cents);
     expect(review.items).toHaveLength(1);
-    expect(review.worthALook).toEqual([lookItem]);
+    expect(review.worthALook).toEqual([{ description: "Faint scuff", box: look.box, chargeCents: 7_500 }]);
 
     const clean = toReview({ ...MOCK_VERDICT, new_damage: false, findings: [], worth_a_look: [look] }, 30_000, meta);
     expect(clean).toMatchObject({ newDamage: false, items: [], suggestedCents: 0, cappedToHold: false });
@@ -49,26 +48,26 @@ describe("what the review keeps", () => {
     expect(review.worthALook).toHaveLength(1);
   });
 
-  it("treats a faint finding as noticed, not charged", () => {
-    const zero = { ...MOCK_VERDICT, findings: [{ ...MOCK_VERDICT.findings[0], visibility: "faint" as const }], worth_a_look: [] };
+  it("treats a finding priced at zero as noticed, not charged", () => {
+    const zero = { ...MOCK_VERDICT, findings: [{ ...MOCK_VERDICT.findings[0], charge_cents: 0 }], worth_a_look: [] };
     const review = toReview(zero, 30_000, meta);
     expect(review).toMatchObject({ newDamage: false, items: [], suggestedCents: 0 });
     expect(review.worthALook).toHaveLength(1);
   });
 
-  it("keeps a clear finding as a charge and moves a faint one beside it to worth a look", () => {
+  it("keeps a priced finding as a charge and moves a zero one beside it to worth a look", () => {
     const [priced] = MOCK_VERDICT.findings;
-    const mixed = { ...MOCK_VERDICT, findings: [priced, { ...priced, box: look.box, description: "Faint scuff", visibility: "faint" as const }], worth_a_look: [] };
+    const mixed = { ...MOCK_VERDICT, findings: [priced, { ...priced, box: look.box, description: "Faint scuff", charge_cents: 0 }], worth_a_look: [] };
     const review = toReview(mixed, 30_000, meta);
     expect(review.items).toHaveLength(1);
-    expect(review.suggestedCents).toBe(15_000);
+    expect(review.suggestedCents).toBe(priced.charge_cents);
     expect(review.worthALook!.map((item) => item.description)).toEqual(["Faint scuff"]);
   });
 
   it("shows one mark once when both checks saw it, with the second check's figure", () => {
-    const declined = { ...MOCK_VERDICT.findings[0], box: look.box, visibility: "faint" as const };
+    const declined = { ...MOCK_VERDICT.findings[0], box: look.box, charge_cents: 0 };
     const review = toReview({ ...MOCK_VERDICT, findings: [declined], worth_a_look: [look] }, 30_000, meta);
-    expect(review.worthALook).toEqual([lookItem]);
+    expect(review.worthALook).toEqual([{ description: "Faint scuff", box: look.box, chargeCents: 7_500 }]);
   });
 
   it("drops an item with no box on the photo, and keeps three at most", () => {
@@ -92,7 +91,7 @@ describe("the agent can't charge a worth-a-look item", () => {
   it("is refused if it names one as a finding", async () => {
     const held = await heldBooking();
     saveBooking({ ...held, status: "reviewed", review: await reviewPhotos({ ...held, photos: { check_in: DEMO_PHOTOS.check_in, check_out: DEMO_FAINT_CHECK_OUT } }) });
-    const result = await runTool(proposeSettlement, { booking_id: held.id, decision: "charge", amount_cents: 1_000, items: [{ finding: 0, note: "Trying the flagged mark" }], rationale: "A charge for the flagged mark." }, toolContext());
+    const result = await runTool(proposeSettlement, { booking_id: held.id, decision: "charge", amount_cents: 1_000, items: [{ finding: 0, amount_cents: 1_000, note: "Trying the flagged mark" }], rationale: "A charge for the flagged mark." }, toolContext());
     expect(result.isError).toBe(true);
     expect(requireBooking(held.id).proposal).toBeUndefined();
   });
@@ -147,9 +146,9 @@ describe("the host adds one to the charge", () => {
   });
 
   it("stops at the hold", async () => {
-    const booking = await flaggedBooking(3_000);
+    const booking = await flaggedBooking(5_000);
     const added = saveHostLines(booking.id, { lines: [], addLook: 0 });
-    expect(added.proposal!.lines[0].amountCents).toBe(3_000);
+    expect(added.proposal!.lines[0].amountCents).toBe(5_000);
   });
 
   it("is refused after the renter contests, because the charge can only go down then", async () => {

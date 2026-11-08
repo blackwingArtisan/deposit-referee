@@ -59,8 +59,7 @@ async function newHold(pp: PayPalApi, sample: Sample, requestId: string) {
 function proposalFor(sample: Sample, now: number): Proposal {
   const clean = !sample.aiCents;
   const verdict = clean ? MOCK_NO_DAMAGE : MOCK_VERDICT;
-  const review = toReview(verdict, sample.depositCents, { mocked: true, costUsd: 0 });
-  const lines: ChargeLine[] = review.items.map((f, i) => ({ id: `ai-${i}`, description: f.description, box: f.box, amountCents: sample.chargedCents ?? f.chargeCents, aiCents: f.chargeCents, note: "Sample figure.", price: f.price }));
+  const lines: ChargeLine[] = verdict.findings.map((f, i) => ({ id: `ai-${i}`, description: f.description, box: f.box, amountCents: sample.chargedCents ?? f.charge_cents, aiCents: f.charge_cents, note: "Sample figure." }));
   return { runId: `sample_${sample.key}`, kind: clean ? "release" : "charge", aiCents: sample.aiCents ?? 0, lines, rationale: verdict.reasoning, proposedAt: new Date(now).toISOString(), engine: "Sample proposal", simulated: true };
 }
 
