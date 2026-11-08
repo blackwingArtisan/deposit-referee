@@ -158,6 +158,8 @@ export interface Booking {
   createdAt: string;
   /** Opens the renter's own page. There are no logins, so the link is the only key. */
   renterToken: string;
+  /** The host's key to act on this booking, in an httpOnly cookie on the browser that made it (host-key.ts). Never sent in a view. */
+  hostSecret?: string;
   orderId?: string;
   authorizationId?: string;
   /** Set once the hold was refreshed after PayPal's 3-day honor period. Charges come from this one; a release voids the original, which voids both. */
@@ -223,6 +225,8 @@ export interface BookingView extends Booking {
   approval: PendingApproval | null;
   /** Waiting at the gate: sending the evidence pack to PayPal. */
   disputeApproval: PendingApproval | null;
+  /** Set by GET /api/bookings/[id]: whether this browser holds the host's secret. A visitor sees no renter link. */
+  viewer?: "host" | "visitor";
 }
 
 /** One row of the bookings list: no renter link. */

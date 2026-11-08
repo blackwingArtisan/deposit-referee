@@ -18,5 +18,5 @@ export const POST = bookingRoute<RouteContext<"/api/bookings/[id]/review">>(
     saveBooking({ ...requireBooking(booking.id), status: "reviewed", review });
     return viewBooking(await runSettlementAgent(booking.id, getContext().channel));
   },
-  { rateLimit: "ai" },
+  { rateLimit: "ai", host: true },
 );

@@ -9,4 +9,4 @@ export const GET = bookingRoute<RouteContext<"/api/bookings/[id]/evidence">>(asy
   return new Response(new Uint8Array(evidencePdf(booking)), {
     headers: { "Content-Type": "application/pdf", "Content-Disposition": `attachment; filename="${evidenceFileName(booking)}"`, "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" },
   });
-});
+}, { host: "unless-sample" });

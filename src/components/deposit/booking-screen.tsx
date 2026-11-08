@@ -73,12 +73,14 @@ function WaitingForHold({ booking }: { booking: BookingView }) {
     <div data-testid="waiting-for-hold" className="rounded-lg border border-zinc-200 px-4 py-3 text-sm">
       <p className="font-medium text-zinc-900" data-testid="waiting-headline">Waiting for the renter&rsquo;s hold</p>
       <p className="mt-1 text-zinc-600">Send {booking.renter} their link. They approve a {formatCents(booking.depositCents)} hold with PayPal on their own page, on their phone or computer. The money is held, not taken, and this page updates when PayPal confirms it.</p>
-      <div className="mt-2 flex flex-wrap items-center gap-3">
-        <Link href={path} target="_blank" className="inline-flex items-center gap-1 font-medium text-brand underline underline-offset-2" data-testid="renter-pay-link">
-          Open the renter&rsquo;s page <ExternalLink className="size-3.5" aria-hidden />
-        </Link>
-        <button type="button" onClick={copy} className="text-zinc-600 underline underline-offset-2 hover:text-zinc-900">Copy link</button>
-      </div>
+      {booking.renterToken ? (
+        <div className="mt-2 flex flex-wrap items-center gap-3">
+          <Link href={path} target="_blank" className="inline-flex items-center gap-1 font-medium text-brand underline underline-offset-2" data-testid="renter-pay-link">
+            Open the renter&rsquo;s page <ExternalLink className="size-3.5" aria-hidden />
+          </Link>
+          <button type="button" onClick={copy} className="text-zinc-600 underline underline-offset-2 hover:text-zinc-900">Copy link</button>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -253,6 +255,12 @@ export function BookingScreen() {
         actions={<Badge tone={STATUS_LABEL[status].tone} dot>{STATUS_LABEL[status].label}</Badge>}
       />
 
+      {booking.viewer === "visitor" && !booking.sample ? (
+        <div className="mb-6" data-testid="visitor-note">
+          <Notice tone="muted">You&rsquo;re viewing this booking from a browser that didn&rsquo;t make it. Only the host&rsquo;s browser can add photos, approve or charge, and only the host can send the renter their link.</Notice>
+        </div>
+      ) : null}
+
       {booking.sample ? (
         <div className="mb-6" data-testid="sample-note">
           <Notice tone="muted">This is a sample booking. Its hold and any charge are {kit?.paypal.mode === "sandbox" ? "real objects on the PayPal sandbox" : "on mock PayPal"}. Its photo findings were written for the sample, not made by Claude on this booking. Its PayPal calls are the ones made when the sample was loaded.</Notice>
@@ -333,7 +341,7 @@ export function BookingScreen() {
                     })}
                   </div>
                   {canReplace && review ? <p className="mt-3 text-xs text-zinc-500" data-testid="replace-note">Replacing a photo clears the comparison and the proposal, and you compare again. The renter hasn&rsquo;t answered yet, so nothing is lost.</p> : null}
-                  {status === "held" ? (
+                  {status === "held" && booking.renterToken ? (
                     <p className="mt-3 text-xs text-zinc-500" data-testid="renter-photo-invite">
                       The renter can add their own check-in or check-out photo on{" "}
                       <Link href={`/renter/${booking.renterToken}`} target="_blank" className="underline underline-offset-2 hover:text-zinc-800">their page</Link> until you compare. The comparison weighs them with yours.

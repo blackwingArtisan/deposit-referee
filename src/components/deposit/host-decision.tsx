@@ -36,12 +36,14 @@ function RenterPanel({ booking, chargeCents }: { booking: BookingView; chargeCen
     <div className="rounded-lg border border-zinc-200 px-4 py-3 text-sm">
       <p className="font-medium text-zinc-900" data-testid="renter-status">{clearance.until ? `The renter has until ${localTime(clearance.until)} to accept or contest.` : clearance.reason}</p>
       <p className="mt-1 text-zinc-600">Send the renter their link. They see this proposal and the photos, and can accept or contest it before anything is charged.</p>
-      <div className="mt-2 flex flex-wrap items-center gap-3">
-        <Link href={path} target="_blank" className="inline-flex items-center gap-1 font-medium text-brand underline underline-offset-2" data-testid="renter-link">
-          Open the renter&rsquo;s page <ExternalLink className="size-3.5" aria-hidden />
-        </Link>
-        <button type="button" onClick={copy} className="text-zinc-600 underline underline-offset-2 hover:text-zinc-900">Copy link</button>
-      </div>
+      {booking.renterToken ? (
+        <div className="mt-2 flex flex-wrap items-center gap-3">
+          <Link href={path} target="_blank" className="inline-flex items-center gap-1 font-medium text-brand underline underline-offset-2" data-testid="renter-link">
+            Open the renter&rsquo;s page <ExternalLink className="size-3.5" aria-hidden />
+          </Link>
+          <button type="button" onClick={copy} className="text-zinc-600 underline underline-offset-2 hover:text-zinc-900">Copy link</button>
+        </div>
+      ) : null}
     </div>
   );
 }

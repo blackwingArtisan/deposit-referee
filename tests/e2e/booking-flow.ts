@@ -95,7 +95,7 @@ export async function toPhotos(page: Page, request: APIRequestContext, opts: { i
   await page.getByTestId("create-booking").click();
   await page.waitForURL(/\/bookings\/bk_/);
   const id = new URL(page.url()).pathname.split("/").pop()!;
-  const booking = async () => (await (await request.get(`/api/bookings/${id}`)).json()) as BookingView;
+  const booking = async () => (await (await page.request.get(`/api/bookings/${id}`)).json()) as BookingView;
 
   // The host has no card form: they wait while the renter places the hold from their own page.
   await expect(page.getByTestId("waiting-headline")).toHaveText(/Waiting for the renter.s hold/);

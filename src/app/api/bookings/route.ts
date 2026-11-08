@@ -2,6 +2,7 @@ import { z } from "zod";
 import { createBooking, listBookings, viewBooking } from "@/lib/deposit/bookings";
 import { MAX_DEPOSIT_CENTS, MIN_DEPOSIT_CENTS } from "@/lib/deposit/rules";
 import { currentVisitor, ensureVisitor } from "@/lib/deposit/visitor";
+import { grantHost } from "@/lib/deposit/host-key";
 import { readJson, route } from "@/lib/http";
 
 const Body = z.object({
@@ -14,5 +15,7 @@ export const GET = route(async (req) => ({ bookings: listBookings(await currentV
 
 export const POST = route(async (req) => {
   const input = await readJson(req, Body);
-  return viewBooking(createBooking({ ...input, visitorId: await ensureVisitor() }));
+  const booking = createBooking({ ...input, visitorId: await ensureVisitor() });
+  await grantHost(booking);
+  return viewBooking(booking);
 });

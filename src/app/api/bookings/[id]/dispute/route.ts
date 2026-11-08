@@ -6,4 +6,4 @@ import { refreshDispute } from "@/lib/deposit/dispute";
 export const POST = bookingRoute<RouteContext<"/api/bookings/[id]/dispute">>(async (_req, ctx) => {
   const { id } = await ctx.params;
   return viewBooking(await refreshDispute(id));
-});
+}, { host: true });

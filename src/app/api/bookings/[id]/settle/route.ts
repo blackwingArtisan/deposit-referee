@@ -13,4 +13,4 @@ export const POST = bookingRoute<RouteContext<"/api/bookings/[id]/settle">>(asyn
   const { id } = await ctx.params;
   const { channel } = getContext();
   return viewBooking(("release" in body ? requestRelease(id, channel) : requestSettlement(id, body.chargeCents, channel)).booking);
-});
+}, { host: true });
