@@ -121,7 +121,7 @@ Checks: `npm run check` (lint, typecheck, unit tests, build), `npm run test:e2e`
 3. At checkout, log in with the **Personal** sandbox account (password on the account's details page).
 4. Optional: add a webhook for `https://<your-deploy>/api/paypal/webhooks` and set `PAYPAL_WEBHOOK_ID`.
 
-Judges don't need a buyer account: the hosted demo has a **Pay with sandbox test card** button.
+Judges don't need a buyer account: choose **Debit or Credit Card** under the PayPal button and enter PayPal's sandbox card `4111 1111 1111 1111` (any future date, any 3 digits) in PayPal's own card form. The hosted demo also has a one-tap **Skip the form** button that pays with the same sandbox card.
 
 ## Deploy
 

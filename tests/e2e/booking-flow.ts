@@ -24,8 +24,59 @@ export async function kitStatus(request: APIRequestContext) {
   return { sandbox: status.paypal.mode === "sandbox", live: status.ai.mode === "live", mode: status.paypal.mode as string };
 }
 
+const callCount = async (page: Page) => Number(/PayPal calls \((\d+)\)/.exec((await page.getByTestId("paypal-calls-toggle").textContent()) ?? "")?.[1] ?? -1);
+
+/**
+ * "PayPal calls (N)" comes from the booking's own record, so a reload and a fresh browser with
+ * none of this tab's state both show every call (and the list behind the count). Leaves the list folded.
+ */
+export async function expectCallsSurviveReload(page: Page, min = 1) {
+  const toggle = page.getByTestId("paypal-calls-toggle");
+  await expect(toggle).toContainText(/PayPal calls \(\d+\)/);
+  if ((await toggle.getAttribute("aria-expanded")) === "true") await toggle.click();
+  const before = await callCount(page);
+  expect(before).toBeGreaterThanOrEqual(min);
+
+  await page.reload();
+  await expect.poll(() => callCount(page), { timeout: 15_000 }).toBeGreaterThanOrEqual(before);
+  await toggle.click();
+  await expect.poll(() => page.getByTestId("paypal-calls").locator("li[data-paypal-call]").count(), { timeout: 15_000 }).toBeGreaterThanOrEqual(before);
+  await toggle.click();
+
+  const fresh = await page.context().browser()!.newContext({ baseURL: new URL(page.url()).origin });
+  const other = await fresh.newPage();
+  await other.goto(page.url());
+  await expect.poll(() => callCount(other), { timeout: 15_000 }).toBeGreaterThanOrEqual(before);
+  await fresh.close();
+  return before;
+}
+
+/**
+ * The renter approves the hold in PayPal's own card form (guest checkout, no PayPal login), with
+ * PayPal's sandbox card. The form is PayPal's iframe on the page, so a recording shows it.
+ */
+export async function payInPayPalCardForm(page: Page, opts: { pause?: number } = {}) {
+  await page.getByTestId("paypal-guest-button").locator("paypal-basic-card-button").click({ timeout: 30_000 });
+  const form = page.frameLocator('iframe[src*="/smart/card-fields"]');
+  await form.getByLabel("Email").fill("renter@example.com", { timeout: 30_000 });
+  await form.getByLabel("Card number").pressSequentially("4111111111111111", { delay: opts.pause ? 40 : 0 });
+  await form.getByLabel("Expires").fill("12/30");
+  await form.getByLabel("CSC").fill("123");
+  await form.getByLabel("First name").fill("Sample");
+  await form.getByLabel("Last name").fill("Renter");
+  await form.getByLabel("Street address").fill("1 Main St");
+  await form.getByLabel("City").fill("Austin");
+  await form.getByLabel("State").selectOption("TX");
+  await form.getByLabel(/ZIP/i).fill("78701");
+  // PayPal asks for a phone number on some sessions (when it offers to save the card), not all.
+  const phone = form.getByLabel(/Mobile|Phone/i).first();
+  if (await phone.isVisible().catch(() => false)) await phone.fill("5125550100");
+  if (opts.pause) await page.waitForTimeout(opts.pause);
+  await form.getByRole("button", { name: /^Pay \$/ }).click();
+}
+
 /** Creates a booking, places the deposit and adds both photos. */
-export async function toPhotos(page: Page, request: APIRequestContext, opts: { item?: string; checkOut?: "demo" | "upload" | "clean" | "faint" } = {}): Promise<Flow> {
+export async function toPhotos(page: Page, request: APIRequestContext, opts: { item?: string; checkOut?: "demo" | "upload" | "clean" | "faint"; checkCalls?: boolean; payWith?: "card-form" | "one-tap" } = {}): Promise<Flow> {
   const { sandbox, live, mode } = await kitStatus(request);
   const checkOut = opts.checkOut ?? "demo";
 
@@ -40,11 +91,18 @@ export async function toPhotos(page: Page, request: APIRequestContext, opts: { i
 
   // The renter places the deposit: money held, not taken.
   if (sandbox) await expect(page.getByTestId("paypal-v6-button")).toBeVisible();
-  await page.getByTestId(sandbox ? "sandbox-test-card" : "simulate-paypal-approval").click();
-  if (!sandbox) await page.getByTestId("mock-approve").click();
+  if (sandbox && opts.payWith === "card-form") await payInPayPalCardForm(page);
+  else {
+    await page.getByTestId(sandbox ? "sandbox-test-card" : "simulate-paypal-approval").click();
+    if (!sandbox) await page.getByTestId("mock-approve").click();
+  }
   const hold = page.getByTestId("hold-panel");
-  await expect(hold).toContainText("$300 on hold. Nothing has been charged.", { timeout: 30_000 });
-  await expect(hold).toContainText("PayPal guarantees the funds for 3 days");
+  await expect(page.getByTestId("hold-headline")).toHaveText("$300 authorized, nothing charged", { timeout: 30_000 });
+  await expect(hold).toContainText("PayPal keeps an authorization for 29 days");
+  await expect(hold).toContainText("guaranteed for the first 3 days");
+  // The id on screen is the one PayPal returned for the hold.
+  await expect(page.getByTestId("hold-authorization-id")).toHaveText((await booking()).authorizationId!);
+  if (opts.checkCalls) await expectCallsSurviveReload(page, 2);
 
   // Both photos, each with its source.
   await page.getByTestId("demo-photo-check_in").click();

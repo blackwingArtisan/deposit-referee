@@ -5,7 +5,7 @@
  * because the wallet button needs a buyer login. AI is mocked unless E2E_AI_MODE=live.
  */
 import { expect, test, type Page } from "@playwright/test";
-import { dollars, expectNoSidewaysScroll, headline, openAsRenter, renterAccepts, renterContests, setCharge, toProposal, type Flow } from "./booking-flow";
+import { dollars, expectCallsSurviveReload, expectNoSidewaysScroll, headline, openAsRenter, renterAccepts, renterContests, setCharge, toProposal, type Flow } from "./booking-flow";
 import { readPayPalObjects, tryCapture } from "./paypal-reread";
 import { priceOf } from "../../src/lib/deposit/prices";
 
@@ -68,6 +68,8 @@ async function approveCharge(page: Page, flow: Flow, chargeCents: number, screen
 
   const done = await flow.booking();
   expect(done.status).toBe("settled");
+  // Order, hold, capture and release are all still listed after a reload, and in a fresh browser.
+  expect(await expectCallsSurviveReload(page, 4)).toBeGreaterThanOrEqual(4);
   expect(done.settlement).toMatchObject({ capturedCents: chargeCents, releasedCents: releaseCents });
 
   if (flow.sandbox) {
@@ -94,7 +96,8 @@ test("the agent proposes and stops, the renter accepts, the host approves", asyn
     expect((await page.request.post(path, { data: {} })).status()).toBe(404);
   }
 
-  const flow = await toProposal(page, request, { item: "Lakeside cabin, weekend of Nov 6" });
+  const flow = await toProposal(page, request, { item: "Lakeside cabin, weekend of Nov 6", checkCalls: true, payWith: "card-form" });
+  await expectCallsSurviveReload(page, 2);
   const reviewed = await flow.booking();
   const { review, proposal } = reviewed;
   expect(review!.mocked).toBe(!flow.live);
@@ -130,6 +133,7 @@ test("the agent proposes and stops, the renter accepts, the host approves", asyn
   await expect(renter.getByTestId("damage-box").first()).toBeVisible();
   await expect(page.getByTestId("renter-status")).toContainText("accepted", { timeout: 10_000 });
   await expect(page.getByTestId("request-approval")).toBeEnabled();
+  await expectCallsSurviveReload(page, 2);
 
   // A real AI total can reach the whole hold, so the host picks a charge that leaves something to release.
   const ai = proposal!.aiCents;
@@ -156,6 +160,21 @@ test("the agent proposes and stops, the renter accepts, the host approves", asyn
   expect(actions).toEqual(expect.arrayContaining(["approval.requested", "approval.approved", "tool.executed"]));
   console.log(`AI: mocked=${review!.mocked} model=${review!.model ?? "none"} vision cost=$${review!.costUsd.toFixed(4)} box=${JSON.stringify(drawn)} proposal=${proposal!.engine} ${proposal!.kind} ${ai}`);
   await renter.context().close();
+});
+
+test("closing PayPal before approving says so, and nothing is held", async ({ page, request }) => {
+  test.skip((await (await request.get("/api/kit/status")).json()).paypal.mode !== "mock", "PayPal's own window is closed by the renter, not the test");
+  await page.goto("/bookings");
+  await page.getByLabel("What's being rented").fill("Harbor loft, weekend of Nov 27");
+  await page.getByLabel("Renter").fill("Test Renter");
+  await page.getByLabel("Deposit").fill("300.00");
+  await page.getByTestId("create-booking").click();
+  await page.waitForURL(/\/bookings\/bk_/);
+  await page.getByTestId("simulate-paypal-approval").click();
+  await page.getByRole("button", { name: "Cancel" }).click();
+  await expect(page.getByText("PayPal was closed before the hold was approved")).toBeVisible();
+  await expect(page.getByText("Nothing is held and nothing was charged.")).toBeVisible();
+  await expect(page.getByText("Waiting for deposit")).toBeVisible();
 });
 
 test("the host changes the AI's number on an uploaded photo", async ({ page, request }) => {
@@ -214,6 +233,7 @@ test("the renter contests before the capture and it comes back to the host", asy
   await expect(page.getByTestId("renter-note")).toContainText("That scratch was there when I arrived.", { timeout: 10_000 });
   expect((await flow.booking()).status).toBe("contested");
   await expectHoldUntouched(flow);
+  await expectCallsSurviveReload(page, 2);
 
   // The charge can't go up now. The host hears the renter out and lowers it.
   await page.getByTestId("line-amount-ai-0").fill("400.00");

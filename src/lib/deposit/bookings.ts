@@ -4,10 +4,14 @@ import { HttpError } from "@/lib/http";
 import { getApprovals } from "@/lib/agent/approvals";
 import { collection } from "@/lib/store/collection";
 import { singleton } from "@/lib/singleton";
+import { recordBookingEvents } from "./booking-events";
 import { holdClock } from "./rules";
 import type { Booking, BookingListItem, BookingView, PendingApproval } from "./types";
 
 const bookings = () => collection<Booking>("bookings");
+
+// Every booking route loads this file, so the booking's PayPal calls are kept from the first one.
+recordBookingEvents();
 
 /** The browser tests book under this name. Their rows stay out of what a visitor sees. */
 export const TEST_RENTER = "Test Renter";
