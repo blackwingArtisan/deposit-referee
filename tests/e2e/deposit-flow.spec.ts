@@ -4,8 +4,9 @@
  * straight from PayPal. In sandbox the deposit is paid with PayPal's test card (DEMO_TEST_CARD=1)
  * because the wallet button needs a buyer login. AI is mocked unless E2E_AI_MODE=live.
  */
+import fs from "node:fs";
 import { expect, test, type Page } from "@playwright/test";
-import { dollars, expectCallsSurviveReload, expectNoSidewaysScroll, headline, openAsRenter, renterAccepts, renterContests, setCharge, toPhotos, toProposal, type Flow } from "./booking-flow";
+import { dollars, expectCallsSurviveReload, expectNoSidewaysScroll, headline, kitStatus, openAsRenter, renterAccepts, renterContests, setCharge, toPhotos, toProposal, type Flow } from "./booking-flow";
 import { readPayPalObjects, tryCapture } from "./paypal-reread";
 import { priceOf } from "../../src/lib/deposit/prices";
 
@@ -30,6 +31,19 @@ async function scrollHeadlineAway(page: Page) {
     window.scrollTo(0, el.getBoundingClientRect().top + window.scrollY - 2);
   });
   await expect(page.getByTestId("ruling-headline")).not.toBeInViewport();
+}
+
+/** The host downloads the evidence pack from the screen: a PDF with every capture id on it. */
+async function downloadEvidence(page: Page, captureIds: string[]) {
+  const [download] = await Promise.all([page.waitForEvent("download"), page.getByTestId("evidence-download").click()]);
+  const { id } = await (await page.request.get(page.url().replace(/\/bookings\//, "/api/bookings/"))).json();
+  expect(download.suggestedFilename()).toBe(`deposit-evidence-${id}.pdf`);
+  const pdf = fs.readFileSync((await download.path())!).toString("latin1");
+  expect(pdf.startsWith("%PDF-1.4")).toBe(true);
+  for (const captureId of captureIds) expect(pdf).toContain(captureId);
+  expect(pdf).toContain("Price table:");
+  expect(pdf).toMatch(/\/Filter \/DCTDecode/);
+  return pdf;
 }
 
 async function approveCharge(page: Page, flow: Flow, chargeCents: number, screenshot: string) {
@@ -152,6 +166,11 @@ test("the agent proposes and stops, the renter accepts, the host approves", asyn
   await page.setViewportSize({ width: 1440, height: 1000 });
 
   const done = await flow.booking();
+  // The evidence pack, ready before any dispute: the photos, price rows, the renter's answer and PayPal's ids.
+  await expect(page.getByTestId("evidence-panel")).toBeVisible();
+  const pdf = await downloadEvidence(page, [done.settlement!.captureId!]);
+  expect(pdf).toContain(done.authorizationId!);
+  expect(pdf).toContain("accepted it");
   await expect(renter.getByTestId("renter-headline")).toContainText("released", { timeout: 10_000 });
   const audit = await (await request.get("/api/audit")).json();
   expect(audit.integrity.ok).toBe(true);
@@ -282,6 +301,9 @@ test("no damage: the agent proposes a full release and the hold is voided", asyn
   const done = await flow.booking();
   expect(done.settlement).toMatchObject({ kind: "release", capturedCents: 0, releasedCents: 30_000, authorizationStatus: "VOIDED" });
   await page.screenshot({ path: `screenshots/deposit-release-${flow.mode}-${flow.live ? "live-ai" : "mock-ai"}.png`, fullPage: true });
+  // Nothing was charged, so there is no evidence pack to offer.
+  await expect(page.getByTestId("evidence-panel")).toHaveCount(0);
+  expect((await request.get(`/api/bookings/${flow.id}/evidence`)).status()).toBe(409);
 
   if (flow.sandbox) {
     const { order, authorization } = await readPayPalObjects(done.orderId!, done.authorizationId!);
@@ -487,4 +509,69 @@ test("renter photos: the renter's own check-in close-up is weighed, and each fin
   await expect(renter.getByTestId("renter-upload-check_in")).toHaveCount(0);
   await renter.screenshot({ path: `screenshots/renter-own-photos-${flow.live ? "live-ai" : "mock-ai"}.png`, fullPage: true });
   await renter.context().close();
+});
+
+test("dispute pack: the renter disputes the charge with PayPal, and the host sends the evidence pack through the approval gate", async ({ page, request }) => {
+  const { mode, live } = await kitStatus(request);
+  test.skip(mode !== "mock", "On the sandbox a buyer opens a dispute from their own PayPal account; the app's handler is the same");
+  test.skip(live, "Keeps a live run cheap");
+  const flow = await toProposal(page, request, { item: "Lakeside cabin, weekend of Dec 4" });
+  const renter = await renterAccepts(page, await flow.booking());
+  await renter.context().close();
+  await expect(page.getByTestId("request-approval")).toBeEnabled({ timeout: 10_000 });
+  await page.getByTestId("request-approval").click();
+  await page.getByTestId("approve-button").click({ timeout: 30_000 });
+  await expect(page.getByTestId("ruling-headline")).toHaveText("$150 captured, $150 released", { timeout: 60_000 });
+  const settled = await flow.booking();
+
+  // The renter opens a dispute from their PayPal account; PayPal sends CUSTOMER.DISPUTE.CREATED.
+  const opened = await request.post(`/api/dev/mock/dispute/${flow.id}`, { data: { message: "The scratch was already there when I arrived." } });
+  expect(opened.status()).toBe(200);
+  const disputed = await flow.booking();
+  expect(disputed.dispute).toMatchObject({ captureId: settled.settlement!.captureId, status: "WAITING_FOR_SELLER_RESPONSE", amountCents: 15_000 });
+
+  await page.reload();
+  const panel = page.getByTestId("dispute-panel");
+  await expect(panel).toContainText("The renter opened a PayPal dispute");
+  await expect(panel).toContainText("Not as described, $150.00 of the charge");
+  await expect(panel).toContainText("PayPal is waiting for your evidence");
+  await expect(page.getByTestId("dispute-id")).toHaveText(disputed.dispute!.disputeId);
+  await expect(page.getByTestId("dispute-message")).toContainText("already there");
+  await downloadEvidence(page, [settled.settlement!.captureId!]);
+
+  // Sending it waits at the Guard's gate; PayPal has nothing until the host approves.
+  await panel.getByTestId("send-evidence").click();
+  const prompt = panel.getByTestId("approval-prompt");
+  await expect(prompt).toContainText(`Send PayPal the evidence pack for case ${disputed.dispute!.disputeId}`, { timeout: 30_000 });
+  await expect(prompt.getByTestId("approve-button")).toBeInViewport();
+  expect((await flow.booking()).dispute!.status).toBe("WAITING_FOR_SELLER_RESPONSE");
+  await prompt.getByTestId("approve-button").click();
+  await expect(page.getByTestId("evidence-sent")).toContainText(`deposit-evidence-${flow.id}.pdf`, { timeout: 15_000 });
+  await expect(panel).toContainText("PayPal is reviewing");
+  const sent = await flow.booking();
+  expect(sent.dispute).toMatchObject({ status: "UNDER_REVIEW", evidence: { fileName: `deposit-evidence-${flow.id}.pdf` } });
+
+  // The submission is on the audit trail with its approval, and on the booking's PayPal calls.
+  const audit = await (await request.get("/api/audit")).json();
+  const actions = (audit.entries as { tool?: string; action: string; runId?: string }[]).filter((e) => e.tool === "submit_dispute_evidence" && e.runId === sent.dispute!.evidence!.runId).map((e) => e.action);
+  expect(actions).toEqual(expect.arrayContaining(["approval.requested", "approval.approved", "tool.executed"]));
+  // The settlement agent read the dispute with the Agent Toolkit's get_dispute, a read with no approval.
+  const reads = (audit.entries as { tool?: string; action: string; actor: string }[]).filter((e) => e.tool === "get_dispute" && e.action === "tool.requested" && e.actor === "settlement-agent");
+  expect(reads.length).toBeGreaterThanOrEqual(2);
+  await page.getByTestId("paypal-calls-toggle").click();
+  await expect(page.getByTestId("timeline-step").filter({ hasText: "submit_dispute_evidence" }).first()).toBeVisible();
+  await expect(page.getByTestId("paypal-calls").getByText(`Review dispute ${sent.dispute!.disputeId}`).first()).toBeVisible();
+  await page.getByTestId("paypal-calls-toggle").click();
+  await expectCallsSurviveReload(page, 5);
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.reload();
+  await expect(panel).toBeVisible();
+  await expectNoSidewaysScroll(page);
+  await panel.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: `screenshots/dispute-pack-phone.png` });
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await panel.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: `screenshots/dispute-pack-${flow.mode}.png`, fullPage: true });
+  console.log(`Dispute pack (${flow.mode}): dispute ${sent.dispute!.disputeId} on capture ${sent.dispute!.captureId} ${sent.dispute!.status}; evidence ${sent.dispute!.evidence!.fileName}`);
 });

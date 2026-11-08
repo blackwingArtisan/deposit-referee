@@ -18,6 +18,7 @@ import type { BookingStatus, BookingView, PhotoSlot } from "@/lib/deposit/types"
 import { mergeEvents, type TimelineEvent, type TimelineStep } from "@/lib/events/types";
 import type { Money } from "@/lib/money";
 import { DamageItems } from "./damage-items";
+import { DisputePanel } from "./dispute-panel";
 import { HostDecision } from "./host-decision";
 import { PhotoFrame, RENTER_SLOTS } from "./photo-frame";
 import { Ruling } from "./ruling";
@@ -138,7 +139,8 @@ export function BookingScreen() {
 
   // The money moves in the background once the host approves, so follow it until it stops.
   // While the host decides, the renter can answer from their own page at any moment.
-  const moving = booking?.status === "awaiting_approval" || (booking?.status === "captured" && !booking.settlement?.error);
+  const evidence = booking?.dispute?.evidence;
+  const moving = booking?.status === "awaiting_approval" || (booking?.status === "captured" && !booking.settlement?.error) || (!!evidence && !evidence.submittedAt && !evidence.error);
   const renterPending = booking?.status === "proposed";
   useEffect(() => {
     if (!moving && !renterPending) return;
@@ -147,7 +149,7 @@ export function BookingScreen() {
   }, [moving, renterPending, refresh]);
 
   // The booking keeps its own PayPal calls, so a reload or another tab shows every one of them.
-  const savedKey = booking ? `${booking.status}:${booking.settlement?.captureId ?? ""}:${booking.settlement?.settledAt ?? ""}` : null;
+  const savedKey = booking ? `${booking.status}:${booking.settlement?.captureId ?? ""}:${booking.settlement?.settledAt ?? ""}:${booking.dispute?.status ?? ""}:${booking.dispute?.readAt ?? ""}` : null;
   useEffect(() => {
     if (!savedKey) return;
     kitFetch<{ events: TimelineEvent[] }>(`/api/bookings/${id}/activity`)
@@ -232,6 +234,7 @@ export function BookingScreen() {
       {status === "settled" ? (
         <div className="space-y-6">
           <Ruling booking={booking} calls={timeline} />
+          <DisputePanel booking={booking} busy={busy} act={run} onDecided={() => void refresh().catch(() => undefined)} />
         </div>
       ) : (
         <div className="mx-auto max-w-5xl space-y-6">
@@ -375,6 +378,7 @@ export function BookingScreen() {
               ) : null}
             </CardBody>
           </Card>
+          <DisputePanel booking={booking} busy={busy} act={run} onDecided={() => void refresh().catch(() => undefined)} />
           {timeline}
         </div>
       )}
