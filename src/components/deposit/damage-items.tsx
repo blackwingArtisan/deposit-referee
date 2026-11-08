@@ -1,5 +1,7 @@
 import { DAMAGE_SIZES, DAMAGE_TYPES, PRICE_TABLE, rowLabel, SIZE_LABEL, TYPE_LABEL, type PriceRow } from "@/lib/deposit/prices";
 import { formatCents, formatExactCents } from "@/lib/deposit/rules";
+import type { DamageBox, FindingPhoto } from "@/lib/deposit/types";
+import { findingPhotoLabel } from "./photo-frame";
 
 /** Where a line's amount came from, so either side can check it against the table. */
 export function PriceSource({ price, className = "" }: { price?: PriceRow; className?: string }) {
@@ -12,7 +14,7 @@ export function PriceSource({ price, className = "" }: { price?: PriceRow; class
 }
 
 /** The itemized lines. The numbers match the red boxes on the photo. */
-export function DamageItems({ lines }: { lines: { description: string; amountCents: number; note?: string; price?: PriceRow }[] }) {
+export function DamageItems({ lines }: { lines: { description: string; amountCents: number; note?: string; price?: PriceRow; box?: DamageBox | null; photo?: FindingPhoto }[] }) {
   if (!lines.length) return <p className="text-sm text-zinc-700">No new damage found.</p>;
   return (
     <ol className="space-y-2.5" data-testid="damage-items">
@@ -22,6 +24,7 @@ export function DamageItems({ lines }: { lines: { description: string; amountCen
           <span className="min-w-0 flex-1 text-zinc-700">
             {line.description}
             <PriceSource price={line.price} className="mt-0.5" />
+            {line.box ? <span className="mt-0.5 block text-xs text-zinc-500" data-testid="finding-photo">Seen in {findingPhotoLabel(line.photo)}</span> : null}
             {line.note ? <span className="mt-0.5 block text-xs text-zinc-500">{line.note}</span> : null}
           </span>
           <span className="shrink-0 font-medium tabular-nums text-zinc-900">{formatExactCents(line.amountCents)}</span>

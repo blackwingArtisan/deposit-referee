@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from "react";
+import Link from "next/link";
 import { useParams } from "next/navigation";
 import { Bot, ChevronDown, CircleAlert, Clock, ImagePlus, Landmark, Lock, ScanSearch, Upload } from "lucide-react";
 import { ApprovalPrompt } from "@/components/agent/approval-prompt";
@@ -18,7 +19,7 @@ import { mergeEvents, type TimelineEvent, type TimelineStep } from "@/lib/events
 import type { Money } from "@/lib/money";
 import { DamageItems } from "./damage-items";
 import { HostDecision } from "./host-decision";
-import { PhotoFrame } from "./photo-frame";
+import { PhotoFrame, RENTER_SLOTS } from "./photo-frame";
 import { Ruling } from "./ruling";
 
 const STATUS_LABEL: Record<BookingStatus, { label: string; tone: "neutral" | "info" | "warning" | "brand" | "success" }> = {
@@ -287,7 +288,21 @@ export function BookingScreen() {
                         </div>
                       );
                     })}
+                    {RENTER_SLOTS.map(({ slot, label }) => {
+                      const photo = booking.renterPhotos?.[slot];
+                      return photo ? (
+                        <div key={`renter-${slot}`} data-testid={`renter-photo-${slot}`}>
+                          <PhotoFrame label={label} photo={photo} on="renter_check_out" items={slot === "check_out" ? review?.items : undefined} looks={slot === "check_out" ? review?.worthALook : undefined} />
+                        </div>
+                      ) : null;
+                    })}
                   </div>
+                  {status === "held" ? (
+                    <p className="mt-3 text-xs text-zinc-500" data-testid="renter-photo-invite">
+                      The renter can add their own check-in or check-out photo on{" "}
+                      <Link href={`/renter/${booking.renterToken}`} target="_blank" className="underline underline-offset-2 hover:text-zinc-800">their page</Link> until you compare. The comparison weighs them with yours.
+                    </p>
+                  ) : null}
                 </Step>
               ) : null}
 
@@ -298,9 +313,10 @@ export function BookingScreen() {
                       {!review.items.length && review.worthALook?.length ? (
                         <p className="text-sm text-zinc-700">Nothing the AI would charge for, but it flagged something worth a look.</p>
                       ) : (
-                        <DamageItems lines={review.items.map((item) => ({ description: item.description, amountCents: item.chargeCents, price: item.price }))} />
+                        <DamageItems lines={review.items.map((item) => ({ description: item.description, amountCents: item.chargeCents, price: item.price, box: item.box, photo: item.photo }))} />
                       )}
                       <p className="text-sm leading-relaxed text-zinc-700">{review.reasoning}</p>
+                      {review.renterPhotos?.length ? <p className="text-sm text-zinc-700" data-testid="review-renter-photos">The comparison weighed the renter&rsquo;s own {review.renterPhotos.map((slot) => (slot === "check_in" ? "check-in" : "check-out")).join(" and ")} photo{review.renterPhotos.length > 1 ? "s" : ""} too.</p> : null}
                       <div className="flex flex-wrap items-center gap-2">
                         <Badge tone={review.mocked ? "warning" : "brand"} data-testid="review-engine">{review.mocked ? (booking.sample ? "Sample result" : "Simulated AI result") : `${review.model} · compare images`}</Badge>
                         {review.mocked ? null : <Badge data-testid="review-cost">Cost ${review.costUsd.toFixed(3)}</Badge>}

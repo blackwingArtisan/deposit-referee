@@ -43,15 +43,23 @@ export const DEMO_TWO_MARKS_CHECK_OUT: BookingPhoto = {
   source: { kind: "demo", ...SOURCE, note: "Reframed from the original panorama. The floor gouge and the stain were added digitally for this demo." },
 };
 
+/** The renter's own close-up at check-in, already showing the stain, for the two-marks demo. */
+export const DEMO_RENTER_CHECK_IN: BookingPhoto = {
+  src: "/demo-photos/renter-check-in-stain.jpg",
+  mediaType: "image/jpeg",
+  source: { kind: "demo", ...SOURCE, note: "A close-up made from the same panorama, standing in for the renter's own photo on arrival. The stain was added digitally for this demo." },
+};
+
 const SIGNATURES: { mediaType: BookingPhoto["mediaType"]; ext: string; matches: (b: Buffer) => boolean }[] = [
   { mediaType: "image/jpeg", ext: "jpg", matches: (b) => b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff },
   { mediaType: "image/png", ext: "png", matches: (b) => b.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) },
   { mediaType: "image/webp", ext: "webp", matches: (b) => b.subarray(0, 4).toString("latin1") === "RIFF" && b.subarray(8, 12).toString("latin1") === "WEBP" },
 ];
 
-const uploadFile = (bookingId: string, slot: PhotoSlot, ext: string) => dataPath("photos", `${bookingId}-${slot}.${ext}`);
+/** `key` is the slot, or renter_<slot> for the renter's own photo. */
+const uploadFile = (bookingId: string, key: string, ext: string) => dataPath("photos", `${bookingId}-${key}.${ext}`);
 
-export function saveUpload(bookingId: string, slot: PhotoSlot, dataUrl: string): BookingPhoto {
+export function saveUpload(bookingId: string, slot: PhotoSlot, dataUrl: string, by: "host" | "renter" = "host"): BookingPhoto {
   let bytes: Buffer;
   try {
     bytes = Buffer.from(parseDataUrl(dataUrl).base64, "base64");
@@ -61,17 +69,18 @@ export function saveUpload(bookingId: string, slot: PhotoSlot, dataUrl: string):
   if (bytes.length > MAX_IMAGE_BYTES) throw new HttpError(413, "That photo is over 5 MB. Choose a smaller one.", "photo_too_large");
   const kind = SIGNATURES.find((s) => s.matches(bytes));
   if (!kind) throw new HttpError(400, "Upload a JPEG, PNG or WebP photo.", "invalid_photo");
-  const file = uploadFile(bookingId, slot, kind.ext);
+  const key = by === "renter" ? `renter_${slot}` : slot;
+  const file = uploadFile(bookingId, key, kind.ext);
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, bytes);
-  return { src: `/api/bookings/${bookingId}/photos/${slot}`, mediaType: kind.mediaType, source: { kind: "upload", addedAt: new Date().toISOString() } };
+  return { src: `/api/bookings/${bookingId}/photos/${key}`, mediaType: kind.mediaType, source: { kind: "upload", addedAt: new Date().toISOString(), ...(by === "renter" ? { by } : {}) } };
 }
 
 function photoFile(photo: BookingPhoto): string {
   if (photo.source.kind === "demo") return path.join(process.cwd(), "public", photo.src);
-  const [, , , bookingId, , slot] = photo.src.split("/");
+  const [, , , bookingId, , key] = photo.src.split("/");
   const ext = SIGNATURES.find((s) => s.mediaType === photo.mediaType)!.ext;
-  return uploadFile(bookingId, slot as PhotoSlot, ext);
+  return uploadFile(bookingId, key, ext);
 }
 
 export function readPhoto(photo: BookingPhoto): Buffer {

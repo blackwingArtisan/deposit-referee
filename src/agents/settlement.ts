@@ -20,7 +20,8 @@ import { getPayPal } from "@/lib/paypal";
 /** What the scripted agent decides: every finding, or a release if there are none. Code prices them. */
 function fairProposal(bookingId: string, review: DamageReview, heldCents: number) {
   if (!review.items.length) return { booking_id: bookingId, decision: "release", items: [], rationale: `${review.reasoning} Nothing is charged, so the whole deposit goes back to the renter.`, totalCents: 0 };
-  const items = review.items.map((_, index) => ({ finding: index, note: "New in the check-out photo and not in the check-in photo." }));
+  const note = review.renterPhotos?.includes("check_in") ? "New in the check-out photo, and not in the host's or the renter's check-in photo." : "New in the check-out photo and not in the check-in photo.";
+  const items = review.items.map((_, index) => ({ finding: index, note }));
   const totalCents = Math.min(heldCents, review.items.reduce((sum, f) => sum + f.chargeCents, 0));
   return { booking_id: bookingId, decision: "charge", items, rationale: review.reasoning, totalCents };
 }

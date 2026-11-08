@@ -29,7 +29,7 @@ function linesFrom(booking: Booking, request: ProposalRequest, heldCents: number
     if (request.items.findIndex((other) => other.finding === finding) !== index) throw new RuleError(`Finding ${finding} is listed twice.`);
     const amount = Math.min(item.chargeCents, room);
     room -= amount;
-    return amount > 0 ? [{ id: `ai-${finding}`, description: item.description, box: item.box, amountCents: amount, aiCents: amount, note, price: item.price }] : [];
+    return amount > 0 ? [{ id: `ai-${finding}`, description: item.description, box: item.box, amountCents: amount, aiCents: amount, note, price: item.price, ...(item.photo ? { photo: item.photo } : {}) }] : [];
   });
 }
 

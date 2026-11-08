@@ -1,15 +1,23 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ChangeEvent } from "react";
 import { useParams } from "next/navigation";
-import { Check, MessageSquareWarning } from "lucide-react";
+import { Check, ImagePlus, MessageSquareWarning, Upload } from "lucide-react";
 import { useKit } from "@/components/kit/kit-provider";
 import { useToast } from "@/components/toast";
 import { Badge, Button, Card, CardBody, EmptyState, Field, SkeletonCard, Textarea } from "@/components/ui";
 import { formatCents, formatExactCents, localTime } from "@/lib/deposit/rules";
-import type { RenterView } from "@/lib/deposit/types";
+import type { PhotoSlot, RenterView } from "@/lib/deposit/types";
 import { DamageItems, PriceTable } from "./damage-items";
-import { PhotoFrame } from "./photo-frame";
+import { PhotoFrame, RENTER_SLOTS } from "./photo-frame";
+
+const readAsDataUrl = (file: File) =>
+  new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(new Error("That file could not be read."));
+    reader.readAsDataURL(file);
+  });
 
 function Headline({ view }: { view: RenterView }) {
   if (view.settled) return <>{formatCents(view.settled.capturedCents)} charged, {formatCents(view.settled.releasedCents)} released</>;
@@ -51,6 +59,21 @@ export function RenterScreen() {
     };
   }, [load]);
 
+  /** No file: the demo close-up at check-in. */
+  async function addPhoto(slot: PhotoSlot, event?: ChangeEvent<HTMLInputElement>) {
+    const file = event?.target.files?.[0];
+    if (event) event.target.value = "";
+    if (event && !file) return;
+    setBusy(`photo:${slot}`);
+    try {
+      setView(await kitFetch<RenterView>(`/api/renter/${token}/photos`, { json: { slot, ...(file ? { dataUrl: await readAsDataUrl(file) } : {}) } }));
+    } catch (e) {
+      toast({ title: "The photo didn't go through", description: (e as Error).message, variant: "error", durationMs: 7000 });
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function respond(decision: "accepted" | "contested") {
     setBusy(decision);
     try {
@@ -72,6 +95,7 @@ export function RenterScreen() {
   const choosing = lines.length > 1;
   const contestedCount = lines.filter((line) => contested[line.id] !== false).length;
   const response = renterState?.response;
+  const hasOwnPhotos = RENTER_SLOTS.some(({ slot }) => view.renterPhotos[slot]);
   return (
     <main className="mx-auto max-w-3xl space-y-6 px-4 py-8 sm:py-12">
       <header>
@@ -109,6 +133,45 @@ export function RenterScreen() {
       ) : (
         <Card><CardBody className="py-6 text-sm text-zinc-600">The host hasn&rsquo;t finished the check-out yet. This page updates by itself.</CardBody></Card>
       )}
+
+      {view.canAddPhotos || hasOwnPhotos ? (
+        <section data-testid="renter-photos">
+          <Card>
+            <CardBody className="space-y-4 py-6">
+              <div>
+                <h2 className="text-sm font-semibold text-zinc-900">Your own photos</h2>
+                <p className="mt-1 text-sm text-zinc-600">
+                  {view.canAddPhotos ? "Took photos when you arrived or left? Add them before the host compares the photos, and the comparison weighs them alongside the host's." : "The comparison weighed these alongside the host's photos."}
+                </p>
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                {RENTER_SLOTS.map(({ slot, label }) => {
+                  const photo = view.renterPhotos[slot];
+                  if (!photo && !view.canAddPhotos) return null;
+                  return (
+                    <div key={slot} className="space-y-2">
+                      {photo ? <PhotoFrame label={label} photo={photo} on="renter_check_out" items={slot === "check_out" ? proposal?.lines : undefined} /> : <p className="text-sm font-medium text-zinc-800">{label}</p>}
+                      {view.canAddPhotos ? (
+                        <div className="flex flex-wrap gap-2">
+                          <label className="inline-flex h-8 cursor-pointer items-center justify-center gap-2 rounded-lg border border-zinc-200 px-3 text-sm font-medium text-zinc-700 hover:bg-zinc-100 focus-within:ring-2 focus-within:ring-brand-300">
+                            <Upload className="size-4" /> {photo ? "Replace photo" : "Upload photo"}
+                            <input type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" disabled={!!busy} onChange={(e) => addPhoto(slot, e)} data-testid={`renter-upload-${slot}`} />
+                          </label>
+                          {slot === "check_in" && !photo ? (
+                            <Button variant="ghost" size="sm" icon={<ImagePlus className="size-4" />} loading={busy === `photo:${slot}`} disabled={!!busy} onClick={() => addPhoto(slot)} data-testid="renter-demo-check_in">
+                              Use demo close-up
+                            </Button>
+                          ) : null}
+                        </div>
+                      ) : null}
+                    </div>
+                  );
+                })}
+              </div>
+            </CardBody>
+          </Card>
+        </section>
+      ) : null}
 
       {response?.decision === "contested" ? (
         <div data-testid="renter-contested" className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950">
