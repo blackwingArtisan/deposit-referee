@@ -11,10 +11,10 @@ import { CheckoutButton } from "@/components/paypal/checkout-button";
 import { PageHeader } from "@/components/shell/app-shell";
 import { useToast } from "@/components/toast";
 import { Badge, Button, Card, CardBody, EmptyState, SkeletonCard } from "@/components/ui";
-import { formatCents, formatExactCents, HONOR_DAYS } from "@/lib/deposit/rules";
-import { bookingSteps } from "@/lib/deposit/timeline";
+import { formatCents, formatExactCents, HOLD_LIMIT_DAYS, HONOR_DAYS } from "@/lib/deposit/rules";
+import { bookingSteps, combineEvents } from "@/lib/deposit/timeline";
 import type { BookingStatus, BookingView, PhotoSlot } from "@/lib/deposit/types";
-import type { TimelineStep } from "@/lib/events/types";
+import { mergeEvents, type TimelineEvent, type TimelineStep } from "@/lib/events/types";
 import type { Money } from "@/lib/money";
 import { DamageItems } from "./damage-items";
 import { HostDecision } from "./host-decision";
@@ -67,16 +67,24 @@ function Notice({ tone, children }: { tone: "error" | "muted"; children: ReactNo
 }
 
 function HoldPanel({ booking }: { booking: BookingView }) {
-  const { hold, authorizedCents } = booking;
+  const { hold, authorizedCents, authorizationId, refreshedAuthorizationId } = booking;
   if (!hold || authorizedCents === undefined) return null;
   if (hold.expired) return <Notice tone="error">This hold ended on {longDate(hold.expiresAt)}, so it can&rsquo;t be charged.</Notice>;
   return (
     <div data-testid="hold-panel" className="flex items-start gap-3 rounded-lg bg-brand-50/70 px-4 py-3">
       <Lock className="mt-0.5 size-4 shrink-0 text-brand" />
-      <div className="text-sm text-zinc-700">
-        <p className="font-medium text-zinc-900">{formatCents(authorizedCents)} on hold. Nothing has been charged.</p>
+      <div className="min-w-0 text-sm text-zinc-700">
+        <p className="font-medium text-zinc-900" data-testid="hold-headline">
+          {formatCents(authorizedCents)} authorized, nothing charged
+        </p>
+        {authorizationId ? (
+          <p className="mt-0.5 break-all">
+            PayPal authorization <span className="font-mono text-xs text-zinc-900" data-testid="hold-authorization-id">{refreshedAuthorizationId ?? authorizationId}</span>
+            {refreshedAuthorizationId ? <span className="text-zinc-500"> (refreshed from {authorizationId})</span> : null}
+          </p>
+        ) : null}
         <p className="mt-0.5" data-testid="hold-length">
-          PayPal guarantees the funds for {HONOR_DAYS} days, until {longDate(hold.guaranteedUntil)}. After that a charge usually still works, until {longDate(hold.expiresAt)}, when the hold ends.
+          PayPal keeps an authorization for {HOLD_LIMIT_DAYS} days, so this one ends on {longDate(hold.expiresAt)}. The funds are guaranteed for the first {HONOR_DAYS} days, until {longDate(hold.guaranteedUntil)}.
         </p>
       </div>
     </div>
@@ -100,7 +108,7 @@ function PayPalCalls({ steps }: { steps: TimelineStep[] }) {
       </button>
       {open ? (
         <CardBody className="border-t border-zinc-100">
-          <ToolCallTimeline steps={steps} autoScroll={false} className="max-h-[560px]" />
+          <ToolCallTimeline steps={steps} showQuiet autoScroll={false} className="max-h-[560px]" />
         </CardBody>
       ) : null}
     </Card>
@@ -111,7 +119,8 @@ export function BookingScreen() {
   const { id } = useParams<{ id: string }>();
   const { kitFetch, status: kit } = useKit();
   const { toast } = useToast();
-  const { steps } = useTimeline();
+  const { events } = useTimeline();
+  const [saved, setSaved] = useState<TimelineEvent[]>([]);
   const [booking, setBooking] = useState<BookingView | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -136,6 +145,15 @@ export function BookingScreen() {
     return () => clearInterval(timer);
   }, [moving, renterPending, refresh]);
 
+  // The booking keeps its own PayPal calls, so a reload or another tab shows every one of them.
+  const savedKey = booking ? `${booking.status}:${booking.settlement?.captureId ?? ""}:${booking.settlement?.settledAt ?? ""}` : null;
+  useEffect(() => {
+    if (!savedKey) return;
+    kitFetch<{ events: TimelineEvent[] }>(`/api/bookings/${id}/activity`)
+      .then((r) => setSaved(r.events))
+      .catch(() => undefined);
+  }, [id, kitFetch, savedKey]);
+
   // On a phone the approval card and the result appear far from the button that asked for them.
   const decision = useRef<HTMLDivElement>(null);
   const approvalId = booking?.approval?.id;
@@ -149,7 +167,7 @@ export function BookingScreen() {
   }, [booking?.status]);
 
   // The approval card sits next to the amount, so the timeline only reports the wait.
-  const timelineSteps = useMemo(() => (booking ? bookingSteps(steps, booking) : []).map((s) => (s.approval?.state === "pending" ? { ...s, approval: undefined } : s)), [steps, booking]);
+  const timelineSteps = useMemo(() => (booking ? bookingSteps(mergeEvents(combineEvents(saved, events)), booking) : []).map((s) => (s.approval?.state === "pending" ? { ...s, approval: undefined } : s)), [saved, events, booking]);
 
   const fail = (title: string, e: unknown) => toast({ title, description: (e as Error).message, variant: "error", durationMs: 7000 });
 
@@ -228,6 +246,7 @@ export function BookingScreen() {
                       onApprove={({ orderId }) => run("hold", "PayPal did not place the hold", () => kitFetch<BookingView>(`${url}/deposit/authorize`, { json: { orderId } }))}
                       amountLabel={formatExactCents(booking.depositCents)}
                       onError={(e) => fail("Checkout failed", e)}
+                      onCancel={() => toast({ title: "PayPal was closed before the hold was approved", description: "Nothing is held and nothing was charged. Press the button again when the renter is ready.", durationMs: 7000 })}
                       disabled={busy === "hold"}
                     />
                   </>

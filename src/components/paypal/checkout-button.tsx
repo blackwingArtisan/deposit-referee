@@ -14,8 +14,8 @@
  *     onApprove={async ({ orderId }) => { await kitFetch(`/api/paypal/orders/${orderId}/capture`, { method: "POST" }) }}
  *   />
  */
-import { useState } from "react";
-import { PayPalOneTimePaymentButton, PayPalProvider } from "@paypal/react-paypal-js/sdk-v6";
+import { useRef, useState } from "react";
+import { PayPalGuestPaymentButton, PayPalOneTimePaymentButton, PayPalProvider } from "@paypal/react-paypal-js/sdk-v6";
 import { CreditCard, FlaskConical, ShieldCheck, Wallet } from "lucide-react";
 import { Button } from "../ui/button";
 import { Modal } from "../ui/modal";
@@ -42,20 +42,38 @@ export function CheckoutButton(props: CheckoutButtonProps) {
   if (!status.paypal.clientId) return <p className="text-sm text-red-600">PAYPAL_CLIENT_ID is missing.</p>;
   return (
     <div className="w-full max-w-sm" data-testid="paypal-v6-button">
-      <PayPalProvider clientId={status.paypal.clientId} environment={SANDBOX} components={["paypal-payments"]} pageType="checkout">
-        <PayPalOneTimePaymentButton
-          presentationMode="auto"
-          disabled={props.disabled}
-          createOrder={props.createOrder}
-          onApprove={async (data) => {
-            await props.onApprove({ orderId: data.orderId, payerId: data.payerId });
-          }}
-          onCancel={() => props.onCancel?.()}
-          onError={(e) => props.onError?.(new Error(e?.message ?? "PayPal checkout error"))}
-        />
-      </PayPalProvider>
-      <p className="mt-2 flex items-center gap-1.5 text-xs text-zinc-500">
-        <ShieldCheck className="size-3.5" /> PayPal sandbox: log in with your sandbox buyer account.
+      {/* PayPal draws its buttons a moment after the page; the space is kept so nothing jumps. */}
+      <div className="min-h-[104px]">
+        <PayPalProvider clientId={status.paypal.clientId} environment={SANDBOX} components={["paypal-payments", "paypal-guest-payments"]} pageType="checkout">
+          <PayPalOneTimePaymentButton
+            presentationMode="auto"
+            disabled={props.disabled}
+            createOrder={props.createOrder}
+            onApprove={async (data) => {
+              await props.onApprove({ orderId: data.orderId, payerId: data.payerId });
+            }}
+            onCancel={() => props.onCancel?.()}
+            onError={(e) => props.onError?.(new Error(e?.message ?? "PayPal checkout error"))}
+          />
+          {/* Card checkout in PayPal's own form, for a renter with no PayPal login. */}
+          <div className="mt-2" data-testid="paypal-guest-button">
+            <PayPalGuestPaymentButton
+              disabled={props.disabled}
+              createOrder={props.createOrder}
+              onApprove={async (data) => {
+                await props.onApprove({ orderId: data.orderId, payerId: data.payerId });
+              }}
+              onCancel={() => props.onCancel?.()}
+              onError={(e) => props.onError?.(new Error(e?.message ?? "PayPal checkout error"))}
+            />
+          </div>
+        </PayPalProvider>
+      </div>
+      <p className="mt-2 flex items-start gap-1.5 text-xs text-zinc-500" data-testid="paypal-card-hint">
+        <ShieldCheck className="mt-px size-3.5 shrink-0" />
+        <span>
+          No PayPal login? Choose <span className="font-medium text-zinc-700">Debit or Credit Card</span> and enter PayPal&rsquo;s sandbox card <span className="font-mono text-zinc-700">4111 1111 1111 1111</span>, any future date and any 3 digits.
+        </span>
       </p>
       {status.paypal.testCard ? <TestCardButton {...props} /> : null}
     </div>
@@ -81,7 +99,7 @@ function TestCardButton({ createOrder, onApprove, onError, disabled }: CheckoutB
 
   return (
     <Button variant="secondary" className="mt-3 w-full" icon={<CreditCard className="size-4" />} loading={busy} disabled={disabled} onClick={pay} data-testid="sandbox-test-card">
-      Pay with sandbox test card
+      Skip the form: pay with the sandbox card in one tap
     </Button>
   );
 }
@@ -95,6 +113,7 @@ function MockCheckoutButton({ createOrder, onApprove, onCancel, onError, amountL
     setBusy("create");
     try {
       const { orderId } = await createOrder();
+      open.current = true;
       setOrderId(orderId);
     } catch (e) {
       onError?.(e as Error);
@@ -103,11 +122,21 @@ function MockCheckoutButton({ createOrder, onApprove, onCancel, onError, amountL
     }
   }
 
+  // The dialog reports its own close as well as the Cancel button, so the renter hears it once.
+  const open = useRef(false);
+  function cancel() {
+    if (!open.current) return;
+    open.current = false;
+    setOrderId(null);
+    onCancel?.();
+  }
+
   async function approve() {
     if (!orderId) return;
     setBusy("approve");
     try {
       await kitFetch(`/api/dev/mock/approve-order/${orderId}`, { json: { email: buyerEmail } });
+      open.current = false;
       setOrderId(null);
       await onApprove({ orderId });
     } catch (e) {
@@ -135,21 +164,12 @@ function MockCheckoutButton({ createOrder, onApprove, onCancel, onError, amountL
       </p>
       <Modal
         open={!!orderId}
-        onClose={() => {
-          setOrderId(null);
-          onCancel?.();
-        }}
+        onClose={cancel}
         title="Simulated PayPal checkout"
         description="In sandbox or live mode this is PayPal's own approval window."
         footer={
           <>
-            <Button
-              variant="secondary"
-              onClick={() => {
-                setOrderId(null);
-                onCancel?.();
-              }}
-            >
+            <Button variant="secondary" onClick={cancel}>
               Cancel
             </Button>
             <Button onClick={approve} loading={busy === "approve"} data-testid="mock-approve">

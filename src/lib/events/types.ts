@@ -39,6 +39,8 @@ export interface TimelineEvent {
   /** Session id of the browser tab that caused it, or "global" (webhooks, background jobs). */
   channel: string;
   runId?: string;
+  /** The app record this event belongs to, when there is one. */
+  bookingId?: string;
   ts: string;
   kind: TimelineKind;
   status: TimelineStatus;
