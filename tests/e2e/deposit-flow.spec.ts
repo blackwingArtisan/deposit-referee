@@ -676,3 +676,29 @@ test("safe input: bad amounts and fake photos get a plain message, photos can be
   await expectNoSidewaysScroll(page);
   await renter.context().close();
 });
+
+test("the wait for the comparison is a live list of steps, with Claude's elapsed seconds", async ({ page, request }) => {
+  test.skip((await kitStatus(request)).live, "Every live flow checks the list in toProposal; this one needs no second AI call");
+  // A slow comparison, like Claude on two large photos.
+  await page.route("**/api/bookings/*/review", async (route) => {
+    await new Promise((r) => setTimeout(r, 4_000));
+    await route.continue();
+  });
+  await toPhotos(page, request, { item: "Lakeside cabin, weekend of Nov 20" });
+  await page.getByTestId("run-review").click();
+  const story = page.getByTestId("wait-story");
+  await expect(story).toBeVisible({ timeout: 2_000 });
+  await expect(page.getByTestId("wait-step-hold")).toHaveAttribute("data-state", "done");
+  await expect(page.getByTestId("wait-step-photos")).toHaveAttribute("data-state", "done");
+  await expect(page.getByTestId("wait-step-compare")).toHaveAttribute("data-state", "active");
+  await expect(page.getByTestId("wait-step-compare")).toContainText("Claude is comparing the photos");
+  await expect(page.getByTestId("wait-step-price")).toHaveAttribute("data-state", "waiting");
+  await expect(page.getByTestId("wait-step-proposal")).toHaveAttribute("data-state", "waiting");
+  // The seconds count up while it waits.
+  await expect(page.getByTestId("wait-note-compare")).toHaveText("· 2 s", { timeout: 4_000 });
+  await expect(page.getByTestId("wait-elapsed")).toHaveText(/^[23] s$/);
+  await expectNoSidewaysScroll(page);
+  await expect(page.getByTestId("ai-proposal")).toBeVisible({ timeout: 90_000 });
+  for (const step of ["hold", "photos", "compare", "price", "proposal"]) await expect(page.getByTestId(`wait-step-${step}`)).toHaveAttribute("data-state", "done");
+  await expect(page.getByTestId("wait-step-compare")).toContainText("Claude compared the photos");
+});

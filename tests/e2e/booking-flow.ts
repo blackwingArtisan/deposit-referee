@@ -141,8 +141,13 @@ export async function toPhotos(page: Page, request: APIRequestContext, opts: { i
 export async function toProposal(page: Page, request: APIRequestContext, opts: Parameters<typeof toPhotos>[2] = {}): Promise<Flow> {
   const flow = await toPhotos(page, request, opts);
   await page.getByTestId("run-review").click();
+  // Never a bare spinner: a live list of steps, with the seconds Claude has been comparing.
+  await expect(page.getByTestId("wait-story").first()).toBeVisible({ timeout: 2_000 });
   await expect(page.getByTestId("review")).toBeVisible({ timeout: 90_000 });
   await expect(page.getByTestId("ai-proposal")).toBeVisible({ timeout: 90_000 });
+  await expect(page.getByTestId("wait-step-proposal")).toHaveAttribute("data-state", "done");
+  await expect(page.getByTestId("wait-step-proposal")).toContainText("Proposal ready");
+  await expect(page.getByTestId("wait-note-compare")).toHaveText(/^· \d+ s$/);
   await expectNoSidewaysScroll(page);
   return flow;
 }
