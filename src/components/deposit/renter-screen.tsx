@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useState, type ChangeEvent } from "react";
 import { useParams } from "next/navigation";
-import { Check, ImagePlus, MessageSquareWarning, Upload } from "lucide-react";
+import { Check, ImagePlus, Lock, MessageSquareWarning, Upload } from "lucide-react";
+import { CheckoutButton } from "@/components/paypal/checkout-button";
 import { useKit } from "@/components/kit/kit-provider";
 import { useToast } from "@/components/toast";
 import { Badge, Button, Card, CardBody, EmptyState, Field, SkeletonCard, Textarea } from "@/components/ui";
@@ -12,7 +13,10 @@ import { DamageItems, PriceTable } from "./damage-items";
 import { photoDataUrl } from "./photo-file";
 import { PhotoFrame, RENTER_SLOTS } from "./photo-frame";
 
+const longDate = (iso: string) => new Date(iso).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+
 function Headline({ view }: { view: RenterView }) {
+  if (view.status === "draft") return <>Place your {formatCents(view.depositCents)} deposit hold</>;
   if (view.settled) return <>{formatCents(view.settled.capturedCents)} charged, {formatCents(view.settled.releasedCents)} released</>;
   if (!view.proposal) return <>Your {formatCents(view.depositCents)} deposit is on hold</>;
   if (view.split?.chargedCents) return <>{formatExactCents(view.split.chargedCents)} charged for what you accepted. {formatExactCents(view.split.contestedCents)} you contested is with the host.</>;
@@ -67,6 +71,18 @@ export function RenterScreen() {
     }
   }
 
+  /** The renter approved in PayPal: the server places the hold and returns this page's new state. */
+  async function holdPlaced(orderId: string) {
+    setBusy("hold");
+    try {
+      setView(await kitFetch<RenterView>(`/api/renter/${token}/deposit/authorize`, { json: { orderId } }));
+    } catch (e) {
+      toast({ title: "PayPal did not place the hold", description: (e as Error).message, variant: "error", durationMs: 7000 });
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function respond(decision: "accepted" | "contested") {
     setBusy(decision);
     try {
@@ -97,7 +113,37 @@ export function RenterScreen() {
         <p className="mt-2 text-[15px] text-zinc-600">Hi {view.renter}. Nothing is charged while this is open. The money is held by PayPal, not taken.</p>
       </header>
 
-      {proposal ? (
+      {view.status === "draft" ? (
+        <Card>
+          <CardBody className="space-y-4 py-6" data-testid="renter-pay">
+            <div>
+              <h2 className="text-sm font-semibold text-zinc-900">Approve the deposit hold</h2>
+              <p className="mt-1 text-sm text-zinc-600">
+                The host asks for a {formatCents(view.depositCents)} damage deposit for {view.item}. You approve a hold with PayPal: the money stays with you, nothing is taken. After the stay you&rsquo;ll see any proposed charge here, with the photos, and can accept or contest each item before anything is charged.
+              </p>
+            </div>
+            <CheckoutButton
+              createOrder={() => kitFetch<{ orderId: string }>(`/api/renter/${token}/deposit`, { method: "POST" })}
+              onApprove={({ orderId }) => holdPlaced(orderId)}
+              amountLabel={formatExactCents(view.depositCents)}
+              onError={(e) => toast({ title: "Checkout failed", description: e.message, variant: "error", durationMs: 7000 })}
+              onCancel={() => toast({ title: "PayPal was closed before the hold was approved", description: "Nothing is held and nothing was charged. Press the button again when you're ready.", durationMs: 7000 })}
+              disabled={busy === "hold"}
+            />
+          </CardBody>
+        </Card>
+      ) : view.hold && !view.settled ? (
+        <div data-testid="renter-hold" className="flex items-start gap-3 rounded-lg bg-brand-50/70 px-4 py-3 text-sm text-zinc-700">
+          <Lock className="mt-0.5 size-4 shrink-0 text-brand" aria-hidden />
+          <div className="min-w-0">
+            <p className="font-medium text-zinc-900" data-testid="renter-hold-headline">{formatCents(view.hold.authorizedCents)} authorized, nothing charged</p>
+            <p className="mt-0.5">PayPal is holding it on your account. Any charge the host proposes shows here first, and you can answer it line by line.</p>
+            {view.hold.expiresAt ? <p className="mt-0.5" data-testid="renter-hold-ends">The hold ends on {longDate(view.hold.expiresAt)} at the latest. Anything not charged goes back to you.</p> : null}
+          </div>
+        </div>
+      ) : null}
+
+      {view.status === "draft" ? null : proposal ? (
         <Card>
           <CardBody className="space-y-5 py-6">
             <div className="grid gap-4 sm:grid-cols-2">

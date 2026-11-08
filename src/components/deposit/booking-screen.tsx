@@ -3,16 +3,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { Bot, ChevronDown, CircleAlert, Clock, ImagePlus, Landmark, Lock, ScanSearch, Upload } from "lucide-react";
+import { Bot, ChevronDown, CircleAlert, Clock, ExternalLink, ImagePlus, Landmark, Lock, ScanSearch, Upload } from "lucide-react";
 import { ApprovalPrompt } from "@/components/agent/approval-prompt";
 import { ToolCallTimeline } from "@/components/agent/tool-call-timeline";
 import { useKit } from "@/components/kit/kit-provider";
 import { useTimeline } from "@/components/kit/use-timeline";
-import { CheckoutButton } from "@/components/paypal/checkout-button";
 import { PageHeader } from "@/components/shell/app-shell";
 import { useToast } from "@/components/toast";
 import { Badge, Button, Card, CardBody, EmptyState, SkeletonCard } from "@/components/ui";
-import { formatCents, formatExactCents, HOLD_LIMIT_DAYS, HONOR_DAYS, photoChangeBlocked } from "@/lib/deposit/rules";
+import { formatCents, HOLD_LIMIT_DAYS, HONOR_DAYS, photoChangeBlocked } from "@/lib/deposit/rules";
 import { bookingSteps, combineEvents } from "@/lib/deposit/timeline";
 import type { BookingStatus, BookingView, PhotoSlot } from "@/lib/deposit/types";
 import { mergeEvents, type TimelineEvent, type TimelineStep } from "@/lib/events/types";
@@ -25,7 +24,7 @@ import { PhotoFrame, RENTER_SLOTS } from "./photo-frame";
 import { Ruling } from "./ruling";
 
 const STATUS_LABEL: Record<BookingStatus, { label: string; tone: "neutral" | "info" | "warning" | "brand" | "success" }> = {
-  draft: { label: "Waiting for deposit", tone: "neutral" },
+  draft: { label: "Waiting for the renter’s hold", tone: "neutral" },
   held: { label: "Deposit on hold", tone: "info" },
   reviewed: { label: "Agent working", tone: "brand" },
   proposed: { label: "Host deciding", tone: "brand" },
@@ -58,6 +57,29 @@ function Notice({ tone, children }: { tone: "error" | "muted"; children: ReactNo
       {tone === "error" ? <CircleAlert className="mt-0.5 size-4 shrink-0" /> : <Clock className="mt-0.5 size-4 shrink-0" />}
       <span>{children}</span>
     </p>
+  );
+}
+
+/** Before the hold: the host sends the renter their link, and the renter places it from their own page. */
+function WaitingForHold({ booking }: { booking: BookingView }) {
+  const { toast } = useToast();
+  const path = `/renter/${booking.renterToken}`;
+  const copy = () =>
+    navigator.clipboard
+      .writeText(`${window.location.origin}${path}`)
+      .then(() => toast({ title: "Renter link copied", variant: "success" }))
+      .catch(() => toast({ title: "Could not copy the link", variant: "error" }));
+  return (
+    <div data-testid="waiting-for-hold" className="rounded-lg border border-zinc-200 px-4 py-3 text-sm">
+      <p className="font-medium text-zinc-900" data-testid="waiting-headline">Waiting for the renter&rsquo;s hold</p>
+      <p className="mt-1 text-zinc-600">Send {booking.renter} their link. They approve a {formatCents(booking.depositCents)} hold with PayPal on their own page, on their phone or computer. The money is held, not taken, and this page updates when PayPal confirms it.</p>
+      <div className="mt-2 flex flex-wrap items-center gap-3">
+        <Link href={path} target="_blank" className="inline-flex items-center gap-1 font-medium text-brand underline underline-offset-2" data-testid="renter-pay-link">
+          Open the renter&rsquo;s page <ExternalLink className="size-3.5" aria-hidden />
+        </Link>
+        <button type="button" onClick={copy} className="text-zinc-600 underline underline-offset-2 hover:text-zinc-900">Copy link</button>
+      </div>
+    </div>
   );
 }
 
@@ -138,7 +160,7 @@ export function BookingScreen() {
   // While the host decides, the renter can answer from their own page at any moment.
   const evidence = booking?.dispute?.evidence;
   const moving = booking?.status === "awaiting_approval" || (booking?.status === "captured" && !booking.settlement?.error) || (!!evidence && !evidence.submittedAt && !evidence.error);
-  const renterPending = booking?.status === "proposed";
+  const renterPending = booking?.status === "proposed" || booking?.status === "draft";
   useEffect(() => {
     if (!moving && !renterPending) return;
     const timer = setInterval(() => void refresh().catch(() => undefined), moving ? 700 : 2000);
@@ -241,17 +263,7 @@ export function BookingScreen() {
             <CardBody className="space-y-8 py-6">
               <Step n={1} title="Renter places the deposit" done={status !== "draft"}>
                 {status === "draft" ? (
-                  <>
-                    <p className="mb-3 text-sm text-zinc-600">The renter approves a {formatCents(booking.depositCents)} hold with PayPal. The money is held, not taken.</p>
-                    <CheckoutButton
-                      createOrder={() => kitFetch<{ orderId: string }>(`${url}/deposit`, { method: "POST" })}
-                      onApprove={({ orderId }) => run("hold", "PayPal did not place the hold", () => kitFetch<BookingView>(`${url}/deposit/authorize`, { json: { orderId } }))}
-                      amountLabel={formatExactCents(booking.depositCents)}
-                      onError={(e) => fail("Checkout failed", e)}
-                      onCancel={() => toast({ title: "PayPal was closed before the hold was approved", description: "Nothing is held and nothing was charged. Press the button again when the renter is ready.", durationMs: 7000 })}
-                      disabled={busy === "hold"}
-                    />
-                  </>
+                  <WaitingForHold booking={booking} />
                 ) : (
                   <HoldPanel booking={booking} />
                 )}

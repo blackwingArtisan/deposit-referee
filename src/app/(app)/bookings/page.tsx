@@ -13,7 +13,7 @@ import type { BookingListItem, BookingView } from "@/lib/deposit/types";
 function outcome(booking: BookingListItem): string {
   const s = booking.settlement;
   if (booking.status === "settled" && s?.capturedCents !== undefined && s.releasedCents !== undefined) return `${formatCents(s.capturedCents)} captured, ${formatCents(s.releasedCents)} released`;
-  if (booking.status === "draft") return "Waiting for deposit";
+  if (booking.status === "draft") return "Waiting for the renter’s hold";
   return `${formatCents(booking.depositCents)} on hold`;
 }
 

@@ -97,13 +97,26 @@ export async function toPhotos(page: Page, request: APIRequestContext, opts: { i
   const id = new URL(page.url()).pathname.split("/").pop()!;
   const booking = async () => (await (await request.get(`/api/bookings/${id}`)).json()) as BookingView;
 
-  // The renter places the deposit: money held, not taken.
-  if (sandbox) await expect(page.getByTestId("paypal-v6-button")).toBeVisible();
-  if (sandbox && opts.payWith === "card-form") await payInPayPalCardForm(page);
+  // The host has no card form: they wait while the renter places the hold from their own page.
+  await expect(page.getByTestId("waiting-headline")).toHaveText(/Waiting for the renter.s hold/);
+  await expect(page.getByTestId("paypal-v6-button")).toHaveCount(0);
+  await expect(page.getByTestId("simulate-paypal-approval")).toHaveCount(0);
+
+  // The renter, on their phone: money held, not taken.
+  const renter = await openAsRenter(page, await booking());
+  await expect(renter.getByTestId("renter-headline")).toHaveText("Place your $300 deposit hold");
+  if (sandbox) await expect(renter.getByTestId("paypal-v6-button")).toBeVisible();
+  if (sandbox && opts.payWith === "card-form") await payInPayPalCardForm(renter);
   else {
-    await page.getByTestId(sandbox ? "sandbox-test-card" : "simulate-paypal-approval").click();
-    if (!sandbox) await page.getByTestId("mock-approve").click();
+    await renter.getByTestId(sandbox ? "sandbox-test-card" : "simulate-paypal-approval").click();
+    if (!sandbox) await renter.getByTestId("mock-approve").click();
   }
+  await expect(renter.getByTestId("renter-hold-headline")).toHaveText("$300 authorized, nothing charged", { timeout: 30_000 });
+  await expect(renter.getByTestId("renter-hold-ends")).toContainText("The hold ends on");
+  await expectNoSidewaysScroll(renter);
+  await renter.context().close();
+
+  // The host's page picks the hold up by itself.
   const hold = page.getByTestId("hold-panel");
   await expect(page.getByTestId("hold-headline")).toHaveText("$300 authorized, nothing charged", { timeout: 30_000 });
   await expect(hold).toContainText("PayPal keeps an authorization for 29 days");

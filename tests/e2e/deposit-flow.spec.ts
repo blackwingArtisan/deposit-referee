@@ -189,11 +189,16 @@ test("closing PayPal before approving says so, and nothing is held", async ({ pa
   await page.getByLabel("Deposit").fill("300.00");
   await page.getByTestId("create-booking").click();
   await page.waitForURL(/\/bookings\/bk_/);
-  await page.getByTestId("simulate-paypal-approval").click();
-  await page.getByRole("button", { name: "Cancel" }).click();
-  await expect(page.getByText("PayPal was closed before the hold was approved")).toBeVisible();
-  await expect(page.getByText("Nothing is held and nothing was charged.")).toBeVisible();
-  await expect(page.getByText("Waiting for deposit")).toBeVisible();
+  const id = new URL(page.url()).pathname.split("/").pop()!;
+  const renter = await openAsRenter(page, await (await request.get(`/api/bookings/${id}`)).json());
+  await renter.getByTestId("simulate-paypal-approval").click();
+  await renter.getByRole("button", { name: "Cancel" }).click();
+  await expect(renter.getByText("PayPal was closed before the hold was approved")).toBeVisible();
+  await expect(renter.getByText("Nothing is held and nothing was charged.")).toBeVisible();
+  await expect(renter.getByTestId("renter-headline")).toHaveText("Place your $300 deposit hold");
+  await renter.context().close();
+  await expect(page.getByTestId("waiting-headline")).toHaveText(/Waiting for the renter.s hold/);
+  expect((await (await request.get(`/api/bookings/${id}`)).json()).status).toBe("draft");
 });
 
 test("the host changes the AI's number on an uploaded photo", async ({ page, request }) => {

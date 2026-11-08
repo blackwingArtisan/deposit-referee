@@ -37,6 +37,7 @@ export function renterView(token: string): RenterView {
     renter: booking.renter,
     depositCents: booking.depositCents,
     status,
+    hold: booking.authorizationId && booking.authorizedCents !== undefined ? { authorizedCents: booking.authorizedCents, expiresAt: booking.holdExpiresAt } : null,
     chargeCents,
     releaseCents: releasedCents(held, Math.min(chargeCents, held)),
     proposal: proposal ? { kind: proposal.kind, lines: proposal.lines, rationale: proposal.rationale, engine: proposal.engine, simulated: proposal.simulated, hostReason: proposal.hostReason } : null,

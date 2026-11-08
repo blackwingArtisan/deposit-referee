@@ -26,7 +26,7 @@ export interface DepositRow {
 }
 
 const STAGE: Record<BookingStatus, string> = {
-  draft: "Waiting for deposit",
+  draft: "Waiting for the renter’s hold",
   held: "On hold",
   reviewed: "On hold",
   proposed: "Host deciding",
