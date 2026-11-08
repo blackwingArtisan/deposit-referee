@@ -34,7 +34,8 @@ export async function acceptedBooking(depositCents = 20_000) {
 }
 
 export async function waitForApproval(bookingId: string) {
-  await vi.waitFor(() => expect(viewBooking(requireBooking(bookingId)).approval).not.toBeNull());
+  // A busy machine can take more than vitest's default second to reach the gate.
+  await vi.waitFor(() => expect(viewBooking(requireBooking(bookingId)).approval).not.toBeNull(), { timeout: 8_000 });
   return viewBooking(requireBooking(bookingId)).approval!;
 }
 

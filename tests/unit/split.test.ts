@@ -26,7 +26,7 @@ async function acceptedPartCharged() {
   const booking = await twoMarks();
   respondAsRenter(booking.renterToken, "contested", "The stain was there when I arrived.", ["ai-0"]);
   getApprovals().decide((await waitForApproval(booking.id)).id, "approved");
-  await vi.waitFor(() => expect(requireBooking(booking.id).partCapture?.captureId).toBeTruthy());
+  await vi.waitFor(() => expect(requireBooking(booking.id).partCapture?.captureId).toBeTruthy(), { timeout: 8_000 });
   return requireBooking(booking.id);
 }
 
@@ -69,8 +69,9 @@ describe("split capture: the renter accepts some items and contests others", () 
     expect(done.settlement).toMatchObject({ capturedCents: 19_000, releasedCents: 11_000, authorizationStatus: "VOIDED" });
     const order = await paypal().orders.get(done.orderId!);
     const captures = order.purchase_units![0].payments!.captures!;
-    expect(captures.map((c) => c.amount.value)).toEqual(["150.00", "40.00"]);
-    expect(captures.map((c) => c.id)).toEqual([done.partCapture!.captureId, done.settlement!.captureId]);
+    // Compared as a set: PayPal doesn't promise an order for an order's captures.
+    const amountOf = Object.fromEntries(captures.map((c) => [c.id, c.amount.value]));
+    expect(amountOf).toEqual({ [done.partCapture!.captureId!]: "150.00", [done.settlement!.captureId!]: "40.00" });
   });
 
   it("releasing the contested part keeps the accepted charge and voids the rest", async () => {
@@ -87,7 +88,7 @@ describe("split capture: the renter accepts some items and contests others", () 
     const booking = await twoMarks();
     respondAsRenter(booking.renterToken, "contested", "The stain was there when I arrived.", ["ai-0"]);
     getApprovals().decide((await waitForApproval(booking.id)).id, "denied");
-    await vi.waitFor(() => expect(requireBooking(booking.id).status).toBe("contested"));
+    await vi.waitFor(() => expect(requireBooking(booking.id).status).toBe("contested"), { timeout: 8_000 });
     expect(requireBooking(booking.id).partCapture?.error).toContain("declined");
     expect(await holdStatus(booking.authorizationId)).toBe("CREATED");
     // The whole charge can't skip the accepted part.

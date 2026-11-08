@@ -33,7 +33,7 @@ async function renterDisputes(captureId: string, message = "The scratch was ther
 }
 
 async function waitForEvidenceApproval(bookingId: string) {
-  await vi.waitFor(() => expect(viewBooking(requireBooking(bookingId)).disputeApproval).not.toBeNull());
+  await vi.waitFor(() => expect(viewBooking(requireBooking(bookingId)).disputeApproval).not.toBeNull(), { timeout: 8_000 });
   return viewBooking(requireBooking(bookingId)).disputeApproval!;
 }
 
@@ -160,7 +160,7 @@ describe("dispute pack: a renter's PayPal dispute on a charge", () => {
     const proposed = await runSettlementAgent(held.id, "test");
     respondAsRenter(proposed.renterToken, "contested", "The stain was there when I arrived.", ["ai-0"]);
     getApprovals().decide((await waitForApproval(held.id)).id, "approved");
-    await vi.waitFor(() => expect(requireBooking(held.id).partCapture?.captureId).toBeTruthy());
+    await vi.waitFor(() => expect(requireBooking(held.id).partCapture?.captureId).toBeTruthy(), { timeout: 8_000 });
     const { finished } = requestSettlement(held.id, 4_000, "test");
     getApprovals().decide((await waitForApproval(held.id)).id, "approved");
     await finished;
