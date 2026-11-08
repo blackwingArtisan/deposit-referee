@@ -18,6 +18,7 @@ export default defineConfig({
       AI_MODE: "mock",
       AGENT_SCRIPT_PAUSE_MS: "0",
     },
+    setupFiles: ["tests/unit/setup.ts"],
     testTimeout: 15_000,
   },
 });
