@@ -36,13 +36,6 @@ export const DEMO_FAINT_CHECK_OUT: BookingPhoto = {
   source: { kind: "demo", ...SOURCE, note: "Reframed from the original panorama. The faint floor scuff was added digitally for this demo." },
 };
 
-/** Two marks: the gouge, plus a stain on the floor, so the renter can accept one and contest the other. */
-export const DEMO_TWO_MARKS_CHECK_OUT: BookingPhoto = {
-  src: "/demo-photos/cabin-check-out-two.jpg",
-  mediaType: "image/jpeg",
-  source: { kind: "demo", ...SOURCE, note: "Reframed from the original panorama. The floor gouge and the stain were added digitally for this demo." },
-};
-
 const SIGNATURES: { mediaType: BookingPhoto["mediaType"]; ext: string; matches: (b: Buffer) => boolean }[] = [
   { mediaType: "image/jpeg", ext: "jpg", matches: (b) => b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff },
   { mediaType: "image/png", ext: "png", matches: (b) => b.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) },

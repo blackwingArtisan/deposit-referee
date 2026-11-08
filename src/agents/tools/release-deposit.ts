@@ -1,6 +1,5 @@
 /**
- * Releases a whole deposit: voids the hold with nothing charged. After a split, it releases what is
- * left of the hold, and the charge for the accepted items stays. Behind the Guard's approval step
+ * Releases a whole deposit: voids the hold with nothing charged. Behind the Guard's approval step
  * like a capture. It has no amount in impact() because no money changes hands, so it doesn't use
  * up the daily cap.
  */
@@ -9,7 +8,6 @@ import { defineTool } from "@/lib/agent/tool";
 import { voidAuthorization } from "@/lib/agent/tools/extensions";
 import { requireBooking } from "@/lib/deposit/bookings";
 import { assertHoldOpen, dollarsToCents, formatExactCents, RuleError } from "@/lib/deposit/rules";
-import { partCapturedCents } from "@/lib/deposit/split-rules";
 import type { PayPalApi } from "@/lib/paypal/api";
 
 export const RELEASE_DEPOSIT = "release_deposit";
@@ -20,10 +18,8 @@ async function readOpenHold(paypal: PayPalApi, bookingId: string) {
   if (booking.status !== "awaiting_approval" || booking.settlement?.kind !== "release") throw new RuleError("The host hasn't asked for a release, so nothing was voided.");
   const auth = await paypal.payments.getAuthorization(booking.authorizationId);
   assertHoldOpen(auth.expiration_time);
-  const partCents = partCapturedCents(booking);
-  const open = auth.status === "CREATED" || (partCents > 0 && auth.status === "PARTIALLY_CAPTURED");
-  if (!open) throw new RuleError(`This hold is ${auth.status}, so it can't be released whole.`);
-  return { authorizationId: booking.authorizationId, authorizedCents: dollarsToCents(auth.amount.value), partCents };
+  if (auth.status !== "CREATED") throw new RuleError(`This hold is ${auth.status}, so it can't be released whole.`);
+  return { authorizationId: booking.authorizationId, authorizedCents: dollarsToCents(auth.amount.value) };
 }
 
 export const releaseDeposit = defineTool({
@@ -33,8 +29,7 @@ export const releaseDeposit = defineTool({
   schema: z.object({ booking_id: z.string().min(3), idempotency_key: z.string().optional() }),
   title: () => "Release the whole deposit",
   impact: async (i, ctx) => {
-    const { authorizedCents, partCents } = await readOpenHold(ctx.paypal, i.booking_id);
-    if (partCents) return { summary: `Release the remaining ${formatExactCents(authorizedCents - partCents)} of the hold to the renter. Nothing more is charged (${formatExactCents(partCents)} was already charged for the items they accepted).` };
+    const { authorizedCents } = await readOpenHold(ctx.paypal, i.booking_id);
     return { summary: `Release the whole ${formatExactCents(authorizedCents)} hold to the renter. Nothing is charged.` };
   },
   execute: async (i, ctx) => {

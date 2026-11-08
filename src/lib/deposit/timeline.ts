@@ -14,8 +14,8 @@ export function combineEvents(saved: TimelineEvent[], live: TimelineEvent[]): Ti
   for (const e of [...saved, ...live]) byId.set(e.id, e);
   return [...byId.values()].sort((a, b) => a.ts.localeCompare(b.ts));
 }
-export function bookingSteps(steps: TimelineStep[], booking: Pick<Booking, "createdAt"> & Partial<Pick<Booking, "id" | "orderId" | "authorizationId" | "refreshedAuthorizationId" | "settlement" | "partCapture">>): TimelineStep[] {
-  const ids = [booking.orderId, booking.authorizationId, booking.refreshedAuthorizationId, booking.settlement?.captureId, booking.partCapture?.captureId].filter((id): id is string => !!id);
+export function bookingSteps(steps: TimelineStep[], booking: Pick<Booking, "createdAt"> & Partial<Pick<Booking, "id" | "orderId" | "authorizationId" | "refreshedAuthorizationId" | "settlement">>): TimelineStep[] {
+  const ids = [booking.orderId, booking.authorizationId, booking.refreshedAuthorizationId, booking.settlement?.captureId].filter((id): id is string => !!id);
   return steps.filter((step) => {
     if (step.bookingId) return step.bookingId === booking.id;
     if (step.channel !== "global") return step.startedAt >= booking.createdAt;

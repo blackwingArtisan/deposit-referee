@@ -46,8 +46,7 @@ export function decisionStatus(booking: Booking): "proposed" | "contested" | "re
 }
 
 function pendingApproval(booking: Booking): PendingApproval | null {
-  const part = booking.partCapture && !booking.partCapture.captureId ? booking.partCapture : undefined;
-  const runId = part && booking.status === "awaiting_approval" ? part.runId : booking.settlement?.runId;
+  const runId = booking.settlement?.runId;
   const pending = runId ? getApprovals().list({ runId, state: "pending" })[0] : undefined;
   return pending ? { id: pending.id, summary: pending.summary, reason: pending.reason, amountValue: pending.amount?.value } : null;
 }
@@ -56,11 +55,7 @@ export function viewBooking(input: Booking): BookingView {
   let booking = input;
   // The server restarted while the host was deciding: no money moved, so go back a step.
   if (booking.status === "awaiting_approval" && !activeSettlements().has(booking.id)) {
-    const error = "The approval was lost when the server restarted. Request it again.";
-    booking =
-      booking.partCapture && !booking.partCapture.captureId
-        ? saveBooking({ ...booking, status: decisionStatus(booking), partCapture: { ...booking.partCapture, error } })
-        : saveBooking({ ...booking, status: decisionStatus(booking), settlement: { ...booking.settlement!, error } });
+    booking = saveBooking({ ...booking, status: decisionStatus(booking), settlement: { ...booking.settlement!, error: "The approval was lost when the server restarted. Request it again." } });
   }
   return { ...booking, hold: booking.holdExpiresAt ? holdClock(booking.holdExpiresAt) : null, approval: pendingApproval(booking) };
 }

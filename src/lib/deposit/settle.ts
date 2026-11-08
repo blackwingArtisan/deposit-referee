@@ -16,10 +16,9 @@ import { HttpError } from "@/lib/http";
 import { getPayPal } from "@/lib/paypal";
 import { activeSettlements, decisionStatus, requireBooking, saveBooking } from "./bookings";
 import { assertCaptureLimits, assertHoldOpen, dollarsToCents, formatCents, itemizedCents, releasedCents, renterClearance, RuleError } from "./rules";
-import { heldCents, partCapturedCents, splitOf } from "./split-rules";
 import type { Booking, Settlement } from "./types";
 
-export function failureReason(result: ToolCallResult): string {
+function failureReason(result: ToolCallResult): string {
   const outcome = result.outcome;
   if (outcome?.status === "denied" && outcome.code === "APPROVAL_DENIED") {
     return outcome.approval?.decidedBy === "renter" ? "The renter contested before the capture, so it was stopped. No money moved." : "You declined this. No money moved, and the booking stays open for a new decision.";
@@ -50,9 +49,7 @@ async function releaseWhole(id: string, authorizationId: string, ctx: ToolCtx) {
   }
   const auth = await paypal.payments.getAuthorization(authorizationId);
   if (auth.status !== "VOIDED") throw new RuleError(`PayPal shows this hold as ${auth.status}, not voided.`);
-  // Anything already charged for accepted items stays charged; the rest of the hold goes back.
-  const part = partCapturedCents(requireBooking(id));
-  updateSettlement(id, "settled", { capturedCents: part, releasedCents: dollarsToCents(auth.amount.value) - part, authorizationStatus: auth.status, settledAt: new Date().toISOString(), error: undefined });
+  updateSettlement(id, "settled", { capturedCents: 0, releasedCents: dollarsToCents(auth.amount.value), authorizationStatus: auth.status, settledAt: new Date().toISOString(), error: undefined });
 }
 
 async function settle(id: string, channel: string) {
@@ -74,7 +71,7 @@ async function settle(id: string, channel: string) {
   }
 
   const paypal = getPayPal();
-  if (releasedCents(heldCents(start), capturedCents!) > 0 && (await paypal.payments.getAuthorization(authorization_id)).status !== "VOIDED") {
+  if (releasedCents(authorizedCents, capturedCents!) > 0 && (await paypal.payments.getAuthorization(authorization_id)).status !== "VOIDED") {
     const result = await runTool(voidAuthorization, { authorization_id, reason: "Deposit settled: releasing what was not charged" }, ctx);
     if (result.isError) {
       updateSettlement(id, "captured", { error: `The charge went through, but the rest of the hold was not released: ${failureReason(result)}` });
@@ -88,12 +85,10 @@ async function settle(id: string, channel: string) {
   const auth = await paypal.payments.getAuthorization(authorization_id);
   const confirmedCents = dollarsToCents(capture.amount.value);
   if (confirmedCents !== settlement.requestedCents) throw new RuleError(`PayPal shows ${formatCents(confirmedCents)} captured, not the approved ${formatCents(settlement.requestedCents)}.`);
-  // With a split, the accepted items were charged earlier from the same hold, and count here too.
-  const part = partCapturedCents(start);
   updateSettlement(id, "settled", {
     captureStatus: capture.status,
-    capturedCents: part + confirmedCents,
-    releasedCents: releasedCents(dollarsToCents(auth.amount.value) - part, confirmedCents),
+    capturedCents: confirmedCents,
+    releasedCents: releasedCents(dollarsToCents(auth.amount.value), confirmedCents),
     authorizationStatus: auth.status,
     settledAt: new Date().toISOString(),
     error: undefined,
@@ -139,10 +134,9 @@ function send(booking: Booking, settlement: Omit<Settlement, "runId">, channel: 
 /** Sends the host's exact charge to the approval gate. Resolves when the settlement has finished. */
 export function requestSettlement(id: string, chargeCents: number, channel: string): { booking: Booking; finished: Promise<void> } {
   const booking = requireDecidable(id);
-  if (splitOf(booking) && !booking.partCapture?.captureId) throw new HttpError(409, "The renter accepted part of this charge. Charge the accepted items first, or release the whole deposit.", "conflict");
   asHttp(() => {
     assertHoldOpen(booking.holdExpiresAt);
-    assertCaptureLimits(chargeCents, itemizedCents(booking.proposal?.lines ?? []), heldCents(booking));
+    assertCaptureLimits(chargeCents, itemizedCents(booking.proposal?.lines ?? []), booking.authorizedCents);
     const clearance = renterClearance(booking.renterState, chargeCents);
     if (!clearance.cleared) throw new RuleError(clearance.reason);
   });

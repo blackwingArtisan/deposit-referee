@@ -5,7 +5,6 @@
 import { HttpError } from "@/lib/http";
 import { decisionStatus, requireBooking, saveBooking } from "./bookings";
 import { assertCaptureLimits, itemizedCents, renterDeadline, RuleError } from "./rules";
-import { heldCents, splitOf } from "./split-rules";
 import type { Booking, ChargeLine, Proposal } from "./types";
 
 export interface ProposalRequest {
@@ -91,16 +90,14 @@ export function saveHostLines(id: string, update: HostLines): Booking {
   const { proposal, authorizedCents } = booking;
   if (!proposal || authorizedCents === undefined || (booking.status !== "proposed" && booking.status !== "contested")) throw new HttpError(409, `A booking in status ${booking.status} can't be changed.`, "conflict");
 
-  if (splitOf(booking) && !booking.partCapture?.captureId) throw new HttpError(409, "The renter accepted part of this charge. Charge the accepted items first.", "conflict");
-  const held = heldCents(booking);
   const amounts = new Map(update.lines.map((line) => [line.id, line.amountCents]));
   const lines: ChargeLine[] = proposal.lines.map((line) => ({ ...line, amountCents: amounts.get(line.id) ?? line.amountCents }));
   if (update.add) lines.push({ id: `host-${lines.length}`, description: update.add.description, box: null, amountCents: update.add.amountCents });
-  if (update.addLook !== undefined) lines.push(lookLine(booking, lines, held, update.addLook));
+  if (update.addLook !== undefined) lines.push(lookLine(booking, lines, authorizedCents, update.addLook));
 
   const before = itemizedCents(proposal.lines);
   const total = itemizedCents(lines);
-  if (total > held) throw new HttpError(422, "Those lines add up to more than the hold.", "rule");
+  if (total > authorizedCents) throw new HttpError(422, "Those lines add up to more than the hold.", "rule");
   const raised = total > before;
   if (raised && decisionStatus(booking) === "contested") throw new HttpError(422, "The renter contested this charge, so it can only go down now.", "rule");
 

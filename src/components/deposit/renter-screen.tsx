@@ -14,7 +14,6 @@ import { PhotoFrame } from "./photo-frame";
 function Headline({ view }: { view: RenterView }) {
   if (view.settled) return <>{formatCents(view.settled.capturedCents)} charged, {formatCents(view.settled.releasedCents)} released</>;
   if (!view.proposal) return <>Your {formatCents(view.depositCents)} deposit is on hold</>;
-  if (view.split?.chargedCents) return <>{formatExactCents(view.split.chargedCents)} charged for what you accepted. {formatExactCents(view.split.contestedCents)} you contested is with the host.</>;
   if (view.chargeCents === 0) return <>No charge proposed. Your {formatCents(view.depositCents)} deposit is going back.</>;
   return <>Proposed charge: {formatExactCents(view.chargeCents)}. {formatExactCents(view.releaseCents)} goes back to you.</>;
 }
@@ -27,8 +26,6 @@ export function RenterScreen() {
   const [view, setView] = useState<RenterView | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [note, setNote] = useState("");
-  // With more than one item, the renter can accept some and contest the rest. Ticked = contested.
-  const [contested, setContested] = useState<Record<string, boolean>>({});
   const [busy, setBusy] = useState<string | null>(null);
 
   const load = useCallback(() => kitFetch<RenterView>(`/api/renter/${token}`), [kitFetch, token]);
@@ -54,9 +51,7 @@ export function RenterScreen() {
   async function respond(decision: "accepted" | "contested") {
     setBusy(decision);
     try {
-      const lines = view?.proposal?.lines ?? [];
-      const accepted = lines.length > 1 ? lines.filter((line) => contested[line.id] === false).map((line) => line.id) : [];
-      setView(await kitFetch<RenterView>(`/api/renter/${token}/respond`, { json: { decision, note: decision === "contested" ? note : undefined, ...(decision === "contested" && accepted.length ? { accepted_line_ids: accepted } : {}) } }));
+      setView(await kitFetch<RenterView>(`/api/renter/${token}/respond`, { json: { decision, note: decision === "contested" ? note : undefined } }));
     } catch (e) {
       toast({ title: "That didn't go through", description: (e as Error).message, variant: "error", durationMs: 7000 });
     } finally {
@@ -67,10 +62,7 @@ export function RenterScreen() {
   if (loadError) return <EmptyState title="Link not found" description={loadError} />;
   if (!view) return <SkeletonCard />;
 
-  const { proposal, renterState, photos, split } = view;
-  const lines = proposal?.lines ?? [];
-  const choosing = lines.length > 1;
-  const contestedCount = lines.filter((line) => contested[line.id] !== false).length;
+  const { proposal, renterState, photos } = view;
   const response = renterState?.response;
   return (
     <main className="mx-auto max-w-3xl space-y-6 px-4 py-8 sm:py-12">
@@ -112,10 +104,9 @@ export function RenterScreen() {
 
       {response?.decision === "contested" ? (
         <div data-testid="renter-contested" className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950">
-          <p className="font-semibold">{split ? `You accepted ${formatExactCents(split.acceptedCents)} and contested ${formatExactCents(split.contestedCents)}. The contested part is stopped until the host decides.` : "Your note went to the host. The charge is stopped until they decide."}</p>
+          <p className="font-semibold">Your note went to the host. The charge is stopped until they decide.</p>
           <p className="mt-1">&ldquo;{response.note}&rdquo;</p>
-          {split?.chargedCents ? <p className="mt-1" data-testid="renter-part-charged">{formatExactCents(split.chargedCents)} for the items you accepted has been charged.</p> : null}
-          <p className="mt-2 text-xs">From now on the host can only keep {split ? "the contested part" : "this charge"} at {formatExactCents(split ? split.contestedCents : response.amountCents)} or lower it, never raise it. This is a note inside this app, not a PayPal dispute. If you&rsquo;re charged and still disagree, you can open a dispute with PayPal.</p>
+          <p className="mt-2 text-xs">From now on the host can only keep this charge at {formatExactCents(response.amountCents)} or lower it, never raise it. This is a note inside this app, not a PayPal dispute. If you&rsquo;re charged and still disagree, you can open a dispute with PayPal.</p>
         </div>
       ) : null}
 
@@ -125,24 +116,12 @@ export function RenterScreen() {
         <Card>
           <CardBody className="space-y-4 py-6">
             {renterState && !response ? <p className="text-sm text-zinc-700">You have until {localTime(renterState.deadline)} to answer. If you don&rsquo;t, the host may go ahead.</p> : null}
-            {choosing ? (
-              <fieldset className="space-y-2" data-testid="contest-lines">
-                <legend className="mb-1 text-sm font-medium text-zinc-900">Which items do you disagree with?</legend>
-                {lines.map((line) => (
-                  <label key={line.id} className="flex items-start gap-2 text-sm text-zinc-700">
-                    <input type="checkbox" className="mt-0.5 size-4 accent-brand" checked={contested[line.id] !== false} onChange={(e) => setContested((all) => ({ ...all, [line.id]: e.target.checked }))} data-testid={`contest-line-${line.id}`} />
-                    <span>{line.description} <span className="tabular-nums text-zinc-500">({formatExactCents(line.amountCents)})</span></span>
-                  </label>
-                ))}
-                <p className="text-xs text-zinc-500">Untick an item to accept it. Accepted items can be charged right away; the rest waits for the host.</p>
-              </fieldset>
-            ) : null}
             <Field label="Disagree? Tell the host why" htmlFor="contest-note" hint="Contesting stops the charge and sends this note to the host. This isn't a PayPal dispute.">
               <Textarea id="contest-note" maxLength={500} value={note} onChange={(e) => setNote(e.target.value)} data-testid="contest-note" />
             </Field>
             <div className="flex flex-wrap gap-2">
-              <Button variant="secondary" icon={<MessageSquareWarning className="size-4" />} loading={busy === "contested"} disabled={!!busy || !note.trim() || (choosing && contestedCount === 0)} onClick={() => respond("contested")} data-testid="contest">
-                {choosing && contestedCount < lines.length ? `Contest ${contestedCount} of ${lines.length} items` : "Contest this charge"}
+              <Button variant="secondary" icon={<MessageSquareWarning className="size-4" />} loading={busy === "contested"} disabled={!!busy || !note.trim()} onClick={() => respond("contested")} data-testid="contest">
+                Contest this charge
               </Button>
               {view.canAccept ? (
                 <Button icon={<Check className="size-4" />} loading={busy === "accepted"} disabled={!!busy} onClick={() => respond("accepted")} data-testid="accept">

@@ -45,7 +45,7 @@ export const appConfig = {
     approvalThreshold: "50.00",
     maxPerAction: "500.00",
     maxPerDay: "2000.00",
-    requireApprovalFor: ["capture_deposit", "capture_accepted_items", "release_deposit", "accept_dispute_claim"],
+    requireApprovalFor: ["capture_deposit", "release_deposit", "accept_dispute_claim"],
   } satisfies Partial<GuardPolicy>,
 };
 

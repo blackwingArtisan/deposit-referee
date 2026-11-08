@@ -10,7 +10,6 @@ import { z } from "zod";
 import { defineTool } from "@/lib/agent/tool";
 import { captureAuthorization } from "@/lib/agent/tools/extensions";
 import { requireBooking, saveBooking } from "@/lib/deposit/bookings";
-import { heldCents, partCapturedCents } from "@/lib/deposit/split-rules";
 import { assertCaptureLimits, assertHoldOpen, centsToDollars, dollarsToCents, formatExactCents, HONOR_DAYS, itemizedCents, releasedCents, renterClearance, RuleError } from "@/lib/deposit/rules";
 import { timeline } from "@/lib/events/bus";
 import { moneyFromMinor } from "@/lib/money";
@@ -26,9 +25,7 @@ async function readCapturableHold(paypal: PayPalApi, bookingId: string, chargeCe
   const { authorizationId, authorizedCents: recordedCents, proposal, settlement, renterState } = booking;
   if (!authorizationId || recordedCents === undefined) throw new RuleError("This booking has no hold.");
   const itemized = itemizedCents(proposal?.lines ?? []);
-  // After the accepted items were charged on their own, only the contested part is left to charge.
-  const part = partCapturedCents(booking);
-  assertCaptureLimits(chargeCents, itemized, heldCents(booking));
+  assertCaptureLimits(chargeCents, itemized, recordedCents);
 
   if (booking.status !== "awaiting_approval" || settlement?.requestedCents !== chargeCents) throw new RuleError("The host hasn't asked for this charge, so it can't be captured.");
   if (renterState?.response?.decision === "contested" && !settlement.contestHeard) throw new RuleError("The renter contested this charge. It's back with the host.");
@@ -37,11 +34,10 @@ async function readCapturableHold(paypal: PayPalApi, bookingId: string, chargeCe
 
   const auth = await paypal.payments.getAuthorization(authorizationId);
   assertHoldOpen(auth.expiration_time);
-  const open = part ? ["CREATED", "PARTIALLY_CAPTURED"] : ["CREATED"];
-  if (!open.includes(auth.status)) throw new RuleError(`This hold is ${auth.status}, so no new charge can be taken from it.`);
-  const authorizedCents = dollarsToCents(auth.amount.value) - part;
+  if (auth.status !== "CREATED") throw new RuleError(`This hold is ${auth.status}, so no new charge can be taken from it.`);
+  const authorizedCents = dollarsToCents(auth.amount.value);
   assertCaptureLimits(chargeCents, itemized, authorizedCents);
-  return { authorizationId, authorizedCents, auth, part, itemized };
+  return { authorizationId, authorizedCents, auth };
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -54,8 +50,6 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 export async function holdToCapture(paypal: PayPalApi, bookingId: string, auth: Authorization, now = Date.now()): Promise<string> {
   const booking = requireBooking(bookingId);
   if (booking.refreshedAuthorizationId) return booking.refreshedAuthorizationId;
-  // Part of this hold is already captured, so it can't be reauthorized: charge the rest from it.
-  if (booking.partCapture?.captureId) return auth.id;
   if (now - Date.parse(auth.create_time) <= HONOR_DAYS * DAY_MS) return auth.id;
   const amount = formatExactCents(dollarsToCents(auth.amount.value));
   try {
@@ -81,14 +75,11 @@ export const captureDeposit = defineTool({
   }),
   title: (i) => `Charge exactly ${formatExactCents(i.amount_cents)}`,
   impact: async (i, ctx) => {
-    const { authorizedCents, part, itemized } = await readCapturableHold(ctx.paypal, i.booking_id, i.amount_cents);
-    const contested = requireBooking(i.booking_id).partCapture?.contestedCents;
+    const { authorizedCents } = await readCapturableHold(ctx.paypal, i.booking_id, i.amount_cents);
     const released = releasedCents(authorizedCents, i.amount_cents);
     return {
       amount: moneyFromMinor(i.amount_cents),
-      summary: part
-        ? `Charge exactly ${formatExactCents(i.amount_cents)} of the contested ${formatExactCents(contested ?? itemized)} and release ${formatExactCents(released)} to the renter (${formatExactCents(part)} was already charged for the items they accepted)`
-        : `Charge exactly ${formatExactCents(i.amount_cents)} from the ${formatExactCents(authorizedCents)} hold and release ${formatExactCents(released)} to the renter`,
+      summary: `Charge exactly ${formatExactCents(i.amount_cents)} from the ${formatExactCents(authorizedCents)} hold and release ${formatExactCents(released)} to the renter`,
     };
   },
   execute: async (i, ctx) => {

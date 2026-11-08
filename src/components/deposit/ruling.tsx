@@ -45,10 +45,8 @@ export function Ruling({ booking, calls }: { booking: BookingView; calls?: React
   const released = settlement?.releasedCents;
   if (captured === undefined || released === undefined || authorizedCents === undefined) return null;
   const capturedShare = (captured / authorizedCents) * 100;
-  // A split: the accepted items were charged first, on their own, from the same hold.
-  const part = booking.partCapture?.captureId ? booking.partCapture : undefined;
-  const wholeRelease = settlement?.kind === "release" && !part;
-  const lines = [...(part?.lines ?? []), ...(settlement?.kind === "release" ? [] : (proposal?.lines.filter((line) => line.amountCents > 0) ?? []))];
+  const wholeRelease = settlement?.kind === "release";
+  const lines = proposal?.lines.filter((line) => line.amountCents > 0) ?? [];
 
   return (
     <section data-testid="ruling" className="rounded-2xl border border-zinc-200/80 bg-white p-5 sm:p-8">
@@ -59,7 +57,7 @@ export function Ruling({ booking, calls }: { booking: BookingView; calls?: React
       </h2>
       <p className="mt-3 text-[15px] text-zinc-600">
         From {booking.renter}&rsquo;s {formatCents(authorizedCents)} deposit on {booking.item}.{" "}
-        {wholeRelease ? `Nothing was charged. PayPal confirms the hold is ${settlement?.authorizationStatus?.toLowerCase()}.` : part && settlement?.kind === "release" ? `${formatCents(part.capturedCents ?? 0)} was charged for the items the renter accepted, read back from PayPal, and the rest of the hold went back. The hold is ${settlement?.authorizationStatus?.toLowerCase()}.` : part ? `Two charges from one hold, both read back from PayPal: ${formatCents(part.capturedCents ?? 0)} for the items the renter accepted, then ${formatCents(captured - (part.capturedCents ?? 0))} for the contested part. The hold is ${settlement?.authorizationStatus?.toLowerCase()}.` : `PayPal confirms the charge is ${settlement?.captureStatus?.toLowerCase()} and the hold is ${settlement?.authorizationStatus?.toLowerCase()}.`}
+        {wholeRelease ? `Nothing was charged. PayPal confirms the hold is ${settlement?.authorizationStatus?.toLowerCase()}.` : `PayPal confirms the charge is ${settlement?.captureStatus?.toLowerCase()} and the hold is ${settlement?.authorizationStatus?.toLowerCase()}.`}
       </p>
 
       <div className="mt-5 flex h-3 overflow-hidden rounded-full" role="img" aria-label={`${formatCents(captured)} of ${formatCents(authorizedCents)} captured`}>
@@ -99,8 +97,7 @@ export function Ruling({ booking, calls }: { booking: BookingView; calls?: React
       <dl className="mt-6 grid gap-x-6 border-t border-zinc-100 pt-4 sm:grid-cols-3">
         <Reference label="PayPal order" value={booking.orderId} />
         <Reference label="PayPal authorization" value={booking.authorizationId} />
-        {part ? <Reference label="PayPal capture, accepted items" value={part.captureId} /> : null}
-        {wholeRelease || (part && settlement?.kind === "release") ? null : <Reference label={part ? "PayPal capture, contested items" : "PayPal capture"} value={settlement?.captureId} />}
+        {wholeRelease ? null : <Reference label="PayPal capture" value={settlement?.captureId} />}
       </dl>
     </section>
   );
