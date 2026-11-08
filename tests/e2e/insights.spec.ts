@@ -182,3 +182,21 @@ test("a first visit lands on the researched problem, labelled samples with their
   await expect(page.getByTestId("ruling-headline")).toContainText("$210 captured");
   await expectCallsSurviveReload(page, 2);
 });
+
+test("a sample's PayPal calls are counted on the first load, never shown as (0) while they load", async ({ page, request }) => {
+  // On mock the seed route loads the samples; the hosted site seeds them on every start; a local sandbox run doesn't.
+  const { sandbox } = await kitStatus(request);
+  test.skip(sandbox && !process.env.E2E_BASE_URL, "No samples on a local sandbox run");
+  if (!sandbox) expect((await request.post("/api/dev/seed")).ok()).toBe(true);
+  // A slow answer for the booking's saved calls, like a site waking from sleep.
+  await page.route("**/api/bookings/*/activity", async (route) => {
+    await new Promise((r) => setTimeout(r, 3_000));
+    await route.continue();
+  });
+  await page.goto("/bookings/bk_sample_harbor");
+  await expect(page.getByTestId("ruling-headline")).toContainText("$210 captured");
+  const toggle = page.getByTestId("paypal-calls-toggle");
+  await expect(page.getByTestId("paypal-calls-loading")).toBeVisible();
+  await expect(toggle).not.toContainText("(0)");
+  await expect(toggle).toContainText(/PayPal calls \(([2-9]|\d{2,})\)/, { timeout: 20_000 });
+});

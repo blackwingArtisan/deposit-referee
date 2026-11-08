@@ -70,4 +70,26 @@ describe("sample bookings carry their PayPal calls", () => {
     expect(harbor.some((p) => /void/.test(p))).toBe(true);
     expect(calls("hilltop").some((e) => /void/.test(e.paypal!.path))).toBe(true);
   });
+
+  it("after a fresh boot that reuses the saved PayPal ids (the hosted site), each sample still has its calls on disk", async () => {
+    const fs = await import("node:fs");
+    const { collection } = await import("@/lib/store/collection");
+    const { dataPath } = await import("@/lib/store/files");
+    const { getPayPal } = await import("@/lib/paypal");
+    const { bookingEvents } = await import("@/lib/deposit/booking-events");
+    const { sampleBookingId, SAMPLES, seedSampleBookings } = await import("@/lib/deposit/sample-bookings");
+    const manifest: Record<string, string> = {};
+    collection("bookings").replaceAll([]);
+    await seedSampleBookings(getPayPal(), manifest);
+    // A redeploy or a wake from sleep: the disk is empty, the manifest of PayPal ids is not.
+    collection("bookings").replaceAll([]);
+    fs.rmSync(dataPath("booking-events"), { recursive: true, force: true });
+    await seedSampleBookings(getPayPal(), manifest);
+    for (const { key } of SAMPLES) {
+      const calls = bookingEvents(sampleBookingId(key)).filter((e) => e.paypal && e.status === "succeeded");
+      expect(calls.length, key).toBeGreaterThanOrEqual(1);
+      expect(calls.every((e) => e.bookingId === sampleBookingId(key))).toBe(true);
+    }
+    expect(bookingEvents(sampleBookingId("harbor")).filter((e) => e.paypal && e.status === "succeeded").length).toBeGreaterThanOrEqual(2);
+  });
 });
