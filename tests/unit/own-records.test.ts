@@ -12,7 +12,7 @@ describe("the bookings list", () => {
   it("never carries a renter's link", async () => {
     const booking = await heldBooking();
     expect(booking.renterToken).toBeTruthy();
-    const list = listBookings(undefined, { tests: true });
+    const list = listBookings({ tests: true });
     expect(list.map((b) => b.id)).toContain(booking.id);
     expect(JSON.stringify(list)).not.toContain(booking.renterToken);
     for (const item of list) expect(item).not.toHaveProperty("renterToken");

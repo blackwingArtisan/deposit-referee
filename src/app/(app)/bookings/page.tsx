@@ -76,7 +76,7 @@ export default function BookingsPage() {
           </CardBody>
         </Card>
         <Card>
-          <CardHeader title="Your bookings" description="The samples, and the bookings made in this browser. Other visitors don't see yours." />
+          <CardHeader title="Your bookings" />
           <CardBody>
             {bookings.length ? (
               <ul className="divide-y divide-zinc-100">

@@ -149,8 +149,6 @@ export interface Booking {
   id: string;
   /** Seeded example data, labelled as such wherever it shows. */
   sample?: boolean;
-  /** The browser that made it (visitor.ts), so lists show each visitor their own bookings. */
-  visitorId?: string;
   item: string;
   renter: string;
   depositCents: number;

@@ -182,29 +182,3 @@ test("a first visit lands on the researched problem, labelled samples with their
   await expect(page.getByTestId("ruling-headline")).toContainText("$210 captured");
   await expectCallsSurviveReload(page, 2);
 });
-
-test("each visitor sees the samples and their own bookings, not another visitor's", async ({ page, browser, request }) => {
-  const { sandbox } = await kitStatus(request);
-  if (!sandbox) expect((await request.post("/api/dev/seed")).ok()).toBe(true);
-  const item = `Visitor check ${Date.now() % 100_000}, weekend of Dec 18`;
-  await page.goto("/bookings");
-  await page.getByLabel("What's being rented").fill(item);
-  await page.getByLabel("Renter").fill("Alex Rivera");
-  await page.getByLabel("Deposit").fill("200.00");
-  await page.getByTestId("create-booking").click();
-  await page.waitForURL(/\/bookings\/bk_/);
-  const link = page.url();
-  await page.goto("/bookings");
-  await expect(page.getByText(item)).toBeVisible();
-
-  const other = await browser.newContext({ baseURL: new URL(link).origin });
-  const stranger = await other.newPage();
-  await stranger.goto("/bookings");
-  await expect(stranger.getByTestId("create-booking")).toBeVisible();
-  if (!sandbox || process.env.E2E_BASE_URL) await expect(stranger.getByText("Sample", { exact: true }).first()).toBeVisible({ timeout: 15_000 });
-  await expect(stranger.getByText(item)).toHaveCount(0);
-  // The booking's own link still opens for anyone who has it.
-  await stranger.goto(link);
-  await expect(stranger.getByText(item).first()).toBeVisible();
-  await other.close();
-});
