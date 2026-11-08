@@ -110,8 +110,8 @@ export async function guardedClaudeCall<M extends BetaMessage>(
 }
 
 /** Emits a timeline step for a mocked AI call so demos still show "AI did something". */
-export function recordMockAiCall(feature: string, detail = "Returned the recorded result") {
-  startStep({ kind: "ai", title: `Claude (recorded) · ${feature}`, subtitle: "Recorded result, no live AI call" }).succeed({ detail });
+export function recordMockAiCall(feature: string, detail = "AI mock mode: returned the fixture") {
+  startStep({ kind: "ai", title: `AI (mock) · ${feature}`, subtitle: "No ANTHROPIC_API_KEY" }).succeed({ detail });
 }
 
 /** Text of all text blocks in a message. */

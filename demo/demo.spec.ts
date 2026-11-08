@@ -1,18 +1,13 @@
 /**
- * The demo video (npm run demo:record): a booking, the renter approving the hold in PayPal's own
- * window, Claude comparing the photos, the renter accepting one item and contesting the other, the
- * split capture, every PayPal call, and an end card read back from PayPal. A caption is on screen
- * in every frame. Saves a .webm to videos/. For PayPal's real card form, record with
- * DEMO_PAYPAL_MODE=sandbox; mock PayPal shows a stand-in window.
+ * The demo video (npm run demo:record): two photos and an argument, a PayPal hold, Claude boxing
+ * the scratch, the renter contesting on their phone, the host lowering the charge with a reason,
+ * one over-limit refusal, and the money moving. Saves a .webm to videos/.
  */
 import { expect, test, type Page } from "@playwright/test";
-import { caption, closePhone, DemoClock, highlight, openPhone, titleCard, zoomOn } from "./captions";
+import { caption, closePhone, DemoClock, highlight, openPhone, zoomOn } from "./captions";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const whole = (cents: number) => `$${(cents / 100).toFixed(cents % 100 ? 2 : 0)}`;
-/** A caption that stays up until the next one replaces it, so no frame is left without one. */
-const STAY = 10 * 60_000;
-const say = (page: Page, text: string, readMs = 0) => caption(page, text, { ms: STAY, wait: false }).then(() => sleep(readMs));
 
 async function tap(page: Page, testId: string) {
   const target = page.getByTestId(testId).first();
@@ -21,179 +16,128 @@ async function tap(page: Page, testId: string) {
   await target.click();
 }
 
-/** The renter fills PayPal's own card form (an iframe on the page), with PayPal's sandbox test card. */
-async function payInPayPal(page: Page) {
-  // PayPal's button can take a moment to wire up after it draws, so click until its form opens.
-  const frames = page.locator('iframe[src*="/smart/card-fields"]');
-  const button = page.getByTestId("paypal-guest-button").locator("paypal-basic-card-button");
-  await button.waitFor({ state: "visible", timeout: 30_000 });
-  await sleep(1_500);
-  for (let i = 0; i < 4 && !(await frames.count()); i++) {
-    await button.click({ timeout: 30_000 });
-    await frames.first().waitFor({ state: "attached", timeout: 5_000 }).catch(() => {});
-  }
-  const form = page.frameLocator('iframe[src*="/smart/card-fields"]');
-  await form.getByLabel("Email").fill("renter@example.com", { timeout: 30_000 });
-  await form.getByLabel("Card number").fill("4111111111111111");
-  await form.getByLabel("Expires").fill("12/30");
-  await form.getByLabel("CSC").fill("123");
-  await form.getByLabel("First name").fill("Alex");
-  await form.getByLabel("Last name").fill("Rivera");
-  await form.getByLabel("Street address").fill("1 Main St");
-  await form.getByLabel("City").fill("Austin");
-  await form.getByLabel("State").selectOption("TX");
-  await form.getByLabel(/ZIP/i).fill("78701");
-  const phone = form.getByLabel(/Mobile|Phone/i).first();
-  if (await phone.isVisible().catch(() => false)) await phone.fill("5125550100");
-  await form.getByRole("button", { name: /^Pay \$/ }).click();
-}
-
 test("demo", async ({ page, request }) => {
-  const clock = new DemoClock(148);
+  const clock = new DemoClock(170);
   // Mock mode starts clean and seeds here. On the sandbox the config has already seeded.
   await request.post("/api/dev/reset");
   await request.post("/api/dev/seed");
   const status = await (await request.get("/api/kit/status")).json();
   const sandbox = status.paypal.mode === "sandbox";
 
-  // Open: the problem.
+  // Open: the two photos and the argument.
   await page.goto("/");
-  await expect(page.getByTestId("landing-headline")).toBeVisible();
-  await say(page, "More than half of hosts have had a guest damage their place. Rent from your own site, and nobody settles it.", 4200);
+  await expect(page.getByTestId("deposit-preview")).toBeVisible();
+  await caption(page, "A cabin rented out directly. No platform, no AirCover. A guest checks out, and there's a new scratch.");
+  await highlight(page, page.getByTestId("deposit-preview").locator("figure").nth(1), 2200);
+  await caption(page, "The guest says it was already there. Here the $300 stays on a PayPal hold, and only what the host approves is captured.");
   clock.check("open");
 
-  // 1. The booking.
+  // The hold.
   await page.goto("/bookings");
-  await say(page, "The host books the cabin and asks for a $300 deposit.");
-  await page.getByLabel("What's being rented").pressSequentially("Cedar cabin, weekend of Nov 13", { delay: 16 });
-  await page.getByLabel("Renter").pressSequentially("Alex Rivera", { delay: 22 });
+  await caption(page, "The host books the stay and asks for a $300 deposit.", { wait: false });
+  await page.getByLabel("What's being rented").pressSequentially("Cedar cabin, weekend of Oct 31", { delay: 18 });
+  await page.getByLabel("Renter").pressSequentially("Alex Rivera", { delay: 25 });
   await tap(page, "create-booking");
   await page.waitForURL(/\/bookings\/bk_/);
   const id = new URL(page.url()).pathname.split("/").pop()!;
-  clock.check("booking");
-
-  // 2. The renter approves the hold in PayPal's window: 4 to 8 seconds on screen.
-  await say(page, "The renter approves a $300 hold in PayPal's own window. Nothing is charged.");
-  const shown = Date.now();
-  if (sandbox) await payInPayPal(page);
-  else {
-    await tap(page, "simulate-paypal-approval");
-    await expect(page.getByTestId("mock-approve")).toBeVisible();
-    await sleep(Math.max(0, 4_500 - (Date.now() - shown)));
+  await caption(page, `The guest approves a PayPal hold${sandbox ? " on the sandbox" : ""}. The money is held, not taken.`, { wait: false });
+  await tap(page, sandbox ? "sandbox-test-card" : "simulate-paypal-approval");
+  if (!sandbox) {
+    await sleep(700);
     await page.getByTestId("mock-approve").click();
   }
-  const authId = page.getByTestId("hold-authorization-id");
-  await expect(authId).toHaveText(/\w{10,}/, { timeout: 45_000 });
-  const authorizationId = (await authId.textContent())!.trim();
-  await authId.scrollIntoViewIfNeeded();
-  await highlight(page, authId, 2600);
-  await say(page, `PayPal authorization ${authorizationId}: $300 held, guaranteed 3 days, capturable until day 29.`, 3800);
+  const hold = page.getByTestId("hold-panel");
+  await expect(hold).toContainText("$300 on hold. Nothing has been charged.", { timeout: 30_000 });
+  await highlight(page, hold, 2000);
+  await caption(page, "Guaranteed by PayPal for 3 days, capturable until day 29. Nothing has been charged.", { ms: 3600 });
   clock.check("hold");
 
-  // 3. The comparison, captioned while Claude works.
-  await say(page, "After the stay, the host adds the check-in and check-out photos.");
+  // Claude draws the box.
+  await caption(page, "After the stay, the host adds the check-in and check-out photos.", { wait: false });
   await tap(page, "demo-photo-check_in");
-  await expect(page.getByTestId("demo-photo-two")).toBeEnabled();
-  await tap(page, "demo-photo-two");
+  await expect(page.getByTestId("demo-photo-check_out")).toBeEnabled();
+  await tap(page, "demo-photo-check_out");
   await expect(page.getByTestId("photo-source")).toHaveCount(2);
   await tap(page, "run-review");
-  await say(page, status.ai.mode === "live" ? "Claude Sonnet 5.5 compares the two photos and boxes only what's new. This takes about 20 seconds." : "Claude compares the two photos and boxes only what's new.");
+  await caption(page, status.ai.mode === "live" ? "Claude Sonnet 5.5 compares the two photos. Nobody has to describe the damage." : "AI compares the two photos. Nobody has to describe the damage.", { ms: 9000, wait: false });
   await expect(page.getByTestId("review")).toBeVisible({ timeout: 90_000 });
-  await say(page, "Two new marks: a gouge in the floor and a stain on the rug.");
-  await zoomOn(page, page.getByTestId("damage-box").first(), { scale: 2.4, ms: 2600 });
+  const box = page.getByTestId("damage-box").first();
+  await caption(page, "It draws a box on the new scratch.", { ms: 4200, wait: false });
+  await zoomOn(page, box, { scale: 2.6, ms: 3400 });
+  await page.getByTestId("review-engine").scrollIntoViewIfNeeded();
+  await highlight(page, page.getByTestId("review-engine"), 1600);
   const proposal = page.getByTestId("ai-proposal");
-  await say(page, "The settlement agent prices each one from the price table, proposes, and stops.");
   await expect(proposal).toBeVisible({ timeout: 90_000 });
+  // The README picture: both photos and the AI's finding, with the caption band left out.
   await page.screenshot({ path: "docs/screenshot.png", style: "#__demo_caption { display: none !important; } body { padding-bottom: 0 !important; }" });
   const view = await (await request.get(`/api/bookings/${id}`)).json();
-  const lines = view.proposal.lines as { id: string; amountCents: number }[];
-  const [accepted, ...contestedLines] = lines;
-  const acceptedCents = accepted.amountCents;
-  const contestedCents = contestedLines.reduce((sum, l) => sum + l.amountCents, 0);
+  const aiCents: number = view.proposal.aiCents;
   await proposal.scrollIntoViewIfNeeded();
   await highlight(page, proposal, 1800);
-  await say(page, `${whole(acceptedCents)} for the gouge, ${whole(contestedCents)} for the stain. It has no tool that can move money.`, 3600);
+  await caption(page, `The agent proposes charging ${whole(aiCents)}, then stops. It has no tool that can move money.`);
   clock.check("proposal");
 
-  // 4. The renter, on their phone: accepts the gouge, contests the stain.
+  // The renter, on their phone.
   const phone = await openPhone(page, `/renter/${view.renterToken}`);
   await expect(phone.getByTestId("renter-headline")).toBeVisible({ timeout: 20_000 });
-  await say(page, "The renter gets a link with the same photos and reasons.", 2400);
-  await phone.getByTestId(`contest-line-${accepted.id}`).scrollIntoViewIfNeeded();
-  await say(page, "They accept the gouge and contest the stain: it was there when they arrived.");
-  await phone.getByTestId(`contest-line-${accepted.id}`).uncheck();
-  await phone.getByTestId("contest-note").pressSequentially("The rug stain was there when I arrived.", { delay: 14 });
+  await caption(page, "The guest gets a link with the same photos and reasons.", { ms: 3200 });
+  const note = phone.getByTestId("contest-note");
+  await note.scrollIntoViewIfNeeded();
+  await caption(page, `They think ${whole(aiCents)} is too much, so they contest. That stops the charge.`, { wait: false });
+  await note.pressSequentially("The scratch is real, but it's one board. That's too much.", { delay: 14 });
   await phone.getByTestId("contest").click();
   await expect(phone.getByTestId("renter-contested")).toBeVisible();
-  await sleep(1800);
+  await sleep(2600);
   await closePhone(page);
   clock.check("contest");
 
-  // 5. The split capture: the accepted part now, the contested part from the same hold later.
-  const prompt = page.getByTestId("approval-prompt");
-  await say(page, `The ${whole(acceptedCents)} they accepted can be charged now. Nothing moves until the host approves.`);
-  await expect(prompt).toBeVisible({ timeout: 30_000 });
-  await prompt.scrollIntoViewIfNeeded();
-  await highlight(page, prompt.getByTestId("approve-button"), 900);
-  await prompt.getByTestId("approve-button").click();
-  const part = page.getByTestId("part-capture");
-  await expect(part).toContainText(`${whole(acceptedCents)}`, { timeout: 60_000 });
-  await part.scrollIntoViewIfNeeded();
-  await highlight(page, part, 2400);
-  await say(page, `Captured with final_capture false, so the contested ${whole(contestedCents)} stays on the same PayPal hold.`, 3800);
-  clock.check("part");
-
-  const chargeCents = Math.min(2_000, contestedCents);
-  const [first, ...rest] = (await (await request.get(`/api/bookings/${id}`)).json()).proposal.lines as { id: string }[];
+  // The host lowers the charge, with a reason.
+  await expect(page.getByTestId("renter-note")).toBeVisible({ timeout: 10_000 });
+  await page.getByTestId("renter-note").scrollIntoViewIfNeeded();
+  await highlight(page, page.getByTestId("renter-note"), 1600);
+  await caption(page, "The host reads the note. After a contest the charge can only stay the same or go down.", { ms: 3800 });
+  const [first, ...rest] = view.proposal.lines as { id: string }[];
   for (const line of rest) await page.getByTestId(`line-amount-${line.id}`).fill("0.00");
   const amount = page.getByTestId(`line-amount-${first.id}`);
   await amount.scrollIntoViewIfNeeded();
-  await say(page, `The host reads the renter's note and settles the stain at ${whole(chargeCents)}.`);
+  await caption(page, `They lower ${whole(aiCents)} to $90, and say why.`, { wait: false });
   await amount.click({ clickCount: 3 });
-  await amount.pressSequentially((chargeCents / 100).toFixed(2), { delay: 80 });
-  const reason = page.getByTestId("host-reason");
-  if (await reason.isVisible().catch(() => false)) await reason.pressSequentially("Half: most of the stain came out.", { delay: 14 });
+  await amount.pressSequentially("90.00", { delay: 90 });
+  await page.getByTestId("host-reason").pressSequentially("Only one board needs sanding and refinishing.", { delay: 16 });
+  await expect(page.getByTestId("charge-preview")).toContainText("Charge exactly $90.00 and release $210.00");
+  clock.check("lowered");
+
+  // One over-limit refusal.
+  await page.getByTestId("for-judges").locator("summary").click();
+  await caption(page, "What if an agent tries to take $300.01?", { wait: false });
+  await tap(page, "limit-test");
+  await expect(page.getByText("Refused: $300.01 is more than the hold")).toBeVisible({ timeout: 20_000 });
+  await caption(page, "Refused by the app's code, before PayPal. No money moved.", { ms: 2600 });
+  clock.check("limit");
+
+  // The money moves, only after the host approves.
   await tap(page, "request-approval");
+  const prompt = page.getByTestId("approval-prompt");
   await expect(prompt).toBeVisible({ timeout: 30_000 });
-  await say(page, "A second capture from the same hold, then PayPal voids the rest.");
+  await caption(page, "Nothing moves until the host approves this exact amount.", { ms: 2600 });
   await highlight(page, prompt.getByTestId("approve-button"), 800);
   await prompt.getByTestId("approve-button").click();
-  const totalCents = acceptedCents + chargeCents;
   const ruling = page.getByTestId("ruling-headline");
-  await expect(ruling).toContainText(`${whole(totalCents)} captured`, { timeout: 60_000 });
-  await sleep(500);
-  await ruling.scrollIntoViewIfNeeded();
-  await highlight(page, ruling, 2200);
-  await sleep(1200);
+  await expect(ruling).toContainText("$90 captured", { timeout: 60_000 });
+  await expect(ruling).toContainText("$210 released");
+  await highlight(page, ruling, 2400);
+  await caption(page, `$90 captured, $210 released, re-read from PayPal${sandbox ? "'s sandbox" : ""}.`, { ms: 4200 });
+  await page.getByTestId("ruling-host-reason").scrollIntoViewIfNeeded();
+  await caption(page, "The record keeps the photos, the reasons and the PayPal ids.", { ms: 3200 });
   clock.check("ruling");
 
-  // 6. Every PayPal call, with its status and debug_id.
-  const toggle = page.getByTestId("paypal-calls-toggle");
-  await toggle.scrollIntoViewIfNeeded();
-  await toggle.click();
-  const calls = page.getByTestId("paypal-calls");
-  await expect(calls).toContainText(/authoriz/i);
-  await expect(calls).toContainText(/void/i);
-  await say(page, "Every PayPal call on this booking: the authorization, the captures and the void, each with its status and debug_id.");
-  // The list is longer than the screen: first the authorization, then the captures and the void.
-  const row = (title: string) => calls.locator("li[data-paypal-call]").filter({ hasText: title });
-  const authorize = row("Authorize order").first();
-  await authorize.evaluate((el) => el.scrollIntoView({ block: "start" }));
-  await highlight(page, authorize, 1000);
-  await sleep(500);
-  const voided = row("Void authorization").last();
-  await voided.evaluate((el) => el.scrollIntoView({ block: "end" }));
-  await highlight(page, row("Capture authorization").last(), 1100);
-  await highlight(page, voided, 1400);
-  await sleep(600);
-  clock.check("calls");
-
-  // 7. The end card, from the amounts PayPal returned.
-  const done = await (await request.get(`/api/bookings/${id}`)).json();
-  const captured = whole(done.settlement.capturedCents);
-  const released = whole(done.settlement.releasedCents);
-  await say(page, "Deposit Referee: two photos, a fair charge, and PayPal holds the rest.");
-  await titleCard(page, `${captured} captured, ${released} released, read back from PayPal`, "Deposit Referee", 4200);
+  // Close: the host's record.
+  await page.goto("/insights");
+  const row = page.getByRole("row").filter({ hasText: "Cedar cabin" }).last();
+  await expect(row).toBeVisible({ timeout: 30_000 });
+  await caption(page, `Every deposit in one place: what the AI said, what the host charged.`, { wait: false });
+  await highlight(page, row, 3000);
+  await sleep(3400);
   clock.check("end");
 });
 
