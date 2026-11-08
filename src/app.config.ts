@@ -11,7 +11,7 @@ export const appConfig = {
   brandForeground: "#FFFFFF", // kit:brand-foreground
   tagline: "Damage deposits, settled from two photos.",
   description: "Hold a rental deposit with PayPal, compare check-in and check-out photos with AI, and charge only what the host approves.",
-  repoUrl: "",
+  repoUrl: "https://github.com/blackwingArtisan/deposit-referee",
   videoUrl: "",
 
   nav: [
