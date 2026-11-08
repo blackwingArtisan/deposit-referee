@@ -277,7 +277,7 @@ export function BookingScreen() {
                       {!review.items.length && review.worthALook?.length ? (
                         <p className="text-sm text-zinc-700">Nothing the AI would charge for, but it flagged something worth a look.</p>
                       ) : (
-                        <DamageItems lines={review.items.map((item) => ({ description: item.description, amountCents: item.chargeCents }))} />
+                        <DamageItems lines={review.items.map((item) => ({ description: item.description, amountCents: item.chargeCents, price: item.price }))} />
                       )}
                       <p className="text-sm leading-relaxed text-zinc-700">{review.reasoning}</p>
                       <div className="flex flex-wrap items-center gap-2">

@@ -17,16 +17,12 @@ import { formatExactCents, RuleError } from "@/lib/deposit/rules";
 import type { Booking, DamageReview } from "@/lib/deposit/types";
 import { getPayPal } from "@/lib/paypal";
 
-/** What the scripted agent decides: each finding up to the hold, or a release if there are none. */
+/** What the scripted agent decides: every finding, or a release if there are none. Code prices them. */
 function fairProposal(bookingId: string, review: DamageReview, heldCents: number) {
-  if (!review.items.length) return { booking_id: bookingId, decision: "release", amount_cents: 0, items: [], rationale: `${review.reasoning} Nothing is charged, so the whole deposit goes back to the renter.` };
-  let left = heldCents;
-  const items = review.items.flatMap((finding, index) => {
-    const amount = Math.min(finding.chargeCents, left);
-    left -= amount;
-    return amount > 0 ? [{ finding: index, amount_cents: amount, note: "New in the check-out photo and not in the check-in photo." }] : [];
-  });
-  return { booking_id: bookingId, decision: "charge", amount_cents: items.reduce((sum, item) => sum + item.amount_cents, 0), items, rationale: review.reasoning };
+  if (!review.items.length) return { booking_id: bookingId, decision: "release", items: [], rationale: `${review.reasoning} Nothing is charged, so the whole deposit goes back to the renter.`, totalCents: 0 };
+  const items = review.items.map((_, index) => ({ finding: index, note: "New in the check-out photo and not in the check-in photo." }));
+  const totalCents = Math.min(heldCents, review.items.reduce((sum, f) => sum + f.chargeCents, 0));
+  return { booking_id: bookingId, decision: "charge", items, rationale: review.reasoning, totalCents };
 }
 
 export const settlementAgent = defineAgent({
@@ -40,7 +36,7 @@ Do this, in order:
 2. Call get_order and get_authorization to see what PayPal holds right now.
 3. Call propose_settlement exactly once.
    - Propose decision "release" if there is no new damage, or if the evidence is too weak to charge for.
-   - Otherwise propose decision "charge" with one item per finding you stand behind, each at or below that finding's amount. The total can't be above max_charge_cents, so if the findings add up to more than that, lower the items until they fit.
+   - Otherwise propose decision "charge" with one item per finding you stand behind. You don't set amounts: each finding is priced from the app's price table, and code trims the total to fit the hold.
    - Write the rationale for the host and the renter. Say what the photos show. The amounts are proposals the host can change, not repair quotes.
 4. Stop and reply with one sentence.
 
@@ -53,14 +49,14 @@ You cannot move money and you have no tool for it. The host approves or changes 
     const { booking_id, order_id, authorization_id } = input.context as { booking_id: string; order_id: string; authorization_id: string };
     failIfCreditOut(booking_id, "agent");
     const { review, authorizedCents = 0 } = requireBooking(booking_id);
-    const proposal = fairProposal(booking_id, review!, authorizedCents);
+    const { totalCents, ...proposal } = fairProposal(booking_id, review!, authorizedCents);
     return [
       { say: "Reading the photo review first.", tool: "read_damage_review", input: { booking_id } },
       { say: "Checking the order and what PayPal holds right now.", tool: "get_order", input: { id: order_id } },
       { tool: "get_authorization", input: { authorization_id } },
       {
         think: review!.items.length ? "Each finding is new at check-out, so I'll itemize them and stay inside the hold." : "No new damage, so the renter gets everything back.",
-        say: proposal.decision === "release" ? "No new damage, so I'm proposing a full release." : `Proposing ${formatExactCents(proposal.amount_cents)}, with each item tied to the photos.`,
+        say: proposal.decision === "release" ? "No new damage, so I'm proposing a full release." : `Proposing ${formatExactCents(totalCents)} from the price table, with each item tied to the photos.`,
         tool: "propose_settlement",
         input: proposal,
       },

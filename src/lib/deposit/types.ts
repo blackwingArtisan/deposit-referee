@@ -1,4 +1,5 @@
 /** Booking records. Shared by server and browser, so types only. */
+import type { PriceRow } from "./prices";
 import type { HoldClock } from "./rules";
 
 export type PhotoSlot = "check_in" | "check_out";
@@ -34,7 +35,10 @@ export interface DamageBox {
 export interface DamageItem {
   description: string;
   box: DamageBox | null;
+  /** From the price table for `price`, never from the model. */
   chargeCents: number;
+  /** The price-table row the amount came from. */
+  price?: PriceRow;
 }
 
 export interface DamageReview {
@@ -63,6 +67,8 @@ export interface ChargeLine {
   aiCents?: number;
   /** The agent's reason for this line. */
   note?: string;
+  /** The price-table row the AI's amount came from. */
+  price?: PriceRow;
 }
 
 /** What the settlement agent stopped with. `lines` can be changed by the host; `aiCents` never changes. */
