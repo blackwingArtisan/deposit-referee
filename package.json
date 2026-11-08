@@ -16,6 +16,7 @@
     "test:e2e:sandbox": "playwright test -c playwright.sandbox.config.ts",
     "demo:record": "playwright test -c playwright.demo.config.ts",
     "demo:mp4": "bash scripts/webm-to-mp4.sh",
+    "demo:check": "bash scripts/demo-check.sh",
     "seed": "tsx scripts/seed.ts",
     "seed:reset": "tsx scripts/seed.ts --reset",
     "seed:sandbox": "tsx scripts/seed.ts --sandbox",
