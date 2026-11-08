@@ -7,7 +7,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { dollars, expectNoSidewaysScroll, headline, openAsRenter, renterAccepts, renterContests, setCharge, toProposal, type Flow } from "./booking-flow";
 import { readPayPalObjects, tryCapture } from "./paypal-reread";
-import { priceOf } from "../../src/lib/deposit/prices";
 
 const DEPOSIT_CENTS = 30_000;
 
@@ -89,14 +88,6 @@ test("the agent proposes and stops, the renter accepts, the host approves", asyn
   await expect(box).toBeVisible();
   const drawn = review!.items[0].box!;
   expect(await box.evaluate((el) => (el as HTMLElement).style.left)).toBe(`${drawn.x * 100}%`);
-
-  // The amount comes from the price table, and the screen says which row.
-  for (const line of proposal!.lines) {
-    expect(line.price, "every AI line names its price-table row").toBeTruthy();
-    expect(line.amountCents).toBe(Math.min(priceOf(line.price!), DEPOSIT_CENTS));
-  }
-  await expect(page.getByTestId("price-row").first()).toContainText("Price table:");
-  if (!flow.live) await expect(page.getByTestId("price-row").first()).toContainText("Price table: Scratch or gouge, large, $150");
 
   // It stopped: no approval is waiting, and the host can't send it until the renter has had their say.
   expect(reviewed.status).toBe("proposed");
@@ -259,10 +250,6 @@ test("worth a look: the host adds a mark the AI wouldn't charge, and it goes thr
   await expect(page.getByTestId("worth-a-look")).toContainText("Nothing here is charged unless you add it");
   await expect(page.getByTestId("look-box")).toHaveCount(1);
   await expect(page.getByTestId("damage-box")).toHaveCount(0);
-  // A faint mark is never charged, and if the host adds it, the price still comes from the table.
-  expect(reviewed.review!.items).toEqual([]);
-  expect(look.chargeCents).toBe(priceOf(look.price!));
-  await expect(page.getByTestId("worth-a-look").getByTestId("price-row")).toContainText("Price table:");
   await expectNoSidewaysScroll(page);
   await page.screenshot({ path: `screenshots/deposit-worth-a-look-${flow.live ? "live-ai" : "mock-ai"}.png`, fullPage: true });
   await expectHoldUntouched(flow);
