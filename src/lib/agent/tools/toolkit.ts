@@ -70,7 +70,10 @@ async function runToolkitInSandbox(method: string, args: unknown, ctx: ToolConte
   const token = await getSandboxAccessToken();
   // sandbox:true is mandatory — the toolkit's default is the live API.
   const api = new PayPalAPI(token, { sandbox: true, request_id: ctx.requestId || undefined });
-  const step = startStep({ kind: "paypal", title: `Agent Toolkit · ${method}`, subtitle: "@paypal/agent-toolkit → api-m.sandbox.paypal.com", paypal: { operation: `toolkit.${method}`, method: "TOOLKIT", path: method, mode: "sandbox" } });
+  // The Toolkit makes the HTTP call itself; name the PayPal endpoint where we know it.
+  const id = (args as { id?: unknown } | null)?.id;
+  const [verb, path] = method === "get_order" && typeof id === "string" ? ["GET", `/v2/checkout/orders/${id}`] : ["TOOLKIT", method];
+  const step = startStep({ kind: "paypal", title: `Agent Toolkit · ${method}`, subtitle: "@paypal/agent-toolkit → api-m.sandbox.paypal.com", paypal: { operation: `toolkit.${method}`, method: verb, path, mode: "sandbox", via: { tool: method, toolkit: method } }, data: verb === "GET" ? { quiet: true } : undefined });
   const raw = await api.run(method, args);
   let parsed: unknown = raw;
   try {

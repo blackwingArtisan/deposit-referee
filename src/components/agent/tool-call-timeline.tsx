@@ -24,6 +24,7 @@ import { MoneyBadge } from "../money-badge";
 import { cn } from "../ui/cn";
 import { EmptyState } from "../ui/empty-state";
 import { ApprovalPrompt } from "./approval-prompt";
+import type { PayPalVia } from "@/lib/paypal/toolkit-coverage";
 
 const KIND_ICON = {
   run: Bot,
@@ -68,6 +69,23 @@ function time(ts: string) {
   return new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 }
 
+/** Which tool made the call: an Agent Toolkit tool, or the kit's own call where the Toolkit has none. */
+function Via({ via }: { via: PayPalVia }) {
+  if (via.toolkit) {
+    return (
+      <span className="rounded bg-emerald-50 px-1.5 font-medium text-emerald-700" data-testid="paypal-via" data-toolkit={via.toolkit}>
+        Agent Toolkit · {via.toolkit}
+      </span>
+    );
+  }
+  return (
+    <span className="basis-full text-zinc-500" data-testid="paypal-via" data-toolkit="">
+      <span className="rounded bg-zinc-100 px-1.5 font-medium text-zinc-700">{via.tool ? `Tool · ${via.tool}` : "Kit call"}</span>
+      {via.gap ? <span className="ml-1.5" data-testid="paypal-via-gap">{via.gap}</span> : null}
+    </span>
+  );
+}
+
 function Meta({ step }: { step: TimelineStep }) {
   const p = step.paypal;
   const parts: ReactNode[] = [];
@@ -77,6 +95,7 @@ function Meta({ step }: { step: TimelineStep }) {
         {p.method} {p.path}
       </span>,
     );
+    if (p.via) parts.push(<Via key="via" via={p.via} />);
     if (p.httpStatus) parts.push(<span key="s">HTTP {p.httpStatus}</span>);
     if (p.durationMs !== undefined) parts.push(<span key="d">{p.durationMs} ms</span>);
     if (p.debugId) parts.push(<span key="dbg" className="min-w-0 break-all font-mono">debug_id {p.debugId}</span>);
@@ -119,6 +138,7 @@ function CompactRow({ step }: { step: TimelineStep }) {
       <span className="truncate">
         <span className="font-medium text-zinc-600">{step.title}</span>
         {step.paypal ? <span className="ml-2 font-mono">{step.paypal.method} {step.paypal.path}</span> : step.detail ? <span className="ml-2">{step.detail.slice(0, 140)}</span> : null}
+        {step.paypal?.via?.toolkit ? <span className="ml-2 text-emerald-700" data-testid="paypal-via" data-toolkit={step.paypal.via.toolkit}>via Agent Toolkit {step.paypal.via.toolkit}</span> : null}
       </span>
       <span className="ml-auto shrink-0 tabular-nums text-zinc-400">{time(step.updatedAt)}</span>
     </li>

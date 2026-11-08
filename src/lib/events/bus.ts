@@ -10,7 +10,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
 import { singleton } from "../singleton";
-import type { TimelineEvent, TimelineStatus } from "./types";
+import type { TimelineEvent, TimelineStatus, ToolSource } from "./types";
 
 export interface EventContext {
   channel: string;
@@ -19,6 +19,8 @@ export interface EventContext {
   actor: string;
   /** App record the work belongs to (e.g. a booking), so its events can be kept with it. */
   bookingId?: string;
+  /** The guarded tool running now, so each PayPal call can name the tool that made it. */
+  tool?: { name: string; source: ToolSource };
 }
 
 const storage = singleton("events:als", () => new AsyncLocalStorage<EventContext>());
@@ -26,6 +28,11 @@ const storage = singleton("events:als", () => new AsyncLocalStorage<EventContext
 export function withContext<T>(ctx: Partial<EventContext>, fn: () => T): T {
   const parent = storage.getStore();
   return storage.run({ channel: "global", actor: "system", ...parent, ...ctx }, fn);
+}
+
+/** Runs `fn` as the named tool, so the PayPal calls it makes say which tool made them. */
+export function asTool<T>(tool: { name: string; source: ToolSource }, fn: () => T): T {
+  return withContext({ tool: { name: tool.name, source: tool.source } }, fn);
 }
 
 export function getContext(): EventContext {

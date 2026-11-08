@@ -17,6 +17,7 @@ import { moneyFromMinor } from "@/lib/money";
 import type { PayPalApi } from "@/lib/paypal/api";
 import { PayPalApiError } from "@/lib/paypal/errors";
 import type { Authorization } from "@/lib/paypal/types";
+import { readHold } from "@/lib/deposit/hold-read";
 
 export const CAPTURE_DEPOSIT = "capture_deposit";
 
@@ -35,7 +36,7 @@ async function readCapturableHold(paypal: PayPalApi, bookingId: string, chargeCe
   const clearance = renterClearance(renterState, chargeCents);
   if (!clearance.cleared) throw new RuleError(clearance.reason);
 
-  const auth = await paypal.payments.getAuthorization(authorizationId);
+  const auth = await readHold(paypal, booking.orderId, authorizationId);
   assertHoldOpen(auth.expiration_time);
   const open = part ? ["CREATED", "PARTIALLY_CAPTURED"] : ["CREATED"];
   if (!open.includes(auth.status)) throw new RuleError(`This hold is ${auth.status}, so no new charge can be taken from it.`);

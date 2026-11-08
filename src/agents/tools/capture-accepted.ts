@@ -13,6 +13,7 @@ import { splitOf } from "@/lib/deposit/split-rules";
 import { moneyFromMinor } from "@/lib/money";
 import type { PayPalApi } from "@/lib/paypal/api";
 import { holdToCapture } from "./capture-deposit";
+import { readHold } from "@/lib/deposit/hold-read";
 
 export const CAPTURE_ACCEPTED = "capture_accepted_items";
 
@@ -25,7 +26,7 @@ async function readAcceptedPart(paypal: PayPalApi, bookingId: string, chargeCent
   assertCaptureLimits(chargeCents, split.acceptedCents, authorizedCents);
   if (booking.status !== "awaiting_approval" || !partCapture || partCapture.requestedCents !== chargeCents || partCapture.captureId) throw new RuleError("Nobody has asked for this charge, so it can't be captured.");
 
-  const auth = await paypal.payments.getAuthorization(authorizationId);
+  const auth = await readHold(paypal, booking.orderId, authorizationId);
   assertHoldOpen(auth.expiration_time);
   if (auth.status !== "CREATED") throw new RuleError(`This hold is ${auth.status}, so the accepted items can't be charged from it.`);
   assertCaptureLimits(chargeCents, split.acceptedCents, dollarsToCents(auth.amount.value));
