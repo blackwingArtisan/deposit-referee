@@ -202,7 +202,7 @@ export function BookingScreen() {
   const { status, review, proposal, settlement, photos, authorizedCents = booking.depositCents } = booking;
   const deciding = status === "proposed" || status === "contested";
 
-  const addDemoPhoto = (slot: PhotoSlot, kind?: { clean?: boolean; faint?: boolean }) => run(`photo:${slot}`, "Could not add the photo", () => kitFetch<BookingView>(`${url}/photos`, { json: { slot, ...kind } }));
+  const addDemoPhoto = (slot: PhotoSlot, kind?: { clean?: boolean; faint?: boolean; two?: boolean }) => run(`photo:${slot}`, "Could not add the photo", () => kitFetch<BookingView>(`${url}/photos`, { json: { slot, ...kind } }));
 
   async function uploadPhoto(slot: PhotoSlot, event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -274,6 +274,9 @@ export function BookingScreen() {
                               </Button>
                               <Button variant="ghost" size="sm" disabled={!!busy} onClick={() => addDemoPhoto(slot, { faint: true })} data-testid="demo-photo-faint">
                                 Use demo photo, faint mark
+                              </Button>
+                              <Button variant="ghost" size="sm" disabled={!!busy} onClick={() => addDemoPhoto(slot, { two: true })} data-testid="demo-photo-two">
+                                Use demo photo, two marks
                               </Button>
                             </>
                           ) : null}

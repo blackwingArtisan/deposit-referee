@@ -76,7 +76,7 @@ export async function payInPayPalCardForm(page: Page, opts: { pause?: number } =
 }
 
 /** Creates a booking, places the deposit and adds both photos. */
-export async function toPhotos(page: Page, request: APIRequestContext, opts: { item?: string; checkOut?: "demo" | "upload" | "clean" | "faint"; checkCalls?: boolean; payWith?: "card-form" | "one-tap" } = {}): Promise<Flow> {
+export async function toPhotos(page: Page, request: APIRequestContext, opts: { item?: string; checkOut?: "demo" | "upload" | "clean" | "faint" | "two"; checkCalls?: boolean; payWith?: "card-form" | "one-tap" } = {}): Promise<Flow> {
   const { sandbox, live, mode } = await kitStatus(request);
   const checkOut = opts.checkOut ?? "demo";
 
@@ -108,10 +108,10 @@ export async function toPhotos(page: Page, request: APIRequestContext, opts: { i
   await page.getByTestId("demo-photo-check_in").click();
   await expect(page.getByTestId("demo-photo-check_out")).toBeEnabled();
   if (checkOut === "upload") await page.getByTestId("upload-photo-check_out").setInputFiles("public/demo-photos/cabin-check-out.jpg");
-  else await page.getByTestId({ clean: "demo-photo-clean", faint: "demo-photo-faint", demo: "demo-photo-check_out" }[checkOut]).click();
+  else await page.getByTestId({ clean: "demo-photo-clean", faint: "demo-photo-faint", two: "demo-photo-two", demo: "demo-photo-check_out" }[checkOut]).click();
   await expect(page.getByTestId("photo-source")).toHaveCount(2);
   await expect(page.getByTestId("photo-source").first()).toContainText("Greg Zaal, CC0 1.0");
-  await expect(page.getByTestId("photo-source").nth(1)).toContainText({ upload: "Uploaded by the host", demo: "added digitally", clean: "same photo", faint: "faint floor scuff" }[checkOut]);
+  await expect(page.getByTestId("photo-source").nth(1)).toContainText({ upload: "Uploaded by the host", demo: "added digitally", clean: "same photo", faint: "faint floor scuff", two: "gouge and the stain" }[checkOut]);
 
   return { id, sandbox, live, mode, booking };
 }

@@ -7,6 +7,7 @@ import { useKit } from "@/components/kit/kit-provider";
 import { useToast } from "@/components/toast";
 import { Badge, Button, Field, Input, MoneyInput } from "@/components/ui";
 import { centsToDollars, formatExactCents, itemizedCents, localTime, parseLineAmount, releasedCents, renterClearance } from "@/lib/deposit/rules";
+import { heldCents, splitOf, type Split } from "@/lib/deposit/split-rules";
 import type { BookingView, ChargeLine, DamageItem } from "@/lib/deposit/types";
 import { PriceSource, PriceTable } from "./damage-items";
 import { lookLetter } from "./photo-frame";
@@ -25,7 +26,7 @@ function RenterPanel({ booking, chargeCents }: { booking: BookingView; chargeCen
   if (response?.decision === "contested") {
     return (
       <div data-testid="renter-note" className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950">
-        <p className="flex items-center gap-2 font-semibold"><MessageSquareWarning className="size-4" /> The renter contested {formatExactCents(response.amountCents)}</p>
+        <p className="flex items-center gap-2 font-semibold"><MessageSquareWarning className="size-4" /> The renter contested {response.acceptedLineIds?.length ? "part of the charge" : formatExactCents(response.amountCents)}</p>
         <p className="mt-1">&ldquo;{response.note}&rdquo;</p>
         <p className="mt-2 text-xs">The capture stopped here. Lower the charge, release the deposit, or keep the charge knowing the renter disagrees. They can still open a dispute with PayPal.</p>
       </div>
@@ -116,13 +117,54 @@ function WorthALook({ looks, onCharge, disabled, onAdd }: { looks: DamageItem[];
   );
 }
 
+/** The renter accepted some items and contested others: the accepted part is charged on its own. */
+function SplitPanel({ booking, split, busy, act }: { booking: BookingView; split: Split; busy: string | null; act: (name: string, failTitle: string, action: () => Promise<BookingView>) => Promise<void> }) {
+  const { kitFetch } = useKit();
+  const part = booking.partCapture;
+  if (part?.captureId) {
+    return (
+      <div className="rounded-lg border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm text-emerald-950" data-testid="part-capture">
+        <p className="font-semibold">{formatExactCents(part.capturedCents ?? 0)} charged now for the {part.lines.length === 1 ? "item" : "items"} the renter accepted</p>
+        <ul className="mt-1 list-disc pl-5">
+          {part.lines.map((line) => <li key={line.id}>{line.description} ({formatExactCents(line.amountCents)})</li>)}
+        </ul>
+        <p className="mt-2 text-xs">
+          PayPal capture <span className="font-mono" data-testid="part-capture-id">{part.captureId}</span>, {part.captureStatus?.toLowerCase()}, read back from PayPal. It was not the final capture, so the contested {formatExactCents(split.contestedCents)} is still on the same hold. Settle it below. PayPal can&rsquo;t shrink a hold, so the app won&rsquo;t charge more than the contested amount from it, and settling releases the rest.
+        </p>
+      </div>
+    );
+  }
+  return (
+    <div className="rounded-lg border border-sky-300 bg-sky-50 px-4 py-3 text-sm text-sky-950" data-testid="split-panel">
+      <p className="font-semibold">The renter accepted {formatExactCents(split.acceptedCents)} and contested {formatExactCents(split.contestedCents)}</p>
+      <ul className="mt-1 list-disc pl-5">
+        {split.accepted.map((line) => <li key={line.id}>Accepted: {line.description} ({formatExactCents(line.amountCents)})</li>)}
+        {split.contested.map((line) => <li key={line.id}>Contested: {line.description} ({formatExactCents(line.amountCents)})</li>)}
+      </ul>
+      {booking.renterState?.response?.note ? <p className="mt-2" data-testid="renter-note">&ldquo;{booking.renterState.response.note}&rdquo;</p> : null}
+      <p className="mt-2 text-xs">The accepted items can be charged now. The contested part stays on the hold until you settle it.</p>
+      {part?.error ? <p className="mt-2 text-xs text-red-700" data-testid="part-capture-error">{part.error}</p> : null}
+      {booking.status === "contested" ? (
+        <Button className="mt-3" size="sm" loading={busy === "part"} disabled={!!busy} onClick={() => act("part", "Could not request approval", () => kitFetch<BookingView>(`/api/bookings/${booking.id}/part-capture`, { method: "POST" }))} data-testid="request-part-capture">
+          Request approval to charge the accepted {formatExactCents(split.acceptedCents)} now
+        </Button>
+      ) : null}
+    </div>
+  );
+}
+
 /** The agent has stopped. Everything from here is the host's call, and no money moves until they approve. */
 export function HostDecision({ booking, busy, act }: { booking: BookingView; busy: string | null; act: (name: string, failTitle: string, action: () => Promise<BookingView>) => Promise<void> }) {
   const { kitFetch } = useKit();
   const { toast } = useToast();
   const [edits, setEdits] = useState<Record<string, string>>({});
   const [reason, setReason] = useState<string | undefined>(undefined);
-  const { proposal, hold, authorizedCents = booking.depositCents } = booking;
+  const { proposal, hold } = booking;
+  // After the accepted items were charged on their own, only the rest of the hold is left to decide.
+  const authorizedCents = heldCents(booking);
+  const split = splitOf(booking);
+  const splitPending = !!split && !booking.partCapture?.captureId;
+  const releaseLabel = booking.partCapture?.captureId ? `Release the remaining ${formatExactCents(authorizedCents)} instead` : "Release the whole deposit instead";
   if (!proposal) return null;
 
   const url = `/api/bookings/${booking.id}`;
@@ -171,6 +213,14 @@ export function HostDecision({ booking, busy, act }: { booking: BookingView; bus
         </div>
       </div>
 
+      {split ? <SplitPanel booking={booking} split={split} busy={busy} act={act} /> : null}
+
+      {splitPending ? (
+        <Button variant="secondary" onClick={() => act("settle", "Could not request approval", sendRelease)} disabled={blocked} data-testid="release-instead">
+          Release the whole deposit instead
+        </Button>
+      ) : (
+      <>
       {looks.length ? <WorthALook looks={looks} onCharge={(i) => proposal.lines.some((line) => line.id === `look-${i}`)} disabled={blocked || invalid || contested} onAdd={(i) => act("add-look", "Could not add it to the charge", () => saveLines({ addLook: i }))} /> : null}
 
       <div className="rounded-lg border border-zinc-200 px-4 py-3">
@@ -224,7 +274,7 @@ export function HostDecision({ booking, busy, act }: { booking: BookingView; bus
         )}
         {!release ? (
           <Button variant="secondary" onClick={() => act("settle", "Could not request approval", sendRelease)} disabled={blocked} data-testid="release-instead">
-            Release the whole deposit instead
+            {releaseLabel}
           </Button>
         ) : null}
       </div>
@@ -240,6 +290,8 @@ export function HostDecision({ booking, busy, act }: { booking: BookingView; bus
           </Button>
         </div>
       </details>
+      </>
+      )}
     </div>
   );
 }
