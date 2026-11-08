@@ -23,6 +23,12 @@ Airbnb's AirCover and Turo's protection plans settle damage inside their platfor
 7. The host can change any amount, since the AI's figures are proposals, not repair quotes, and adds a one-line reason the renter sees. Raising a charge goes back to the renter. Then the host sends the charge or release to the Guard's approval step. No money moves before that approval, and declining moves nothing and keeps the booking open.
 8. PayPal captures exactly that amount, the rest of the hold is voided, and the result screen shows, for example, "$150 captured, $150 released", re-read from PayPal. With no damage the whole hold is voided and re-read: "$0 captured, $300 released".
 
+**Split capture.** When the renter accepts some items and contests others, the host can charge the accepted items at once (after the same approval step), as a capture with `final_capture: false`. The contested part stays on the same hold until a person settles it, with a second capture from that hold or a release; the settlement then voids what's left. PayPal can't shrink a hold, so the app's own limit keeps the second charge to the contested amount. On the sandbox both captures and the void are re-read from PayPal.
+
+**The renter's own photos.** Until the host compares the photos, the renter can add their own check-in or check-out photo from their link. Claude weighs them with the host's: damage that either check-in photo already shows isn't charged, and each finding says which photo it was seen in ("Seen in the host's check-out photo").
+
+**Dispute pack.** Once anything is charged, the host can download an evidence pack (PDF): the photos with each finding boxed and numbered, every line with its price-table row and the photo it was seen in, the renter's accept or contest record and every PayPal id. If the renter disputes the charge with PayPal, the `CUSTOMER.DISPUTE.CREATED` webhook files the dispute under its booking, and the settlement agent reads it with the Agent Toolkit's `get_dispute`. The host sees the case, the renter's message and the deadline, and can send the pack to PayPal. That submission is a guarded tool (`submit_dispute_evidence`) that waits for the host's approval like a charge.
+
 The **Dashboard** shows what's held, charged and released by property, and for each booking what the AI said and what the host charged (for example "AI said $150.00, you charged $90.00 (−$60.00)").
 
 The booking page keeps the PayPal calls folded into one line, **PayPal calls (n)**; one click shows every call with its HTTP status and `debug_id`.
@@ -53,9 +59,10 @@ All PayPal calls go to the **sandbox** (`https://api-m.sandbox.paypal.com`); the
 | Orders v2 | `POST /v2/checkout/orders` (intent `AUTHORIZE`), `/authorize`, `GET /v2/checkout/orders/{id}` | Places the deposit as a hold, so nothing is charged. The settlement agent reads the order before it proposes |
 | Payments v2 | `GET /v2/payments/authorizations/{id}`, `/capture`, `/void`, `GET /v2/payments/captures/{id}` | Charges the exact amount the host approved, releases the rest of the hold, then re-reads both so the result screen shows PayPal's numbers |
 | Webhooks | `POST /v1/notifications/verify-webhook-signature` | Verified webhooks update the app's ledger and appear on the timeline of the booking they belong to |
-| **PayPal Agent Toolkit** | `@paypal/agent-toolkit` 1.11 tools: `get_order` | The settlement agent reads the order through PayPal's Agent Toolkit (definitions, validation and sandbox execution), plus guarded extensions the toolkit lacks: `get_authorization` for the agent, and `void_authorization` for the release after the host approves. |
+| Disputes v1 | `GET /v1/customer/disputes/{id}`, `POST /v1/customer/disputes/{id}/provide-evidence` | Reads a renter's dispute when its webhook arrives, and sends the evidence pack (PDF, evidence type `OTHER`) after the host approves |
+| **PayPal Agent Toolkit** | `@paypal/agent-toolkit` 1.11 tools: `get_order`, `get_dispute` | The settlement agent reads the order through PayPal's Agent Toolkit (definitions, validation and sandbox execution), plus guarded extensions the toolkit lacks: `get_authorization` for the agent, and `void_authorization` for the release after the host approves. |
 
-**Safety around money:** every money-moving agent call passes a guard. It enforces a per-action cap, a daily cap, a payee allowlist and idempotency (`PayPal-Request-Id`), and makes `capture_deposit` and `release_deposit` wait for the host at any amount. Every decision goes to a hash-chained, append-only audit log.
+**Safety around money:** every money-moving agent call passes a guard. It enforces a per-action cap, a daily cap, a payee allowlist and idempotency (`PayPal-Request-Id`), and makes `capture_deposit`, `capture_accepted_items`, `release_deposit` and `submit_dispute_evidence` wait for the host at any amount. Every decision goes to a hash-chained, append-only audit log.
 
 ## How AI is used
 
@@ -141,6 +148,7 @@ Started from kit `b67af83`. Two kit bugs found while building this are fixed her
 - The optional PayPal remote MCP connector is read-only and untested.
 - There are no logins yet: the renter's page is a private link the host shares by hand, and anyone with the host's page could approve. The bookings list never includes renter links, but a single booking's page does, because the host needs it.
 - The renter's contest is a note to the host inside this app. It doesn't open a PayPal dispute.
+- A PayPal dispute is opened by the buyer from their PayPal account, so automated runs open one on mock PayPal only. The webhook handler, `get_dispute` and the evidence upload are the same code on the sandbox, but no sandbox dispute has been run through them yet. The evidence pack shows JPEG photos; a PNG or WebP upload is named in the pack but not drawn.
 - The AI's figures run low and aren't repair estimates. They're proposals the host can change.
 - `next dev` can reload endlessly on heavy pages (a kit issue, seen without AG Studio too), so run the AG Studio dashboard on a production build.
 - Rows booked under the test name `Test Renter` stay out of the lists. Add `?tests=1` to see them.

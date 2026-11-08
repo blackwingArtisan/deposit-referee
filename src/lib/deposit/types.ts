@@ -172,6 +172,40 @@ export interface Booking {
   renterState?: RenterState;
   settlement?: Settlement;
   partCapture?: PartCapture;
+  /** A PayPal dispute the renter opened on one of this booking's charges. */
+  dispute?: BookingDispute;
+}
+
+/** Sending the evidence pack to PayPal, through the Guard's approval gate. */
+export interface EvidenceSubmission {
+  runId: string;
+  requestedAt: string;
+  submittedAt?: string;
+  /** The file PayPal received. */
+  fileName?: string;
+  /** Why the last attempt stopped, in words the host can act on. */
+  error?: string;
+}
+
+/** A dispute as PayPal last reported it, read back with get_dispute. */
+export interface BookingDispute {
+  disputeId: string;
+  /** The charge it is about. */
+  captureId: string;
+  reason: string;
+  /** PayPal's status, e.g. WAITING_FOR_SELLER_RESPONSE, UNDER_REVIEW, RESOLVED. */
+  status: string;
+  amountCents: number;
+  openedAt: string;
+  /** PayPal wants the host's answer by this time. */
+  responseDueAt?: string;
+  /** What the renter wrote to PayPal. */
+  buyerMessage?: string;
+  /** PayPal's outcome once resolved. */
+  outcome?: string;
+  /** When the app last read it from PayPal. */
+  readAt: string;
+  evidence?: EvidenceSubmission;
 }
 
 export interface PendingApproval {
@@ -185,6 +219,8 @@ export interface PendingApproval {
 export interface BookingView extends Booking {
   hold: HoldClock | null;
   approval: PendingApproval | null;
+  /** Waiting at the gate: sending the evidence pack to PayPal. */
+  disputeApproval: PendingApproval | null;
 }
 
 /** One row of the bookings list: no renter link. */

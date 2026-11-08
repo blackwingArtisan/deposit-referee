@@ -45,11 +45,23 @@ export function decisionStatus(booking: Booking): "proposed" | "contested" | "re
   return booking.renterState?.response?.decision === "contested" ? "contested" : "proposed";
 }
 
-function pendingApproval(booking: Booking): PendingApproval | null {
-  const part = booking.partCapture && !booking.partCapture.captureId ? booking.partCapture : undefined;
-  const runId = part && booking.status === "awaiting_approval" ? part.runId : booking.settlement?.runId;
+function pendingFor(runId: string | undefined): PendingApproval | null {
   const pending = runId ? getApprovals().list({ runId, state: "pending" })[0] : undefined;
   return pending ? { id: pending.id, summary: pending.summary, reason: pending.reason, amountValue: pending.amount?.value } : null;
+}
+
+function pendingApproval(booking: Booking): PendingApproval | null {
+  const part = booking.partCapture && !booking.partCapture.captureId ? booking.partCapture : undefined;
+  return pendingFor(part && booking.status === "awaiting_approval" ? part.runId : booking.settlement?.runId);
+}
+
+/** The key in activeSettlements while the evidence pack waits at the gate. */
+export const evidenceKey = (bookingId: string) => `${bookingId}:evidence`;
+
+/** An evidence submission that is neither sent nor failed, and no longer running here, was lost in a restart. */
+function lostEvidence(booking: Booking): boolean {
+  const evidence = booking.dispute?.evidence;
+  return !!evidence && !evidence.submittedAt && !evidence.error && !activeSettlements().has(evidenceKey(booking.id));
 }
 
 export function viewBooking(input: Booking): BookingView {
@@ -62,7 +74,16 @@ export function viewBooking(input: Booking): BookingView {
         ? saveBooking({ ...booking, status: decisionStatus(booking), partCapture: { ...booking.partCapture, error } })
         : saveBooking({ ...booking, status: decisionStatus(booking), settlement: { ...booking.settlement!, error } });
   }
-  return { ...booking, hold: booking.holdExpiresAt ? holdClock(booking.holdExpiresAt) : null, approval: pendingApproval(booking) };
+  if (lostEvidence(booking)) {
+    booking = saveBooking({ ...booking, dispute: { ...booking.dispute!, evidence: { ...booking.dispute!.evidence!, error: "The approval was lost when the server restarted. Send it again." } } });
+  }
+  const evidence = booking.dispute?.evidence;
+  return {
+    ...booking,
+    hold: booking.holdExpiresAt ? holdClock(booking.holdExpiresAt) : null,
+    approval: pendingApproval(booking),
+    disputeApproval: evidence && !evidence.submittedAt ? pendingFor(evidence.runId) : null,
+  };
 }
 
 /** Plain records, newest first. Reading them changes nothing. Pass `tests` to include test rows. */
