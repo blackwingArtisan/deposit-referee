@@ -91,9 +91,12 @@ test("the agent proposes and stops, the renter accepts, the host approves", asyn
   expect(await box.evaluate((el) => (el as HTMLElement).style.left)).toBe(`${drawn.x * 100}%`);
 
   // The amount comes from the price table, and the screen says which row.
+  // Real AI can find several marks: each is priced from its row, and together they stop at the hold.
+  let room = DEPOSIT_CENTS;
   for (const line of proposal!.lines) {
     expect(line.price, "every AI line names its price-table row").toBeTruthy();
-    expect(line.amountCents).toBe(Math.min(priceOf(line.price!), DEPOSIT_CENTS));
+    expect(line.amountCents).toBe(Math.min(priceOf(line.price!), room));
+    room -= line.amountCents;
   }
   await expect(page.getByTestId("price-row").first()).toContainText("Price table:");
   if (!flow.live) await expect(page.getByTestId("price-row").first()).toContainText("Price table: Scratch or gouge, large, $150");
@@ -117,6 +120,15 @@ test("the agent proposes and stops, the renter accepts, the host approves", asyn
   const capped = ai >= DEPOSIT_CENTS;
   if (capped) await setCharge(page, reviewed, "150.00");
   await approveCharge(page, flow, capped ? 15_000 : ai, "deposit-result");
+
+  // On a phone too, opening the PayPal calls keeps the result in view.
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.reload();
+  await page.getByTestId("paypal-calls-toggle").click();
+  await expect(page.getByTestId("timeline-step").first()).toBeVisible();
+  await expect(page.getByTestId("ruling-headline")).toBeInViewport();
+  await expectNoSidewaysScroll(page);
+  await page.setViewportSize({ width: 1440, height: 1000 });
 
   const done = await flow.booking();
   await expect(renter.getByTestId("renter-headline")).toContainText("released", { timeout: 10_000 });
