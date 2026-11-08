@@ -12,7 +12,7 @@ import { CheckoutButton } from "@/components/paypal/checkout-button";
 import { PageHeader } from "@/components/shell/app-shell";
 import { useToast } from "@/components/toast";
 import { Badge, Button, Card, CardBody, EmptyState, SkeletonCard } from "@/components/ui";
-import { formatCents, formatExactCents, HOLD_LIMIT_DAYS, HONOR_DAYS } from "@/lib/deposit/rules";
+import { formatCents, formatExactCents, HOLD_LIMIT_DAYS, HONOR_DAYS, photoChangeBlocked } from "@/lib/deposit/rules";
 import { bookingSteps, combineEvents } from "@/lib/deposit/timeline";
 import type { BookingStatus, BookingView, PhotoSlot } from "@/lib/deposit/types";
 import { mergeEvents, type TimelineEvent, type TimelineStep } from "@/lib/events/types";
@@ -20,6 +20,7 @@ import type { Money } from "@/lib/money";
 import { DamageItems } from "./damage-items";
 import { DisputePanel } from "./dispute-panel";
 import { HostDecision } from "./host-decision";
+import { photoDataUrl } from "./photo-file";
 import { PhotoFrame, RENTER_SLOTS } from "./photo-frame";
 import { Ruling } from "./ruling";
 
@@ -40,14 +41,6 @@ const SLOTS: { slot: PhotoSlot; label: string }[] = [
 ];
 
 const longDate = (iso: string) => new Date(iso).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
-
-const readAsDataUrl = (file: File) =>
-  new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result));
-    reader.onerror = () => reject(new Error("That file could not be read."));
-    reader.readAsDataURL(file);
-  });
 
 function Step({ n, title, done, children }: { n: number; title: string; done?: boolean; children?: ReactNode }) {
   return (
@@ -210,11 +203,12 @@ export function BookingScreen() {
   async function uploadPhoto(slot: PhotoSlot, event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     event.target.value = "";
-    if (file) await run(`photo:${slot}`, "Could not add the photo", async () => kitFetch<BookingView>(`${url}/photos`, { json: { slot, dataUrl: await readAsDataUrl(file) } }));
+    if (file) await run(`photo:${slot}`, "Could not add the photo", async () => kitFetch<BookingView>(`${url}/photos`, { json: { slot, dataUrl: await photoDataUrl(file) } }));
   }
 
   const approval = booking.approval;
   const timeline = <PayPalCalls steps={timelineSteps} />;
+  const canReplace = !photoChangeBlocked(booking);
 
   return (
     <>
@@ -264,7 +258,21 @@ export function BookingScreen() {
                     {SLOTS.map(({ slot, label }) => {
                       const photo = photos[slot];
                       return photo ? (
-                        <PhotoFrame key={slot} label={label} photo={photo} items={slot === "check_out" ? review?.items : undefined} looks={slot === "check_out" ? review?.worthALook : undefined} />
+                        <div key={slot} className="min-w-0">
+                          <PhotoFrame label={label} photo={photo} items={slot === "check_out" ? review?.items : undefined} looks={slot === "check_out" ? review?.worthALook : undefined} />
+                          {canReplace ? (
+                            <div className="mt-2 flex flex-wrap items-center gap-1" data-testid={`replace-${slot}`}>
+                              <span className="text-xs text-zinc-500">Replace:</span>
+                              <Button variant="ghost" size="sm" loading={busy === `photo:${slot}`} disabled={!!busy} onClick={() => addDemoPhoto(slot)} data-testid={`replace-demo-${slot}`}>
+                                Demo photo
+                              </Button>
+                              <label className="inline-flex h-8 cursor-pointer items-center justify-center gap-1.5 rounded-lg px-3 text-sm font-medium text-zinc-700 hover:bg-zinc-100 focus-within:ring-2 focus-within:ring-brand-300">
+                                <Upload className="size-4" /> Upload a different photo
+                                <input type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" disabled={!!busy} onChange={(e) => uploadPhoto(slot, e)} data-testid={`replace-upload-${slot}`} />
+                              </label>
+                            </div>
+                          ) : null}
+                        </div>
                       ) : (
                         <div key={slot} className="flex flex-col gap-2 rounded-lg border border-dashed border-zinc-300 p-4">
                           <p className="text-sm font-medium text-zinc-800">{label}</p>
@@ -300,6 +308,7 @@ export function BookingScreen() {
                       ) : null;
                     })}
                   </div>
+                  {canReplace && review ? <p className="mt-3 text-xs text-zinc-500" data-testid="replace-note">Replacing a photo clears the comparison and the proposal, and you compare again. The renter hasn&rsquo;t answered yet, so nothing is lost.</p> : null}
                   {status === "held" ? (
                     <p className="mt-3 text-xs text-zinc-500" data-testid="renter-photo-invite">
                       The renter can add their own check-in or check-out photo on{" "}
@@ -329,10 +338,11 @@ export function BookingScreen() {
                     </div>
                   ) : (
                     <div className="space-y-3">
-                      {reviewError ? <Notice tone="error">{reviewError}</Notice> : null}
+                      {reviewError ? <Notice tone="error"><span data-testid="review-error">{reviewError}</span></Notice> : null}
                       <Button icon={<ScanSearch className="size-4" />} loading={busy === "review"} disabled={!!busy} onClick={compare} data-testid="run-review">
-                        Compare photos
+                        {reviewError ? "Try again" : "Compare photos"}
                       </Button>
+                      {busy === "review" ? <p className="text-sm text-zinc-600" data-testid="review-wait">Claude is comparing the two photos. This takes about 20 seconds.</p> : null}
                     </div>
                   )}
                 </Step>
@@ -359,7 +369,7 @@ export function BookingScreen() {
                         <ApprovalPrompt
                           approvalId={approval.id}
                           summary={approval.summary}
-                          reason="This is the Guard's approval step. No money moves until you approve."
+                          reason="Your approval step. No money moves until you approve this exact amount."
                           amount={approval.amountValue ? ({ currency_code: "USD", value: approval.amountValue } satisfies Money) : undefined}
                           onDecided={() => void refresh().catch(() => undefined)}
                         />

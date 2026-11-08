@@ -1,4 +1,5 @@
 /** Check-in and check-out photos: the licensed demo pair, or the host's own upload. Server only. */
+import { isReadablePhoto, UNREADABLE_PHOTO } from "./image-check";
 import fs from "node:fs";
 import path from "node:path";
 import { MAX_IMAGE_BYTES, parseDataUrl } from "@/lib/ai/images";
@@ -69,6 +70,7 @@ export function saveUpload(bookingId: string, slot: PhotoSlot, dataUrl: string, 
   if (bytes.length > MAX_IMAGE_BYTES) throw new HttpError(413, "That photo is over 5 MB. Choose a smaller one.", "photo_too_large");
   const kind = SIGNATURES.find((s) => s.matches(bytes));
   if (!kind) throw new HttpError(400, "Upload a JPEG, PNG or WebP photo.", "invalid_photo");
+  if (!isReadablePhoto(bytes, kind.mediaType)) throw new HttpError(400, UNREADABLE_PHOTO, "invalid_photo");
   const key = by === "renter" ? `renter_${slot}` : slot;
   const file = uploadFile(bookingId, key, kind.ext);
   fs.mkdirSync(path.dirname(file), { recursive: true });

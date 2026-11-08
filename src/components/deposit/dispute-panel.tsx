@@ -107,7 +107,7 @@ export function DisputePanel({ booking, busy, act, onDecided }: { booking: Booki
 
         {booking.disputeApproval ? (
           <div ref={gate}>
-            <ApprovalPrompt approvalId={booking.disputeApproval.id} summary={booking.disputeApproval.summary} reason="This is the Guard's approval step. Nothing goes to PayPal until you approve." onDecided={onDecided} />
+            <ApprovalPrompt approvalId={booking.disputeApproval.id} summary={booking.disputeApproval.summary} reason="Your approval step. Nothing goes to PayPal until you approve." onDecided={onDecided} />
           </div>
         ) : waiting ? (
           <p className="text-sm text-zinc-600">Checking the case with PayPal.</p>

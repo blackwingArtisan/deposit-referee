@@ -9,15 +9,8 @@ import { Badge, Button, Card, CardBody, EmptyState, Field, SkeletonCard, Textare
 import { formatCents, formatExactCents, localTime } from "@/lib/deposit/rules";
 import type { PhotoSlot, RenterView } from "@/lib/deposit/types";
 import { DamageItems, PriceTable } from "./damage-items";
+import { photoDataUrl } from "./photo-file";
 import { PhotoFrame, RENTER_SLOTS } from "./photo-frame";
-
-const readAsDataUrl = (file: File) =>
-  new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result));
-    reader.onerror = () => reject(new Error("That file could not be read."));
-    reader.readAsDataURL(file);
-  });
 
 function Headline({ view }: { view: RenterView }) {
   if (view.settled) return <>{formatCents(view.settled.capturedCents)} charged, {formatCents(view.settled.releasedCents)} released</>;
@@ -66,7 +59,7 @@ export function RenterScreen() {
     if (event && !file) return;
     setBusy(`photo:${slot}`);
     try {
-      setView(await kitFetch<RenterView>(`/api/renter/${token}/photos`, { json: { slot, ...(file ? { dataUrl: await readAsDataUrl(file) } : {}) } }));
+      setView(await kitFetch<RenterView>(`/api/renter/${token}/photos`, { json: { slot, ...(file ? { dataUrl: await photoDataUrl(file) } : {}) } }));
     } catch (e) {
       toast({ title: "The photo didn't go through", description: (e as Error).message, variant: "error", durationMs: 7000 });
     } finally {
@@ -182,7 +175,7 @@ export function RenterScreen() {
         </div>
       ) : null}
 
-      {response?.decision === "accepted" ? <p data-testid="renter-accepted" className="rounded-lg bg-zinc-50 px-4 py-3 text-sm text-zinc-700">You accepted this charge. The host still has to approve it before anything moves.</p> : null}
+      {response?.decision === "accepted" ? <p data-testid="renter-accepted" className="rounded-lg bg-zinc-50 px-4 py-3 text-sm text-zinc-700">You accepted this charge. The host still has to approve it before anything moves.{view.canContest ? " You can still change your mind and contest until then." : ""}</p> : null}
 
       {view.canContest ? (
         <Card>
@@ -213,6 +206,7 @@ export function RenterScreen() {
                 </Button>
               ) : null}
             </div>
+            {!note.trim() ? <p className="text-xs text-zinc-500" data-testid="contest-why">Write a note to the host to contest.</p> : choosing && contestedCount === 0 ? <p className="text-xs text-zinc-500" data-testid="contest-why">Tick at least one item to contest.</p> : null}
           </CardBody>
         </Card>
       ) : null}

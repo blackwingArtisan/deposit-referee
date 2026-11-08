@@ -479,7 +479,8 @@ test("renter photos: the renter's own check-in close-up is weighed, and each fin
   const renter = await openAsRenter(page, held);
   await expect(renter.getByTestId("renter-photos")).toContainText("Add them before the host compares the photos");
   await renter.getByTestId("renter-upload-check_in").setInputFiles({ name: "note.jpg", mimeType: "image/jpeg", buffer: Buffer.from("not really a photo") });
-  await expect(renter.getByText("Upload a JPEG, PNG or WebP photo.")).toBeVisible();
+  // The browser refuses it before it is sent; the server would too.
+  await expect(renter.getByText(/Choose a JPEG, PNG or WebP photo\.|Upload a JPEG, PNG or WebP photo\./)).toBeVisible();
   await renter.getByTestId("renter-demo-check_in").click();
   await expect(renter.getByAltText("Renter's check-in photo")).toBeVisible();
   await expectNoSidewaysScroll(renter);
@@ -574,4 +575,68 @@ test("dispute pack: the renter disputes the charge with PayPal, and the host sen
   await panel.scrollIntoViewIfNeeded();
   await page.screenshot({ path: `screenshots/dispute-pack-${flow.mode}.png`, fullPage: true });
   console.log(`Dispute pack (${flow.mode}): dispute ${sent.dispute!.disputeId} on capture ${sent.dispute!.captureId} ${sent.dispute!.status}; evidence ${sent.dispute!.evidence!.fileName}`);
+});
+
+test("safe input: bad amounts and fake photos get a plain message, photos can be replaced, and a waiting button says why", async ({ page, request }) => {
+
+  // A bad deposit keeps the form and says what's allowed, next to the field.
+  await page.goto("/bookings");
+  await page.getByLabel("What's being rented").fill("Harbor loft, weekend of Dec 4");
+  await page.getByLabel("Renter").fill("Test Renter");
+  for (const value of ["-5", "0", "abc", "99999999"]) {
+    await page.getByLabel("Deposit").fill(value);
+    await page.getByTestId("create-booking").click();
+    await expect(page.getByTestId("deposit-error")).toHaveText("Enter a deposit from $1 to $500, like 300.00.");
+    await expect(page).toHaveURL(/\/bookings$/);
+  }
+  await expect(page.getByText("couldn't load")).toHaveCount(0);
+
+  const flow = await toPhotos(page, request, { checkOut: "clean", item: "Harbor loft, weekend of Dec 11" });
+
+  // A file with a PNG's first bytes and nothing else is refused, in the browser and again by the server.
+  const fake = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.from("not a picture ".repeat(40))]);
+  await page.getByTestId("replace-upload-check_out").setInputFiles({ name: "check-out.png", mimeType: "image/png", buffer: fake });
+  await expect(page.getByText("That file isn't a readable photo. Choose a JPEG, PNG or WebP photo.")).toBeVisible();
+  const refused = await request.post(`/api/bookings/${flow.id}/photos`, { data: { slot: "check_out", dataUrl: `data:image/png;base64,${fake.toString("base64")}` } });
+  expect(refused.status()).toBe(400);
+  expect((await refused.json()).error.message).toBe("That file isn't a readable photo. Choose a JPEG, PNG or WebP photo.");
+  await expect(page.getByTestId("photo-source").nth(1)).toContainText("same photo");
+  // The rest compares photos; a live run keeps to the checks above, which don't use the AI.
+  if (flow.live) return;
+
+  await page.getByTestId("run-review").click();
+  await expect(page.getByTestId("request-release")).toBeVisible({ timeout: 60_000 });
+  expect((await flow.booking()).proposal!.kind).toBe("release");
+
+  // Before the renter answers, the host can swap a photo; the comparison starts over.
+  await expect(page.getByTestId("replace-note")).toBeVisible();
+  await page.getByTestId("replace-demo-check_out").click();
+  await expect(page.getByTestId("run-review")).toBeVisible({ timeout: 15_000 });
+  const reset = await flow.booking();
+  expect(reset.status).toBe("held");
+  expect(reset.review).toBeUndefined();
+  expect(reset.proposal).toBeUndefined();
+  await expect(page.getByTestId("photo-source").nth(1)).toContainText("added digitally");
+  await page.getByTestId("run-review").click();
+  await expect(page.getByTestId("request-approval")).toBeVisible({ timeout: 60_000 });
+  expect((await flow.booking()).proposal!.kind).not.toBe("release");
+
+  // The disabled button says what it's waiting for.
+  await expect(page.getByTestId("request-approval")).toBeDisabled();
+  await expect(page.getByTestId("approval-why")).toContainText("Waiting for the renter to accept or contest");
+
+  // A negative line is a message on the line, not a broken page.
+  await setCharge(page, await flow.booking(), "-5");
+  await expect(page.getByText("An amount can't be below zero.")).toBeVisible();
+  await expect(page.getByText("couldn't load")).toHaveCount(0);
+  await setCharge(page, await flow.booking(), "150.00");
+
+  // Once the renter answers, the photos are fixed.
+  const renter = await renterAccepts(page, await flow.booking());
+  await page.reload();
+  await expect(page.getByTestId("replace-check_out")).toHaveCount(0);
+  const late = await request.post(`/api/bookings/${flow.id}/photos`, { data: { slot: "check_out" } });
+  expect(late.status()).toBe(409);
+  await expectNoSidewaysScroll(page);
+  await renter.context().close();
 });

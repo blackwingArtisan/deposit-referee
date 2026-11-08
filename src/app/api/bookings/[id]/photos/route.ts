@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { requireBooking, saveBooking, viewBooking } from "@/lib/deposit/bookings";
 import { DEMO_CLEAN_CHECK_OUT, DEMO_FAINT_CHECK_OUT, DEMO_PHOTOS, DEMO_TWO_MARKS_CHECK_OUT, saveUpload } from "@/lib/deposit/photos";
+import { photoChangeBlocked } from "@/lib/deposit/rules";
 import { HttpError, readJson } from "@/lib/http";
 import { bookingRoute } from "@/lib/deposit/booking-route";
 
@@ -19,8 +20,11 @@ const Body = z.object({
 export const POST = bookingRoute<RouteContext<"/api/bookings/[id]/photos">>(async (req, ctx) => {
   const booking = requireBooking((await ctx.params).id);
   const { slot, dataUrl, clean, faint, two } = await readJson(req, Body);
-  if (booking.status !== "held") throw new HttpError(409, "Photos can only be added after the deposit is on hold and before the AI review.", "conflict");
+  const blocked = photoChangeBlocked(booking);
+  if (blocked) throw new HttpError(409, blocked, "conflict");
   const demoCheckOut = slot !== "check_out" ? undefined : clean ? DEMO_CLEAN_CHECK_OUT : faint ? DEMO_FAINT_CHECK_OUT : two ? DEMO_TWO_MARKS_CHECK_OUT : undefined;
   const photo = dataUrl ? saveUpload(booking.id, slot, dataUrl) : (demoCheckOut ?? DEMO_PHOTOS[slot]);
-  return viewBooking(saveBooking({ ...booking, photos: { ...booking.photos, [slot]: photo } }));
+  // A new photo means a new comparison: the old review, proposal and renter window go.
+  const fresh = booking.status === "held" ? booking : { ...booking, status: "held" as const, review: undefined, proposal: undefined, renterState: undefined, agentError: undefined, settlement: undefined };
+  return viewBooking(saveBooking({ ...fresh, photos: { ...fresh.photos, [slot]: photo } }));
 });

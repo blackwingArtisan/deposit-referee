@@ -121,27 +121,54 @@ export function centsToDollars(cents: number): string {
 }
 
 /** "$150" for whole dollars, "$150.50" otherwise. */
+/** 1234567.00 -> 1,234,567.00, so a big amount reads as one. */
+const grouped = (dollars: string) => dollars.replace(/^(-?\d+)/, (whole) => whole.replace(/\B(?=(\d{3})+$)/g, ","));
+
 export function formatCents(cents: number): string {
-  const dollars = centsToDollars(cents);
+  const dollars = grouped(centsToDollars(cents));
   return `$${dollars.endsWith(".00") ? dollars.slice(0, -3) : dollars}`;
 }
 
 /** "$150.00": used wherever the host is agreeing to an exact amount. */
 export function formatExactCents(cents: number): string {
-  return `$${centsToDollars(cents)}`;
+  return `$${grouped(centsToDollars(cents))}`;
 }
 
-/** Reads one line's amount field. Zero is fine: it drops the line from the charge. */
+const NEGATIVE = "An amount can't be below zero.";
+
+/** Reads one line's amount field. Zero is fine: it drops the line from the charge. Never throws. */
 export function parseLineAmount(value: string): { cents: number; error?: undefined } | { cents?: undefined; error: string } {
+  if (value.trim().startsWith("-")) return { error: NEGATIVE };
   try {
-    return { cents: dollarsToCents(value) };
+    const cents = dollarsToCents(value);
+    return cents < 0 ? { error: NEGATIVE } : { cents };
   } catch {
     return { error: "Enter an amount like 150.00." };
   }
 }
 
+/** Reads the new-booking deposit field. Never throws. */
+export function parseDeposit(value: string): { cents: number; error?: undefined } | { cents?: undefined; error: string } {
+  const error = `Enter a deposit from ${formatCents(MIN_DEPOSIT_CENTS)} to ${formatCents(MAX_DEPOSIT_CENTS)}, like 300.00.`;
+  const parsed = parseLineAmount(value);
+  if (parsed.cents === undefined || parsed.cents < MIN_DEPOSIT_CENTS || parsed.cents > MAX_DEPOSIT_CENTS) return { error };
+  return parsed;
+}
+
+/**
+ * Why the host's photos can't change now, or null if they can. They can be replaced until the
+ * renter has answered the proposal or any money has moved; replacing one clears the comparison.
+ */
+export function photoChangeBlocked(booking: { status: string; renterState?: { response?: unknown }; partCapture?: unknown; settlement?: { captureId?: string } }): string | null {
+  if (booking.status === "held") return null;
+  if (booking.status === "draft") return "Photos can be added once the deposit is on hold.";
+  const open = (booking.status === "reviewed" || booking.status === "proposed") && !booking.renterState?.response && !booking.partCapture && !booking.settlement?.captureId;
+  return open ? null : "The photos can't change now: the renter has answered, or money has moved.";
+}
+
 /** Reads the host's charge field. Never throws, because it runs on every keystroke. */
 export function parseCharge(value: string, authorizedCents: number): { cents: number; error?: undefined } | { cents?: undefined; error: string } {
+  if (value.trim().startsWith("-")) return { error: NEGATIVE };
   try {
     const cents = dollarsToCents(value);
     assertChargeFits(cents, authorizedCents);
