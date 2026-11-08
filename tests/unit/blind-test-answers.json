@@ -1,0 +1,308 @@
+[
+ {
+  "pair": "demo",
+  "saved": {
+   "charged": 1,
+   "looks": 0
+  },
+  "verdict": {
+   "new_damage": true,
+   "findings": [
+    {
+     "description": "Long, narrow scratch/gouge on the vinyl plank floor, running roughly vertically from the lower-middle of the floor upward, with exposed lighter material along its length. No such mark appears on the same floor area in the check-in photo.",
+     "box": {
+      "x": 0.44,
+      "y": 0.59,
+      "w": 0.09,
+      "h": 0.29
+     },
+     "damage_type": "scratch",
+     "size": "large",
+     "visibility": "clear",
+     "certainty": "high"
+    }
+   ],
+   "worth_a_look": [],
+   "reasoning": "The check-out photo shows a distinct, long scratch on the floor in front of the stump table. The same area of floor in the check-in photo is clean, with only the normal wood-grain pattern and plank seams. Lighting and camera angle differ between the photos, but they do not explain a linear gouge with exposed lighter material, so this appears to be new damage.",
+   "confidence": "high"
+  }
+ },
+ {
+  "pair": "fresh-01",
+  "saved": {
+   "charged": 0,
+   "looks": 1
+  },
+  "verdict": {
+   "new_damage": false,
+   "findings": [],
+   "worth_a_look": [
+    {
+     "description": "Patch of green paint missing from the wall, exposing grey underlayer. The wall at this spot looks smooth and intact at check-in.",
+     "box": {
+      "x": 0.542,
+      "y": 0.585,
+      "w": 0.116,
+      "h": 0.055
+     },
+     "damage_type": "chip",
+     "size": "medium"
+    }
+   ],
+   "reasoning": "The check-out photo shows a patch of green paint missing from the wall, exposing a grey layer beneath, above the wooden crate. The check-in photo does not show that area of the wall, because the framing is different and it is cropped to the lower left. So I can't confirm the patch wasn't already there at check-in. Because the damage can't be shown to be new, no charge is proposed.",
+   "confidence": "medium"
+  }
+ },
+ {
+  "pair": "fresh-02",
+  "saved": {
+   "charged": 0,
+   "looks": 0
+  },
+  "verdict": {
+   "new_damage": false,
+   "findings": [],
+   "worth_a_look": [],
+   "reasoning": "The dark scuffed or burnt mark on the white table top is visible in both the check-in photo (right of the umbrella hole) and the check-out photo, so it was already there at check-in. The remaining differences are camera angle, framing and lighting, plus a cloth in the braai, which is not damage. No new damage is visible.",
+   "confidence": "high"
+  }
+ },
+ {
+  "pair": "fresh-03",
+  "saved": {
+   "charged": 0,
+   "looks": 0
+  },
+  "verdict": {
+   "new_damage": false,
+   "findings": [],
+   "worth_a_look": [],
+   "reasoning": "The two photos show the same room from slightly different positions. The carpet, walls, brick pillar, wood panels, socket and fire extinguisher look the same in both, and the faint dark carpet marks appear in both photos. The foam play pieces are arranged a little differently, but moved belongings are not damage. No new damage is clearly visible at check-out.",
+   "confidence": "high"
+  }
+ },
+ {
+  "pair": "fresh-04",
+  "saved": {
+   "charged": 0,
+   "looks": 0
+  },
+  "verdict": {
+   "new_damage": false,
+   "findings": [],
+   "worth_a_look": [],
+   "reasoning": "The two photos show the same art studio from slightly different camera positions. Differences such as the moved easel with a painting, the missing bottles and palette from the frame, and a thin dark line on the floor (likely a cable or debris) are moved belongings or framing changes, not damage. The floor tiles, walls and fixtures look the same in both photos, so no new damage can be identified with confidence.",
+   "confidence": "medium"
+  }
+ },
+ {
+  "pair": "fresh-05",
+  "saved": {
+   "charged": 0,
+   "looks": 0
+  },
+  "verdict": {
+   "new_damage": false,
+   "findings": [],
+   "worth_a_look": [],
+   "reasoning": "The peeling plaster patch on the wall beside the plant is visible in the check-in photo as well as the check-out photo, so it was there before the renter. The balls, wooden slats, mat storage, plant and floor look the same in both photos. The water bottle and crate at the right are movable items, not damage, and the other differences come from camera position and framing.",
+   "confidence": "high"
+  }
+ },
+ {
+  "pair": "fresh-06",
+  "saved": {
+   "charged": 1,
+   "looks": 0
+  },
+  "verdict": {
+   "new_damage": true,
+   "findings": [
+    {
+     "description": "Small hole or chipped/broken plaster patch on the wall above the floral sofa, with exposed white and gray material. This area of wall is plain in the check-in photo, apart from the pre-existing water stains.",
+     "box": {
+      "x": 0.368,
+      "y": 0.41,
+      "w": 0.057,
+      "h": 0.06
+     },
+     "damage_type": "hole",
+     "size": "small",
+     "visibility": "clear",
+     "certainty": "medium"
+    }
+   ],
+   "worth_a_look": [],
+   "reasoning": "The check-out photo shows a small hole with broken plaster on the wall above the floral sofa, at about the middle of the frame. The same stretch of wall in the check-in photo shows only the discoloured stains and no hole or chip. The stains elsewhere on the wall appear in both photos, so they are not charged. The charge covers patching and repainting that small area.",
+   "confidence": "medium"
+  }
+ },
+ {
+  "pair": "fresh-07",
+  "saved": {
+   "charged": 0,
+   "looks": 0
+  },
+  "verdict": {
+   "new_damage": false,
+   "findings": [],
+   "worth_a_look": [],
+   "reasoning": "Both photos show the same room with the same peeling and patchy wall paint, the same exposed pipes, scuffed red floor and worn door. The check-out photo is taken from a different angle and shows more of the room, but I can't find any damage in it that is absent from the check-in photo. Any differences come from camera position and lighting, so no charge is proposed.",
+   "confidence": "high"
+  }
+ },
+ {
+  "pair": "fresh-08",
+  "saved": {
+   "charged": 1,
+   "looks": 0
+  },
+  "verdict": {
+   "new_damage": true,
+   "findings": [
+    {
+     "description": "Red/pink crayon-or-marker zigzag scribble on the white wall above the chair, between the air conditioner and the window. The same wall area is clean in the check-in photo.",
+     "box": {
+      "x": 0.564,
+      "y": 0.525,
+      "w": 0.102,
+      "h": 0.055
+     },
+     "damage_type": "marking",
+     "size": "medium",
+     "visibility": "clear",
+     "certainty": "high"
+    }
+   ],
+   "worth_a_look": [],
+   "reasoning": "The check-out photo shows a red zigzag scribble on the wall above the wooden chair. In the check-in photo that wall area is plain and unmarked, and it was clearly in view, so the mark appears to be new. The charge covers cleaning or touch-up painting of a small wall section. Other differences, such as the camera angle, lighting and the furniture visible, are not damage.",
+   "confidence": "high"
+  }
+ },
+ {
+  "pair": "fresh-09",
+  "saved": {
+   "charged": 0,
+   "looks": 0
+  },
+  "verdict": {
+   "new_damage": false,
+   "findings": [],
+   "worth_a_look": [],
+   "reasoning": "The check-in photo already shows a chipped, broken patch of plaster on the wall below the bird-cage lamp. The check-out photo shows the same patch in the same spot, with no visible change in size or condition. The other differences, such as camera angle, framing and furniture position, are not damage, so nothing here is new.",
+   "confidence": "high"
+  }
+ },
+ {
+  "pair": "fresh-10",
+  "saved": {
+   "charged": 1,
+   "looks": 0
+  },
+  "verdict": {
+   "new_damage": true,
+   "findings": [
+    {
+     "description": "Set of long, parallel dark gray scratch marks (about six) on the lower-left panel of the cream door, below the handle, that look like claw or scrape marks through the paint.",
+     "box": {
+      "x": 0.43,
+      "y": 0.47,
+      "w": 0.07,
+      "h": 0.19
+     },
+     "damage_type": "scratch",
+     "size": "large",
+     "visibility": "clear",
+     "certainty": "high"
+    }
+   ],
+   "worth_a_look": [],
+   "reasoning": "At check-in the same door is fully visible and its lower panel, below the handle, is clean with no scratches. At check-out a cluster of parallel scratch marks appears on that panel. Camera position and lighting differ between the photos, but those differences cannot account for the marks, so they are new damage. The charge covers only sanding, filling and repainting that panel. The other differences, such as the moved items, the shifted curtain and the different framing, are not damage, and the wall stains and peeling frame were already there at check-in.",
+   "confidence": "high"
+  }
+ },
+ {
+  "pair": "pair-01",
+  "saved": {
+   "charged": 1,
+   "looks": 0
+  },
+  "verdict": {
+   "new_damage": true,
+   "findings": [
+    {
+     "description": "Long thin gouge/scratch in the vinyl plank floor, running roughly vertically with a dark, torn-looking edge. It is not visible anywhere on the floor in the check-in photo.",
+     "box": {
+      "x": 0.44,
+      "y": 0.59,
+      "w": 0.09,
+      "h": 0.3
+     },
+     "damage_type": "scratch",
+     "size": "large",
+     "visibility": "clear",
+     "certainty": "high"
+    }
+   ],
+   "worth_a_look": [],
+   "reasoning": "The check-out photo shows a long, narrow gouge in the floor planks in the lower-center of the frame. The same area is clear in the check-in photo, which shows only the normal plank seams and wood grain. The scratch has a torn, dark edge, so it is not a lighting effect or a plank seam. Both photos show the same room and the same fixtures, so the camera angle does not explain the difference.",
+   "confidence": "high"
+  }
+ },
+ {
+  "pair": "pair-03",
+  "saved": {
+   "charged": 1,
+   "looks": 0
+  },
+  "verdict": {
+   "new_damage": true,
+   "findings": [
+    {
+     "description": "Rectangular opening cut or broken through the drywall soffit/bulkhead, exposing framing, a dark cavity and loose blown-in insulation that has spilled around the edges.",
+     "box": {
+      "x": 0.29,
+      "y": 0.06,
+      "w": 0.69,
+      "h": 0.84
+     },
+     "damage_type": "hole",
+     "size": "large",
+     "visibility": "clear",
+     "certainty": "medium"
+    }
+   ],
+   "worth_a_look": [],
+   "reasoning": "The check-in photo shows the same bulkhead as a continuous, intact painted drywall surface with no openings. The check-out photo shows a large open hole through the drywall with exposed framing and insulation spilling out. The difference is not explained by lighting or camera angle, so the opening appeared after check-in. The camera angles differ, so the match is not perfect, but an intact surface versus an open hole is a clear difference.",
+   "confidence": "medium"
+  }
+ },
+ {
+  "pair": "pair-05",
+  "saved": {
+   "charged": 1,
+   "looks": 0
+  },
+  "verdict": {
+   "new_damage": true,
+   "findings": [
+    {
+     "description": "Dark reddish-brown stain on the beige carpet in front of the stool, roughly 1 foot across, with a few small droplets nearby.",
+     "box": {
+      "x": 0.47,
+      "y": 0.67,
+      "w": 0.12,
+      "h": 0.12
+     },
+     "damage_type": "stain",
+     "size": "small",
+     "visibility": "clear",
+     "certainty": "high"
+    }
+   ],
+   "worth_a_look": [],
+   "reasoning": "The check-out photo shows a dark reddish-brown stain on the carpet in front of the stool. The same area of carpet is clear in the check-in photo, which covers it from a different angle, so the stain was not there before. The camera angle differs, but the stain is distinct, and neither lighting nor moved furniture explains it. The charge is for professional carpet spot cleaning, and the stain may not come out fully.",
+   "confidence": "high"
+  }
+ }
+]

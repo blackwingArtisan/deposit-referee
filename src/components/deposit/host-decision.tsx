@@ -8,6 +8,7 @@ import { useToast } from "@/components/toast";
 import { Badge, Button, Field, Input, MoneyInput } from "@/components/ui";
 import { centsToDollars, formatExactCents, itemizedCents, localTime, parseLineAmount, releasedCents, renterClearance } from "@/lib/deposit/rules";
 import type { BookingView, ChargeLine, DamageItem } from "@/lib/deposit/types";
+import { PriceSource, PriceTable } from "./damage-items";
 import { lookLetter } from "./photo-frame";
 
 function RenterPanel({ booking, chargeCents }: { booking: BookingView; chargeCents: number }) {
@@ -49,6 +50,7 @@ function LineRow({ line, value, error, disabled, onChange }: { line: ChargeLine;
     <li className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_8.5rem] sm:items-start">
       <div className="min-w-0 text-sm text-zinc-700">
         <p>{line.description}</p>
+        <PriceSource price={line.price} className="mt-0.5" />
         {line.note ? <p className="mt-0.5 text-xs text-zinc-500">{line.note}</p> : null}
         {line.aiCents === undefined ? <p className="mt-0.5 text-xs text-zinc-500">Added by you</p> : line.aiCents !== line.amountCents ? <p className="mt-0.5 text-xs text-zinc-500">The AI proposed {formatExactCents(line.aiCents)}</p> : null}
       </div>
@@ -99,7 +101,8 @@ function WorthALook({ looks, onCharge, disabled, onAdd }: { looks: DamageItem[];
             <span className="flex size-5 shrink-0 items-center justify-center bg-amber-400 text-xs font-semibold text-amber-950" aria-hidden>{lookLetter(i)}</span>
             <div className="min-w-0 flex-1 basis-48 text-zinc-800">
               <p>{look.description}</p>
-              <p className="mt-0.5 text-xs text-zinc-600">About {formatExactCents(look.chargeCents)} if you add it. You can change that.</p>
+              <p className="mt-0.5 text-xs text-zinc-600">{formatExactCents(look.chargeCents)} from the price table if you add it. You can change that.</p>
+              <PriceSource price={look.price} />
             </div>
             {onCharge(i) ? (
               <Badge tone="success">On the charge</Badge>
@@ -173,7 +176,7 @@ export function HostDecision({ booking, busy, act }: { booking: BookingView; bus
       <div className="rounded-lg border border-zinc-200 px-4 py-3">
         <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
           <h4 className="text-sm font-semibold text-zinc-900">Itemized charge</h4>
-          <p className="text-xs text-zinc-500">The AI&rsquo;s figures are proposals, not repair quotes. Change them to your real cost.</p>
+          <p className="text-xs text-zinc-500">Each amount comes from the price table, not the AI. Change it to your real cost.</p>
         </div>
         {parsed.length ? (
           <ul className="space-y-3">
@@ -191,6 +194,9 @@ export function HostDecision({ booking, busy, act }: { booking: BookingView; bus
             </Field>
           </div>
         ) : null}
+        <div className="mt-3 border-t border-zinc-100 pt-3">
+          <PriceTable highlight={proposal.lines.flatMap((line) => (line.price ? [line.price] : []))} />
+        </div>
         <div className="mt-3 border-t border-zinc-100 pt-3">
           <AddLine disabled={blocked} onAdd={(description, amountCents) => act("add-line", "Could not add the line", () => saveLines({ add: { description, amountCents } }))} />
         </div>
