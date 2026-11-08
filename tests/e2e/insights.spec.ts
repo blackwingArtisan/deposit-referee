@@ -150,6 +150,7 @@ test("lists carry no renter links, and the ledger holds only this app's PayPal r
   expect(list).not.toContain(created.renterToken);
 
   const { entries } = (await (await request.get("/api/paypal/ledger")).json()) as { entries: { kind: string; description?: string }[] };
-  expect(entries.filter((e) => !["order", "authorization", "capture"].includes(e.kind))).toEqual([]);
+  // A renter's dispute on one of this app's captures is one of its records too.
+  expect(entries.filter((e) => !["order", "authorization", "capture", "dispute"].includes(e.kind))).toEqual([]);
   expect(entries.filter((e) => /Lumen|Riverbend|Northfold|Gift card/.test(e.description ?? ""))).toEqual([]);
 });
