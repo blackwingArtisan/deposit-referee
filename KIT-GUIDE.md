@@ -219,7 +219,7 @@ Design system: `@/components/ui` (Button/ButtonLink, Card/CardHeader/CardBody/Ca
 
 ### Demo video
 
-`demo/demo.spec.ts` is a template: scenes driven by Playwright, with `titleCard`, `caption` and `highlight` from `demo/captions.ts`, and a `DemoClock` that fails the run past 170 s. `npm run demo:record` builds, starts the production server (mock PayPal, mock AI unless `DEMO_AI_MODE=live`), records 1440×900 and saves `videos/demo-<time>.webm`.
+`demo/demo.spec.ts` is a template: scenes driven by Playwright, with `titleCard`, `caption` and `highlight` from `demo/captions.ts`, and a `DemoClock` that fails the run past 170 s. `npm run demo:record` builds, starts the production server (mock PayPal, mock AI unless `DEMO_AI_MODE=live`), records 1920×1080 at 1x (a smaller viewport leaves grey bars) on port 3830 (`DEMO_PORT`) and saves `videos/demo-<time>.webm`. `npm run demo:check` checks the newest one: 1920×1080, under 2:30, and no grey padding.
 
 **Record against the real sandbox:** `PAYPAL_MODE=sandbox npm run demo:record`. It starts from a clean `.data-demo` and runs the sandbox seed into it first. The real PayPal button needs a buyer login, and Playwright only records the main page, not PayPal's popup. So recordings set `DEMO_TEST_CARD=1`, which adds a "Skip the form: pay with the sandbox card in one tap" button under it (`data-testid="sandbox-test-card"`): the same server flow, approved by `POST /api/dev/sandbox/approve-order/:id`. The button and route don't exist without that flag. In your own spec, branch on `paypal.mode` from `/api/kit/status`, as `demo/demo.spec.ts` does. Mock-only steps (`/api/dev/reset`, `simulateDispute`...) don't run in sandbox.
 
