@@ -9,6 +9,7 @@ import { PageHeader } from "@/components/shell/app-shell";
 import { useToast } from "@/components/toast";
 import { Stat } from "@/components/ui";
 import { aiVersusHost, usd, type DepositRow } from "@/lib/deposit/insights";
+import { BlindTestPanel } from "./blind-test";
 
 /**
  * Sponsor UI sits behind a build-time switch. With NEXT_PUBLIC_SPONSOR_UI unset, the page shows
@@ -77,6 +78,9 @@ export function DepositInsights() {
       <PageHeader title="Dashboard" description="What's held, charged and released by property, and where you changed the AI's number. Amounts come from PayPal, re-read when each deposit settled." />
       {samples ? <p data-testid="sample-note" className="mb-4 text-sm text-zinc-600">{samples === 1 ? "1 booking here is a sample" : `${samples} bookings here are samples`}, loaded so there&rsquo;s something to look at. They&rsquo;re marked on the Bookings page.</p> : null}
       {StudioDashboard ? rows ? <StudioDashboard rows={rows} /> : null : <PlainDashboard rows={rows} />}
+      <div className="mt-6">
+        <BlindTestPanel />
+      </div>
     </>
   );
 }

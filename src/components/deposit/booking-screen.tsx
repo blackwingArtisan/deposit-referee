@@ -221,7 +221,7 @@ export function BookingScreen() {
 
       {booking.sample ? (
         <div className="mb-6" data-testid="sample-note">
-          <Notice tone="muted">This is a sample booking. Its hold and any charge are {kit?.paypal.mode === "sandbox" ? "real objects on the PayPal sandbox" : "on mock PayPal"}. Its photo findings were written for the sample, not made by Claude on this booking. It was loaded with the demo data, so it has few PayPal calls.</Notice>
+          <Notice tone="muted">This is a sample booking. Its hold and any charge are {kit?.paypal.mode === "sandbox" ? "real objects on the PayPal sandbox" : "on mock PayPal"}. Its photo findings were written for the sample, not made by Claude on this booking. Its PayPal calls are the ones made when the sample was loaded.</Notice>
         </div>
       ) : null}
 

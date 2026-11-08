@@ -9,6 +9,7 @@ import { collection } from "@/lib/store/collection";
 import { getMockPayPal, isPayPalError, type PayPalApi } from "@/lib/paypal";
 import { SANDBOX_TEST_CARD } from "@/lib/paypal/test-card";
 import type { Authorization } from "@/lib/paypal/types";
+import { forBooking, recordBookingEvents } from "./booking-events";
 import { DEMO_CLEAN_CHECK_OUT, DEMO_PHOTOS } from "./photos";
 import { MOCK_NO_DAMAGE, MOCK_VERDICT, toReview } from "./review";
 import { centsToDollars, dollarsToCents, releasedCents, renterDeadline } from "./rules";
@@ -96,9 +97,17 @@ export async function seedSampleBookings(pp: PayPalApi, manifest: Record<string,
     }
   };
 
+  // Each sample's hold, capture and void are filed under it, so its PayPal calls are there to open.
+  recordBookingEvents();
   for (const sample of SAMPLES) {
     const id = sampleBookingId(sample.key);
     if (store.get(id)) continue;
+    await forBooking(id, () => seedOne(sample, id));
+    added++;
+  }
+  return { added };
+
+  async function seedOne(sample: Sample, id: string) {
 
     const authKey = `sample:authorization:${sample.key}`;
     const captureKey = `sample:capture:${sample.key}`;
@@ -161,7 +170,5 @@ export async function seedSampleBookings(pp: PayPalApi, manifest: Record<string,
       renterState: renterStateFor(sample, auth, now),
       settlement,
     });
-    added++;
   }
-  return { added };
 }
