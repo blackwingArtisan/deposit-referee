@@ -1,5 +1,6 @@
 import { runSettlementAgent } from "@/agents/settlement";
 import { requireBooking, saveBooking, viewBooking } from "@/lib/deposit/bookings";
+import { plainAiError } from "@/lib/deposit/plain-errors";
 import { reviewPhotos } from "@/lib/deposit/review";
 import { getContext } from "@/lib/events/bus";
 import { HttpError } from "@/lib/http";
@@ -11,7 +12,9 @@ export const POST = bookingRoute<RouteContext<"/api/bookings/[id]/review">>(
     const booking = requireBooking((await ctx.params).id);
     if (booking.status !== "held") throw new HttpError(409, "This booking isn't ready for a review.", "conflict");
     if (!booking.photos.check_in || !booking.photos.check_out) throw new HttpError(422, "Add both photos first.", "photos_missing");
-    const review = await reviewPhotos(booking);
+    const review = await reviewPhotos(booking).catch((error: unknown) => {
+      throw plainAiError(error);
+    });
     saveBooking({ ...requireBooking(booking.id), status: "reviewed", review });
     return viewBooking(await runSettlementAgent(booking.id, getContext().channel));
   },

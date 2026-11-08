@@ -3,6 +3,7 @@
  * release with its evidence, and stops. It has no tool that can move money. A capture only
  * happens after the host approves it at the Guard (src/lib/deposit/settle.ts).
  */
+import { plainAgentError } from "@/lib/deposit/plain-errors";
 import { appConfig } from "@/app.config";
 import { captureDeposit } from "@/agents/tools/capture-deposit";
 import { proposeSettlement, readDamageReview } from "@/agents/tools/propose-settlement";
@@ -72,7 +73,7 @@ export async function runSettlementAgent(bookingId: string, channel: string): Pr
   const run = await runAgent(settlementAgent, { goal: `Propose how to settle the deposit on booking ${id}.`, context: { booking_id: id, order_id: orderId, authorization_id: authorizationId } }, { channel });
   const after = requireBooking(id);
   if (after.status === "proposed") return after;
-  return saveBooking({ ...after, agentError: run.error ?? "The agent stopped without a proposal. Ask it again." });
+  return saveBooking({ ...after, agentError: run.error ? plainAgentError(run.error) : "The agent stopped without a proposal. Ask it again." });
 }
 
 const limitTester = defineAgent({

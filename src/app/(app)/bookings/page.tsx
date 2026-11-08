@@ -7,7 +7,7 @@ import { useKit } from "@/components/kit/kit-provider";
 import { PageHeader } from "@/components/shell/app-shell";
 import { useToast } from "@/components/toast";
 import { Badge, Button, Card, CardBody, CardHeader, Field, Input, MoneyInput } from "@/components/ui";
-import { dollarsToCents, formatCents, MAX_DEPOSIT_CENTS, MIN_DEPOSIT_CENTS } from "@/lib/deposit/rules";
+import { formatCents, MAX_DEPOSIT_CENTS, MIN_DEPOSIT_CENTS, parseDeposit } from "@/lib/deposit/rules";
 import type { BookingListItem, BookingView } from "@/lib/deposit/types";
 
 function outcome(booking: BookingListItem): string {
@@ -25,6 +25,7 @@ export default function BookingsPage() {
   const router = useRouter();
   const [bookings, setBookings] = useState<BookingListItem[]>([]);
   const [busy, setBusy] = useState(false);
+  const [depositError, setDepositError] = useState<string | null>(null);
   // On a slow phone the form is on screen before React is running. The fields are uncontrolled so
   // React keeps what was already typed, and the button waits so the form can't submit natively.
   const hydrated = useSyncExternalStore(noSubscription, () => true, () => false);
@@ -38,9 +39,12 @@ export default function BookingsPage() {
   async function create(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
+    const deposit = parseDeposit(String(form.get("deposit") ?? ""));
+    setDepositError(deposit.error ?? null);
+    if (deposit.cents === undefined) return;
     setBusy(true);
     try {
-      const booking = await kitFetch<BookingView>("/api/bookings", { json: { item: form.get("item"), renter: form.get("renter"), depositCents: dollarsToCents(String(form.get("deposit"))) } });
+      const booking = await kitFetch<BookingView>("/api/bookings", { json: { item: form.get("item"), renter: form.get("renter"), depositCents: deposit.cents } });
       router.push(`/bookings/${booking.id}`);
     } catch (e) {
       toast({ title: "Could not create the booking", description: (e as Error).message, variant: "error", durationMs: 7000 });
@@ -62,8 +66,8 @@ export default function BookingsPage() {
               <Field label="Renter" htmlFor="renter">
                 <Input id="renter" name="renter" required maxLength={60} placeholder="Renter's name" />
               </Field>
-              <Field label="Deposit" htmlFor="deposit" hint={`From ${formatCents(MIN_DEPOSIT_CENTS)} to ${formatCents(MAX_DEPOSIT_CENTS)}.`}>
-                <MoneyInput id="deposit" name="deposit" defaultValue="300.00" className="w-40" />
+              <Field label="Deposit" htmlFor="deposit" hint={`From ${formatCents(MIN_DEPOSIT_CENTS)} to ${formatCents(MAX_DEPOSIT_CENTS)}.`} error={depositError ? <span data-testid="deposit-error">{depositError}</span> : undefined}>
+                <MoneyInput id="deposit" name="deposit" defaultValue="300.00" className="w-40" aria-invalid={depositError ? true : undefined} onChange={() => setDepositError(null)} />
               </Field>
               <Button type="submit" loading={busy} disabled={!hydrated} data-testid="create-booking">
                 Create booking

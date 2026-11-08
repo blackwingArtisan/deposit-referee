@@ -182,6 +182,21 @@ export function HostDecision({ booking, busy, act }: { booking: BookingView; bus
   const contested = booking.status === "contested";
   const release = totalCents === 0 && !invalid;
   const blocked = !!busy || !!hold?.expired;
+  // A greyed-out button says why, so it doesn't read as broken.
+  const waitingWhy =
+    release || raised
+      ? null
+      : hold?.expired
+        ? "The hold has ended, so nothing can be charged."
+        : invalid
+          ? null
+          : overHold
+            ? `The charge can't be more than the ${formatExactCents(authorizedCents)} hold.`
+            : !clearance.cleared
+              ? clearance.until
+                ? `Waiting for the renter to accept or contest. If they don't answer, you can go ahead after ${localTime(clearance.until)}.`
+                : clearance.reason
+              : null;
 
   const reasonChanged = reason !== undefined && reason.trim() !== (proposal.hostReason ?? "");
   const changedFromAi = totalCents !== proposal.aiCents || !!proposal.hostReason;
@@ -265,11 +280,11 @@ export function HostDecision({ booking, busy, act }: { booking: BookingView; bus
           </Button>
         ) : raised ? (
           <Button onClick={() => act("lines", "Could not save the change", () => saveLines())} loading={busy === "lines"} disabled={blocked || invalid || overHold || contested} data-testid="save-lines">
-            Show the renter {formatExactCents(totalCents)}
+            {overHold || invalid ? "Show the renter" : `Show the renter ${formatExactCents(totalCents)}`}
           </Button>
         ) : (
           <Button onClick={() => act("settle", "Could not request approval", sendCharge)} loading={busy === "settle"} disabled={blocked || invalid || overHold || !clearance.cleared} data-testid="request-approval">
-            Request approval for {formatExactCents(totalCents)}
+            {invalid ? "Request approval" : `Request approval for ${formatExactCents(totalCents)}`}
           </Button>
         )}
         {!release ? (
@@ -278,6 +293,11 @@ export function HostDecision({ booking, busy, act }: { booking: BookingView; bus
           </Button>
         ) : null}
       </div>
+      {waitingWhy ? (
+        <p className="-mt-2 text-sm text-zinc-600" data-testid="approval-why">
+          {waitingWhy}
+        </p>
+      ) : null}
       {raised && contested ? <p className="flex items-center gap-1.5 text-sm text-red-700"><CircleAlert className="size-4" /> The renter contested this charge, so it can only go down now.</p> : null}
 
       <p className="flex items-center gap-1.5 text-xs text-zinc-600"><ShieldCheck className="size-4 shrink-0 text-brand" aria-hidden /> Code limit: no capture above the itemized lines ({formatExactCents(savedCents)}) or the hold ({formatExactCents(authorizedCents)}), whatever the AI asks.</p>
