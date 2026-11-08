@@ -230,8 +230,7 @@ export function BookingScreen() {
 
       {status === "settled" ? (
         <div className="space-y-6">
-          <Ruling booking={booking} />
-          {timeline}
+          <Ruling booking={booking} calls={timeline} />
         </div>
       ) : (
         <div className="mx-auto max-w-5xl space-y-6">

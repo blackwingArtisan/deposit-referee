@@ -113,6 +113,15 @@ test("the agent proposes and stops, the renter accepts, the host approves", asyn
   if (capped) await setCharge(page, reviewed, "150.00");
   await approveCharge(page, flow, capped ? 15_000 : ai, "deposit-result");
 
+  // On a phone too, opening the PayPal calls keeps the result in view.
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.reload();
+  await page.getByTestId("paypal-calls-toggle").click();
+  await expect(page.getByTestId("timeline-step").first()).toBeVisible();
+  await expect(page.getByTestId("ruling-headline")).toBeInViewport();
+  await expectNoSidewaysScroll(page);
+  await page.setViewportSize({ width: 1440, height: 1000 });
+
   const done = await flow.booking();
   await expect(renter.getByTestId("renter-headline")).toContainText("released", { timeout: 10_000 });
   const audit = await (await request.get("/api/audit")).json();

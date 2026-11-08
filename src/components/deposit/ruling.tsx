@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { formatCents } from "@/lib/deposit/rules";
 import type { BookingView } from "@/lib/deposit/types";
 import { DamageItems } from "./damage-items";
@@ -13,7 +14,7 @@ function Reference({ label, value }: { label: string; value?: string }) {
 }
 
 /** The result screen. Every number here was re-read from PayPal after the money moved. */
-export function Ruling({ booking }: { booking: BookingView }) {
+export function Ruling({ booking, calls }: { booking: BookingView; calls?: ReactNode }) {
   const { settlement, review, proposal, photos, authorizedCents } = booking;
   const captured = settlement?.capturedCents;
   const released = settlement?.releasedCents;
@@ -38,6 +39,9 @@ export function Ruling({ booking }: { booking: BookingView }) {
         <div className="bg-red-600" style={{ width: `${capturedShare}%` }} />
         <div className="flex-1 bg-emerald-500" />
       </div>
+
+      {/* Right under the result, so opening the calls keeps the result in view. */}
+      {calls ? <div className="mt-5">{calls}</div> : null}
 
       <div className="mt-7 grid gap-5 md:grid-cols-2">
         {photos.check_in ? <PhotoFrame label="Check-in" photo={photos.check_in} /> : null}
