@@ -89,6 +89,8 @@ export interface Proposal {
 export interface RenterResponse {
   decision: "accepted" | "contested";
   note?: string;
+  /** On a contest: the lines the renter accepts. Those can be charged at once, on their own. */
+  acceptedLineIds?: string[];
   /** The charge the renter was answering. */
   amountCents: number;
   at: string;
@@ -112,6 +114,24 @@ export interface Settlement {
   releasedCents?: number;
   authorizationStatus?: string;
   settledAt?: string;
+  /** Why the last attempt stopped, in words the host can act on. */
+  error?: string;
+}
+
+/** The accepted items, charged on their own from the hold before the contested part is settled. */
+export interface PartCapture {
+  runId: string;
+  /** The accepted items, as they were when the renter answered. */
+  lines: ChargeLine[];
+  requestedCents: number;
+  /** What the renter contested when they answered, so later edits by the host don't change the record. */
+  contestedCents?: number;
+  captureId?: string;
+  captureStatus?: string;
+  capturedCents?: number;
+  /** PayPal's own flag, read back: false, so the hold stays open for the contested part. */
+  finalCapture?: boolean;
+  capturedAt?: string;
   /** Why the last attempt stopped, in words the host can act on. */
   error?: string;
 }
@@ -140,6 +160,7 @@ export interface Booking {
   agentError?: string;
   renterState?: RenterState;
   settlement?: Settlement;
+  partCapture?: PartCapture;
 }
 
 export interface PendingApproval {
@@ -173,4 +194,6 @@ export interface RenterView {
   canAccept: boolean;
   canContest: boolean;
   settled: { capturedCents: number; releasedCents: number } | null;
+  /** The renter accepted some items and contested the rest. chargedCents once the accepted part is charged. */
+  split: { acceptedCents: number; contestedCents: number; chargedCents?: number } | null;
 }
