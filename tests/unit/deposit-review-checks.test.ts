@@ -8,7 +8,8 @@ vi.mock("@/lib/ai", async (original) => ({ ...(await original<typeof import("@/l
 
 const call = vi.mocked(compareImages);
 const booking = { id: "bk_checks", authorizedCents: 30_000, photos: DEMO_PHOTOS } as unknown as Booking;
-const look = { description: "Faint scuff", box: { x: 0.2, y: 0.3, w: 0.1, h: 0.1 }, charge_cents: 7_500 };
+const look = { description: "Faint scuff", box: { x: 0.2, y: 0.3, w: 0.1, h: 0.1 }, damage_type: "marking" as const, size: "small" as const };
+const lookItem = { description: "Faint scuff", box: look.box, chargeCents: 3_000, price: { type: "marking", size: "small" } };
 const answer = (data: unknown, costUsd: number) => ({ data, mocked: false, model: "claude-sonnet-5-5", costUsd }) as never;
 
 beforeEach(() => {
@@ -22,7 +23,7 @@ describe("the two AI checks", () => {
     const review = await reviewPhotos(booking);
     expect(call).toHaveBeenCalledTimes(1);
     expect(call.mock.calls[0][0].question).not.toMatch(/worth.a.look/i);
-    expect(review.suggestedCents).toBe(MOCK_VERDICT.findings[0].charge_cents);
+    expect(review.suggestedCents).toBe(15_000);
     expect(review.worthALook).toEqual([]);
   });
 
@@ -31,11 +32,11 @@ describe("the two AI checks", () => {
     const review = await reviewPhotos(booking);
     expect(call).toHaveBeenCalledTimes(2);
     expect(review).toMatchObject({ newDamage: false, items: [], suggestedCents: 0, costUsd: 0.03 });
-    expect(review.worthALook).toEqual([{ description: "Faint scuff", box: look.box, chargeCents: 7_500 }]);
+    expect(review.worthALook).toEqual([lookItem]);
   });
 
-  it("runs the second check when the first says damage but prices it at zero", async () => {
-    const zero = { ...MOCK_VERDICT, findings: [{ ...MOCK_VERDICT.findings[0], charge_cents: 0 }] };
+  it("runs the second check when the first says damage but the mark is faint", async () => {
+    const zero = { ...MOCK_VERDICT, findings: [{ ...MOCK_VERDICT.findings[0], visibility: "faint" as const }] };
     call.mockResolvedValueOnce(answer(zero, 0.01)).mockResolvedValueOnce(answer({ worth_a_look: [look] }, 0.02));
     const review = await reviewPhotos(booking);
     expect(call).toHaveBeenCalledTimes(2);

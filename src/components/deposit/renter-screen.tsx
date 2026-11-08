@@ -8,7 +8,7 @@ import { useToast } from "@/components/toast";
 import { Badge, Button, Card, CardBody, EmptyState, Field, SkeletonCard, Textarea } from "@/components/ui";
 import { formatCents, formatExactCents, localTime } from "@/lib/deposit/rules";
 import type { RenterView } from "@/lib/deposit/types";
-import { DamageItems } from "./damage-items";
+import { DamageItems, PriceTable } from "./damage-items";
 import { PhotoFrame } from "./photo-frame";
 
 function Headline({ view }: { view: RenterView }) {
@@ -82,6 +82,9 @@ export function RenterScreen() {
             <div>
               <h2 className="mb-2 text-sm font-semibold text-zinc-900">What&rsquo;s proposed</h2>
               <DamageItems lines={proposal.lines} />
+              <div className="mt-3">
+                <PriceTable highlight={proposal.lines.flatMap((line) => (line.price ? [line.price] : []))} />
+              </div>
             </div>
             <div>
               <h2 className="mb-1 text-sm font-semibold text-zinc-900">Why</h2>
@@ -91,7 +94,7 @@ export function RenterScreen() {
                 <Badge tone={proposal.simulated ? "warning" : "brand"}>{proposal.engine}</Badge>
                 {view.confidence ? <Badge>Photo review confidence: {view.confidence}</Badge> : null}
               </div>
-              <p className="mt-2 text-xs text-zinc-500">An AI compared the photos and proposed this. The amounts are not repair quotes, and the host makes the final decision.</p>
+              <p className="mt-2 text-xs text-zinc-500">An AI compared the photos and named each mark. The amounts come from a fixed price table, not the AI. They are not repair quotes, and the host makes the final decision.</p>
             </div>
           </CardBody>
         </Card>
