@@ -19,6 +19,18 @@ async function expectHoldUntouched(flow: Flow) {
   console.log(`PayPal re-read: authorization ${authorization.id} still ${authorization.status}, nothing captured`);
 }
 
+/**
+ * Scrolls so the calls toggle is at the top of the screen and the headline just above it, out of
+ * view, as on a tall page with real AI text. The padding makes a mock page tall enough to do that.
+ */
+async function scrollHeadlineAway(page: Page) {
+  await page.getByTestId("paypal-calls-toggle").evaluate((el) => {
+    document.body.style.paddingBottom = "3000px";
+    window.scrollTo(0, el.getBoundingClientRect().top + window.scrollY - 2);
+  });
+  await expect(page.getByTestId("ruling-headline")).not.toBeInViewport();
+}
+
 async function approveCharge(page: Page, flow: Flow, chargeCents: number, screenshot: string) {
   const releaseCents = DEPOSIT_CENTS - chargeCents;
   await expect(page.getByTestId("charge-preview")).toContainText(`Charge exactly ${dollars(chargeCents)} and release ${dollars(releaseCents)}`);
@@ -40,6 +52,10 @@ async function approveCharge(page: Page, flow: Flow, chargeCents: number, screen
   await expect(ruling).toBeVisible({ timeout: 60_000 });
   await expect(page.getByTestId("ruling-headline")).toHaveText(`${headline(chargeCents)} captured, ${headline(releaseCents)} released`);
   await expect(ruling.getByTestId("damage-box").first()).toBeVisible();
+  // The result opens at its headline, wherever the host clicked Approve.
+  await expect(page.getByTestId("ruling-headline")).toBeInViewport();
+  // Opening the calls with the headline scrolled away brings it back into view.
+  await scrollHeadlineAway(page);
   // The void on the timeline shows what was released, not the whole hold.
   await page.getByTestId("paypal-calls-toggle").click();
   await expect(page.getByTestId("timeline-step").filter({ hasText: "void_authorization" })).toContainText(dollars(releaseCents));
@@ -116,6 +132,7 @@ test("the agent proposes and stops, the renter accepts, the host approves", asyn
   // On a phone too, opening the PayPal calls keeps the result in view.
   await page.setViewportSize({ width: 390, height: 844 });
   await page.reload();
+  await scrollHeadlineAway(page);
   await page.getByTestId("paypal-calls-toggle").click();
   await expect(page.getByTestId("timeline-step").first()).toBeVisible();
   await expect(page.getByTestId("ruling-headline")).toBeInViewport();
