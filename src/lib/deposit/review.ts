@@ -13,7 +13,7 @@ import { compareImages } from "@/lib/ai";
 import { modelLabel } from "@/lib/ai/config";
 import type { ImageMediaType } from "@/lib/ai/images";
 import { failIfCreditOut } from "./credit-test";
-import { DEMO_FAINT_CHECK_OUT, readPhoto } from "./photos";
+import { DEMO_FAINT_CHECK_OUT, DEMO_TWO_MARKS_CHECK_OUT, readPhoto } from "./photos";
 import { DAMAGE_SIZES, DAMAGE_TYPES, priceOf, type DamageSize, type DamageType, type PriceRow } from "./prices";
 import type { Booking, DamageBox, DamageReview } from "./types";
 
@@ -88,6 +88,28 @@ export const MOCK_VERDICT: Verdict = {
   ],
   worth_a_look: [],
   reasoning: "The check-out photo shows a long, narrow scratch with a gouged, lighter edge across the plank floor. The same area in the check-in photo is clean, with only normal grain and seams. Lighting and camera angle differ, but they do not explain a distinct scratch like this. The charge covers repairing or replacing the affected plank.",
+  confidence: "high",
+};
+
+/**
+ * The two-marks demo photo: the gouge from MOCK_VERDICT plus the stain drawn for this demo. Written
+ * for the demo, not a model's answer: what a live run should find is checked on the live site.
+ */
+export const MOCK_TWO_MARKS: Verdict = {
+  new_damage: true,
+  findings: [
+    MOCK_VERDICT.findings[0],
+    {
+      description: "Dark red-brown stain on the floor planks, right of centre, about the size of a hand. The same planks are clean in the check-in photo.",
+      box: { x: 0.685, y: 0.59, w: 0.115, h: 0.08 },
+      damage_type: "stain",
+      size: "medium",
+      visibility: "clear",
+      certainty: "high",
+    },
+  ],
+  worth_a_look: [],
+  reasoning: "The check-out photo shows two new marks on the plank floor that the check-in photo doesn't: a long scratch with a gouged, lighter edge, and a dark stain to its right. Lighting and camera angle differ, but they don't explain either mark.",
   confidence: "high",
 };
 
@@ -186,6 +208,7 @@ export async function reviewPhotos(booking: Booking): Promise<DamageReview> {
   const labels = ["Check-in photo", "Check-out photo"];
   const mockVerdict = () => {
     if (samePhoto) return MOCK_NO_DAMAGE;
+    if (check_out.src === DEMO_TWO_MARKS_CHECK_OUT.src) return MOCK_TWO_MARKS;
     return check_out.src === DEMO_FAINT_CHECK_OUT.src ? MOCK_FAINT_MARK : MOCK_VERDICT;
   };
   const mockChargeCheck = () => (check_out.src === DEMO_FAINT_CHECK_OUT.src ? MOCK_FAINT_CHARGE_CHECK : mockVerdict());

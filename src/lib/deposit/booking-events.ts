@@ -32,7 +32,7 @@ function bookingNamedIn(event: TimelineEvent): string | undefined {
   const payload = JSON.stringify([event.data ?? null, event.paypal?.path ?? null]);
   return collection<Booking>("bookings")
     .list()
-    .find((b) => [b.orderId, b.authorizationId, b.refreshedAuthorizationId, b.settlement?.captureId].some((id) => id && payload.includes(id)))?.id;
+    .find((b) => [b.orderId, b.authorizationId, b.refreshedAuthorizationId, b.settlement?.captureId, b.partCapture?.captureId].some((id) => id && payload.includes(id)))?.id;
 }
 
 /** Starts recording once per process. Called from bookings.ts, which every booking route loads. */
