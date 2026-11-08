@@ -19,7 +19,7 @@ export const TEST_RENTER = "Test Renter";
 /** Settlements running in this process. A pending approval dies with the process. */
 export const activeSettlements = () => singleton("deposit:active-settlements", () => new Set<string>());
 
-export function createBooking(input: { item: string; renter: string; depositCents: number }): Booking {
+export function createBooking(input: { item: string; renter: string; depositCents: number; visitorId?: string }): Booking {
   return bookings().upsert({ ...input, id: `bk_${randomUUID().slice(0, 8)}`, status: "draft", createdAt: new Date().toISOString(), renterToken: randomUUID(), photos: {} });
 }
 
@@ -80,6 +80,7 @@ export function viewBooking(input: Booking): BookingView {
   const evidence = booking.dispute?.evidence;
   return {
     ...booking,
+    visitorId: undefined,
     hold: booking.holdExpiresAt ? holdClock(booking.holdExpiresAt) : null,
     approval: pendingApproval(booking),
     disputeApproval: evidence && !evidence.submittedAt ? pendingFor(evidence.runId) : null,
@@ -94,9 +95,17 @@ export function allBookings({ tests = false } = {}): Booking[] {
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
+/**
+ * What one visitor's lists show: the samples and the bookings made in their browser. Test runs
+ * (`tests`) see every row. Bookings from before visitors were told apart show to nobody's list.
+ */
+export function bookingsFor(visitor: string | undefined, { tests = false } = {}): Booking[] {
+  return allBookings({ tests }).filter((b) => tests || b.sample || (!!visitor && b.visitorId === visitor));
+}
+
 /** The list anyone can read. It never carries a renter's link, which is the only key to their page. */
-export function listBookings(opts?: { tests?: boolean }): BookingListItem[] {
-  return allBookings(opts).map((b) => {
+export function listBookings(visitor: string | undefined, opts?: { tests?: boolean }): BookingListItem[] {
+  return bookingsFor(visitor, opts).map((b) => {
     const view: Partial<BookingView> = viewBooking(b);
     delete view.renterToken;
     return view as BookingListItem;
