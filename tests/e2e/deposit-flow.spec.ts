@@ -12,6 +12,19 @@ import { priceOf } from "../../src/lib/deposit/prices";
 
 const DEPOSIT_CENTS = 30_000;
 
+/** Holds at the approval card, then proves no capture was asked of PayPal before the click. */
+async function expectNoCaptureBeforeApproval(page: Page, flow: Flow) {
+  await page.waitForTimeout(4_000);
+  const booking = await flow.booking();
+  expect(booking.status).toBe("awaiting_approval");
+  expect(booking.settlement?.captureId).toBeUndefined();
+  const { events } = (await (await page.request.get(`/api/bookings/${booking.id}/activity`)).json()) as { events: { paypal?: { operation: string; path: string } }[] };
+  const calls = events.flatMap((e) => (e.paypal ? [e.paypal] : []));
+  expect(calls.length).toBeGreaterThan(0);
+  expect(calls.filter((c) => /capture|void/i.test(`${c.operation} ${c.path}`))).toEqual([]);
+  await expectHoldUntouched(flow);
+}
+
 async function expectHoldUntouched(flow: Flow) {
   const { orderId, authorizationId } = await flow.booking();
   if (!flow.sandbox) return;
@@ -55,10 +68,23 @@ async function approveCharge(page: Page, flow: Flow, chargeCents: number, screen
   const prompt = page.getByTestId("approval-prompt");
   await expect(prompt).toBeVisible({ timeout: 30_000 });
   await expect(prompt).toContainText(`Charge exactly ${dollars(chargeCents)} from the $300.00 hold and release ${dollars(releaseCents)} to the renter`);
+  // A full card in the main column: each line with its price row, the renter's answer, the money, and the Guard's reason.
+  const lines = (await flow.booking()).proposal!.lines;
+  await expect(prompt.getByTestId("approval-line")).toHaveCount(lines.length);
+  for (const [i, line] of lines.entries()) {
+    const row = prompt.getByTestId("approval-line").nth(i);
+    await expect(row).toContainText(line.description);
+    await expect(row).toContainText(dollars(line.amountCents));
+    await expect(row.getByTestId("price-row")).toBeVisible();
+  }
+  await expect(prompt.getByTestId("approval-renter-answer")).toBeVisible();
+  await expect(prompt.getByTestId("approval-money")).toHaveText(`Capture ${dollars(chargeCents)} · release ${dollars(releaseCents)}`);
+  await expect(prompt.getByTestId("approval-guard-reason")).not.toBeEmpty();
+  expect((await prompt.boundingBox())!.width).toBeGreaterThan(((await page.getByTestId("hold-panel").boundingBox())!.width) * 0.9);
   await expect(page.getByTestId("approve-button")).toHaveCount(1);
   await expect(page.getByTestId("approve-button")).toBeInViewport();
   await expectNoSidewaysScroll(page);
-  await expectHoldUntouched(flow);
+  await expectNoCaptureBeforeApproval(page, flow);
   await page.screenshot({ path: `screenshots/${screenshot}-approval.png`, fullPage: true });
   await page.getByTestId("approve-button").click();
 
@@ -299,6 +325,8 @@ test("no damage: the agent proposes a full release and the hold is voided", asyn
   const prompt = page.getByTestId("approval-prompt");
   await expect(prompt).toBeVisible({ timeout: 30_000 });
   await expect(prompt).toContainText("Release the whole $300.00");
+  await expect(prompt.getByTestId("approval-money")).toHaveText("Capture $0.00 · release $300.00");
+  await expect(prompt.getByTestId("approval-renter-answer")).toContainText("doesn’t need to answer");
   await expectHoldUntouched(flow);
   await page.getByTestId("approve-button").click();
 
@@ -411,6 +439,9 @@ test("split: the renter accepts one item and contests the other; the accepted pa
   const prompt = page.getByTestId("approval-prompt");
   await expect(prompt).toBeVisible({ timeout: 30_000 });
   await expect(prompt).toContainText(`Charge exactly ${dollars(acceptedCents)} now for the items the renter accepted. The ${dollars(contestedCents)} they contested stays on the $300.00 hold until you settle it`);
+  await expect(prompt.getByTestId("approval-line")).toHaveCount(1);
+  await expect(prompt.getByTestId("approval-line-answer")).toHaveText(["Renter accepts"]);
+  await expect(prompt.getByTestId("approval-money")).toHaveText(`Capture ${dollars(acceptedCents)} · keep ${dollars(30_000 - acceptedCents)} on hold`);
   await expectHoldUntouched(flow);
   await page.getByTestId("approve-button").click();
   await expect(page.getByTestId("part-capture")).toContainText(`${dollars(acceptedCents)} charged now`, { timeout: 60_000 });
