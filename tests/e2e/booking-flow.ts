@@ -1,5 +1,6 @@
 /** Shared steps for the browser tests: a booking from its hold to the agent's proposal. */
 import { expect, type APIRequestContext, type Page } from "@playwright/test";
+import { moneyLine, moneySteps } from "../../src/lib/deposit/money-strip";
 import type { BookingView, RenterView } from "../../src/lib/deposit/types";
 
 export const dollars = (cents: number) => `$${(cents / 100).toFixed(2)}`;
@@ -200,4 +201,17 @@ export async function setCharge(page: Page, booking: BookingView, value: string)
   const [first, ...rest] = booking.proposal!.lines;
   await page.getByTestId(`line-amount-${first.id}`).fill(value);
   for (const line of rest) await page.getByTestId(`line-amount-${line.id}`).fill("0.00");
+}
+
+/**
+ * The ruling's one-line money strip reads `expected`, and each amount is the one the booking
+ * recorded from PayPal (the authorization, each capture, the void).
+ */
+export async function expectMoneyStrip(page: Page, flow: Flow, expected: string[]) {
+  const strip = page.getByTestId("money-strip");
+  await expect(strip).toBeVisible();
+  await expect(strip.getByTestId("money-step")).toHaveText(expected);
+  const steps = moneySteps((await flow.booking()) as unknown as Parameters<typeof moneySteps>[0]);
+  expect(steps?.map((s) => s.label)).toEqual(expected);
+  await expect(strip).toHaveAttribute("aria-label", moneyLine(steps!));
 }

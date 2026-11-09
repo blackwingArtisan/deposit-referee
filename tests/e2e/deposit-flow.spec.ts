@@ -6,7 +6,7 @@
  */
 import fs from "node:fs";
 import { expect, test, type Page } from "@playwright/test";
-import { dollars, expectCallsSurviveReload, expectNoSidewaysScroll, headline, kitStatus, openAsRenter, openDemoTools, renterAccepts, renterContests, setCharge, toPhotos, toProposal, unfold, type Flow } from "./booking-flow";
+import { dollars, expectCallsSurviveReload, expectMoneyStrip, expectNoSidewaysScroll, headline, kitStatus, openAsRenter, openDemoTools, renterAccepts, renterContests, setCharge, toPhotos, toProposal, unfold, type Flow } from "./booking-flow";
 import { readPayPalObjects, tryCapture } from "./paypal-reread";
 import { priceOf } from "../../src/lib/deposit/prices";
 
@@ -92,6 +92,7 @@ async function approveCharge(page: Page, flow: Flow, chargeCents: number, screen
   const ruling = page.getByTestId("ruling");
   await expect(ruling).toBeVisible({ timeout: 60_000 });
   await expect(page.getByTestId("ruling-headline")).toHaveText(`${headline(chargeCents)} captured, ${headline(releaseCents)} released`);
+  await expectMoneyStrip(page, flow, [`${headline(chargeCents + releaseCents)} held`, `${headline(chargeCents)} captured`, `${headline(releaseCents)} released`]);
   await expect(ruling.getByTestId("damage-box").first()).toBeVisible();
   // The result opens at its headline, wherever the host clicked Approve.
   await expect(page.getByTestId("ruling-headline")).toBeInViewport();
@@ -340,6 +341,7 @@ test("no damage: the agent proposes a full release and the hold is voided", asyn
   await page.getByTestId("approve-button").click();
 
   await expect(page.getByTestId("ruling-headline")).toHaveText("$0 captured, $300 released", { timeout: 60_000 });
+  await expectMoneyStrip(page, flow, ["$300 held", "$0 captured", "$300 released"]);
   const done = await flow.booking();
   expect(done.settlement).toMatchObject({ kind: "release", capturedCents: 0, releasedCents: 30_000, authorizationStatus: "VOIDED" });
   await page.screenshot({ path: `screenshots/deposit-release-${flow.mode}-${flow.live ? "live-ai" : "mock-ai"}.png`, fullPage: true });
@@ -481,6 +483,8 @@ test("split: the renter accepts one item and contests the other; the accepted pa
   await expect(page.getByTestId("ruling-headline")).toHaveText(`${headline(totalCents)} captured, ${headline(DEPOSIT_CENTS - totalCents)} released`, { timeout: 60_000 });
   await expect(page.getByTestId("ruling")).toContainText("Two charges from one hold");
   await expect(page.getByTestId("ruling")).toContainText(part.captureId!);
+  // The money in one line: the hold, both captures and the release, as PayPal returned them.
+  await expectMoneyStrip(page, flow, [`${headline(DEPOSIT_CENTS)} held`, `${headline(acceptedCents)} captured`, `${headline(chargeCents)} captured`, `${headline(DEPOSIT_CENTS - totalCents)} released`]);
   await page.getByTestId("paypal-calls-toggle").click();
   await expect(page.getByTestId("ruling-headline")).toBeInViewport();
   await expectNoSidewaysScroll(page);

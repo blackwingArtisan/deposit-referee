@@ -260,8 +260,13 @@ test("demo", async ({ page, request }) => {
   await clock.cut("the capture and the void on their way", () => expect(ruling).toContainText(`${whole(totalCents)} captured`, { timeout: 60_000 }), 800);
   await sleep(500);
   await ruling.scrollIntoViewIfNeeded();
-  await highlight(page, ruling, 2200);
-  await sleep(1200);
+  await highlight(page, ruling, 1600);
+  // The money in one line, each amount as PayPal returned it, held on screen.
+  const strip = page.getByTestId("money-strip");
+  await expect(strip).toBeVisible();
+  const stripText = (await strip.getAttribute("aria-label"))!;
+  await highlight(page, strip, 3000);
+  await say(page, `${stripText}: each amount as ${pp} returned it.`, 2600);
   await check("ruling");
 
   // 6. Every PayPal call, open for 3.5 seconds with the capture and void rows on screen together.
