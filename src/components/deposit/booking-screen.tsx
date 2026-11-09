@@ -189,7 +189,9 @@ export function BookingScreen() {
   // While the host decides, the renter can answer from their own page at any moment.
   const evidence = booking?.dispute?.evidence;
   const moving = booking?.status === "awaiting_approval" || (booking?.status === "captured" && !booking.settlement?.error) || (!!evidence && !evidence.submittedAt && !evidence.error);
-  const renterPending = booking?.status === "proposed" || booking?.status === "draft";
+  // Claude's second look runs in the background, and the renter answers the counter from their page.
+  const lookPending = booking?.status === "contested" && (booking.secondLook?.status === "running" || booking.secondLook?.status === "sent");
+  const renterPending = booking?.status === "proposed" || booking?.status === "draft" || lookPending;
   useEffect(() => {
     if (!moving && !renterPending) return;
     const timer = setInterval(() => void refresh().catch(() => undefined), moving ? 700 : 2000);
