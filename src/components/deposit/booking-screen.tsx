@@ -1,5 +1,6 @@
 "use client";
 
+import { awaitsHost, isUnchanged } from "@/lib/deposit/second-look-rules";
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
@@ -191,7 +192,10 @@ export function BookingScreen() {
   const evidence = booking?.dispute?.evidence;
   const moving = booking?.status === "awaiting_approval" || (booking?.status === "captured" && !booking.settlement?.error) || (!!evidence && !evidence.submittedAt && !evidence.error);
   // Claude's second look runs in the background, and the renter answers the counter from their page.
-  const lookPending = booking?.status === "contested" && (booking.secondLook?.status === "running" || booking.secondLook?.status === "sent");
+  const look = booking?.secondLook;
+  // Also while the agent writes the counter after the host keeps or drops a line Claude couldn't tell.
+  const counterPending = look?.status === "ready" && !look.counter && !isUnchanged(look.lines) && !look.lines.some(awaitsHost);
+  const lookPending = booking?.status === "contested" && (look?.status === "running" || look?.status === "sent" || counterPending);
   const renterPending = booking?.status === "proposed" || booking?.status === "draft" || lookPending;
   useEffect(() => {
     if (!moving && !renterPending) return;

@@ -9,6 +9,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { dollars, expectCallsSurviveReload, expectMoneyStrip, expectNoSidewaysScroll, headline, kitStatus, openAsRenter, openDemoTools, renterAccepts, renterContests, setCharge, toPhotos, toProposal, unfold, type Flow } from "./booking-flow";
 import { readPayPalObjects, tryCapture } from "./paypal-reread";
 import { priceOf } from "../../src/lib/deposit/prices";
+import { photoDateLabel } from "../../src/lib/deposit/second-look-rules";
 import type { ChargeLine } from "../../src/lib/deposit/types";
 
 const DEPOSIT_CENTS = 30_000;
@@ -750,7 +751,7 @@ async function sendAndAcceptCounter(page: Page, renter: Page, shot: string, flow
  * the approval gate. Lines are picked by what they are, never by position. Tolerant of live AI: it
  * checks that no line went up and that PayPal holds exactly what the screen says.
  */
-async function secondLook(page: Page, request: Parameters<typeof toProposal>[1], opts: { item: string; photo: string; shot: string; contest: "stain" | "other mark" }) {
+async function secondLook(page: Page, request: Parameters<typeof toProposal>[1], opts: { item: string; photo: string; shot: string; contest: "stain" | "other mark"; decide?: "keep" | "drop" }) {
   const flow = await toProposal(page, request, { checkOut: "two", item: opts.item });
   const reviewed = await flow.booking();
   const lines = reviewed.proposal!.lines;
@@ -785,6 +786,24 @@ async function secondLook(page: Page, request: Parameters<typeof toProposal>[1],
   // Claude's second look, on the host's page.
   const card = page.getByTestId("second-look");
   await expect(card).toHaveAttribute("data-status", "ready", { timeout: 120_000 });
+  const first = (await flow.booking()).secondLook!;
+  const flagged = first.lines.filter((l) => l.flagged && !l.hostChoice);
+  if (flagged.length) {
+    // Claude couldn't tell: the line stays as charged, amber, with both photos, until the host decides.
+    const rows = card.locator('[data-testid="second-look-line"][data-flagged="true"]');
+    await expect(rows).toHaveCount(flagged.length);
+    await expect(card.getByTestId("send-counter")).toHaveCount(0);
+    await expect(card.getByTestId("second-look-waiting")).toBeVisible();
+    for (const line of flagged) {
+      const row = card.locator(`[data-testid="second-look-line"][data-flagged="true"]`).first();
+      await expect(row.getByTestId("second-look-flag")).toContainText(`It stays at ${dollars(line.fromCents)} until you decide`);
+      await expect(row.getByRole("img", { name: "Renter's photo" })).toBeVisible();
+      await expect(row.getByTestId("damage-box").filter({ visible: true })).toHaveCount(1);
+      await card.screenshot({ path: `screenshots/${opts.shot}-flagged-${flow.mode}-${flow.live ? "live-ai" : "mock-ai"}.png` });
+      await row.getByTestId(opts.decide === "drop" ? "flag-drop" : "flag-keep").click();
+    }
+    await expect(card.locator('[data-testid="second-look-line"][data-flagged="true"]')).toHaveCount(0, { timeout: 15_000 });
+  }
   const look = (await flow.booking()).secondLook!;
   expect(look.lines.map((l) => l.lineId)).toEqual(contestedLines.map((l) => l.id));
   for (const line of look.lines) {
@@ -811,6 +830,8 @@ async function secondLook(page: Page, request: Parameters<typeof toProposal>[1],
   // Both photos side by side: the host's check-out with the box, and the renter's own photo, loaded.
   await expect(card.getByRole("img", { name: "Renter's photo" })).toHaveCount(look.lines.filter((l) => l.withPhoto).length);
   await expect.poll(() => card.locator("img").evaluateAll((imgs) => imgs.every((img) => (img as HTMLImageElement).complete && (img as HTMLImageElement).naturalWidth > 0)), { timeout: 15_000 }).toBe(true);
+  // When the renter's photo was taken, read by code from the file, under each line.
+  await expect(card.getByTestId("second-look-photo-date")).toHaveText(look.lines.map(photoDateLabel).filter((t): t is string => !!t));
   await expectNoSidewaysScroll(page);
   await card.screenshot({ path: `screenshots/${opts.shot}-host-${flow.mode}-${flow.live ? "live-ai" : "mock-ai"}.png` });
   console.log(`Second look (${flow.live ? "live AI" : "mock AI"}, ${look.model ?? "mock"}): ${look.lines.map((l) => `${l.description.slice(0, 40)}… ${l.verdict} ${dollars(l.fromCents)} -> ${dollars(l.toCents)}`).join("; ")}; counter: ${look.counter ? `${look.counter.engine}: ${look.counter.rationale}` : "none, the second look changed nothing"}`);
@@ -863,6 +884,24 @@ test("second look: the renter contests the stain with their check-in close-up, C
     // The close-up shows the stain before the stay: it goes to $0, and its box greys.
     expect(look.lines.map((l) => [l.verdict, l.toCents])).toEqual([["already_there", 0]]);
   }
+});
+
+test("second look, unsure: the renter sends back the host's own check-out shot; Claude can't tell, so the host decides, and drops it", async ({ page, request }) => {
+  const { look, flow } = await secondLook(page, request, { item: "Lakeside cabin, weekend of Jan 8", photo: "public/demo-photos/cabin-check-out-two.jpg", shot: "second-look-unsure", contest: "stain", decide: "drop" });
+  // Not dropped by the model: the host's choice, made on the flagged line.
+  if (!flow.live) expect(look.lines.map((l) => [l.verdict, l.flagged, l.hostChoice, l.toCents])).toEqual([["unsure", true, "drop", 0]]);
+});
+
+test("second look, dated after check-out: the renter's photo can't lower the line, whatever Claude reads in it", { tag: "@live-ai" }, async ({ page, request }, info) => {
+  // The stain close-up, with EXIF saying it was taken two hours from now: after check-out.
+  const { withExifDate } = await import("../../src/lib/deposit/exif");
+  const takenAt = new Date(Date.now() + 2 * 3_600_000).toISOString();
+  const file = info.outputPath("renter-photo-after-check-out.jpg");
+  fs.writeFileSync(file, withExifDate(new Uint8Array(fs.readFileSync("public/demo-photos/renter-check-in-stain.jpg")), takenAt));
+  const { look } = await secondLook(page, request, { item: "Lakeside cabin, weekend of Jan 15", photo: file, shot: "second-look-dated-after", contest: "stain" });
+  // Code, not the model: whatever the verdict, the line stands, and the card says why.
+  expect(look.lines.map((l) => [l.photoTiming, l.toCents === l.fromCents, !!l.flagged])).toEqual([["after_check_out", true, false]]);
+  expect(photoDateLabel(look.lines[0])).toMatch(/after check-out, so it can't lower this line$/);
 });
 
 test("second look, smaller: a photo that shows the mark smaller lowers it a size, then two captures from one hold", async ({ page, request }) => {

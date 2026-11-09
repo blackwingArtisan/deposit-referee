@@ -8,8 +8,9 @@ import { DEMO_TWO_MARKS_CHECK_OUT } from "@/lib/deposit/photos";
 import { DAMAGE_SIZES, DAMAGE_TYPES, priceOf } from "@/lib/deposit/prices";
 import { acceptCounterAsRenter, markRenterOpened, renterView, respondAsRenter } from "@/lib/deposit/renter";
 import { reviewPhotos } from "@/lib/deposit/review";
-import { acceptCounter, counterBlocked, quoteNote, secondLookQuestion, sendCounter } from "@/lib/deposit/second-look";
-import { counterAmount, isUnchanged, VERDICTS } from "@/lib/deposit/second-look-rules";
+import { withExifDate } from "@/lib/deposit/exif";
+import { acceptCounter, counterBlocked, decideFlaggedLine, quoteNote, secondLookQuestion, sendCounter } from "@/lib/deposit/second-look";
+import { awaitsHost, counterAmount, decideFlag, isUnchanged, photoDateLabel, photoTiming, VERDICTS } from "@/lib/deposit/second-look-rules";
 import type { ChargeLine } from "@/lib/deposit/types";
 import { heldBooking, holdStatus, paypal, waitForApproval } from "./deposit-fixtures";
 
@@ -22,6 +23,10 @@ const jpeg = (file: string) => `data:image/jpeg;base64,${fs.readFileSync(path.jo
 const CLOSE_UP = jpeg("renter-check-in-stain.jpg");
 /** Any other photo of theirs. */
 const OTHER_PHOTO = jpeg("cabin-check-in.jpg");
+/** The host's own check-out shot, sent back by the renter: it shows nothing new. */
+const SAME_AS_CHECK_OUT = jpeg(path.basename(DEMO_TWO_MARKS_CHECK_OUT.src));
+/** A copy of a data URL photo whose EXIF says it was taken at `iso`. */
+const dated = (dataUrl: string, iso: string) => `data:image/jpeg;base64,${Buffer.from(withExifDate(new Uint8Array(Buffer.from(dataUrl.split(",")[1], "base64")), iso)).toString("base64")}`;
 
 /** The two-marks photo: the gouge ($150, ai-0) and the stain ($100, ai-1) on a $300 hold. */
 async function twoMarks() {
@@ -36,7 +41,7 @@ const lookReady = (id: string) =>
   vi.waitFor(
     () => {
       const look = requireBooking(id).secondLook;
-      expect(look?.status === "ready" && (!!look.counter || isUnchanged(look.lines))).toBe(true);
+      expect(look?.status === "ready" && (!!look.counter || isUnchanged(look.lines) || look.lines.some(awaitsHost))).toBe(true);
     },
     { timeout: 8_000 },
   );
@@ -96,10 +101,10 @@ describe("second look: the mapping can only lower a line", () => {
     expect(checked).toBeGreaterThan(5_000);
   });
 
-  it("already there and unsure drop the line; smaller takes a lower row; new leaves it", () => {
+  it("already there drops the line; unsure keeps it, flagged for the host; smaller takes a lower row; new leaves it", () => {
     const stain: Pick<ChargeLine, "amountCents" | "price"> = { amountCents: 10_000, price: { type: "stain", size: "medium" } };
     expect(counterAmount(stain, "already_there").cents).toBe(0);
-    expect(counterAmount(stain, "unsure").cents).toBe(0);
+    expect(counterAmount(stain, "unsure")).toEqual({ cents: 10_000, price: { type: "stain", size: "medium" }, flagged: true });
     expect(counterAmount(stain, "new").cents).toBe(10_000);
     expect(counterAmount(stain, "smaller", "small")).toEqual({ cents: 5_000, price: { type: "stain", size: "small" } });
     // A "smaller" that names a bigger size still only goes one size down.
@@ -109,6 +114,37 @@ describe("second look: the mapping can only lower a line", () => {
     // Small has no smaller row; a host-added line has no row at all.
     expect(counterAmount({ amountCents: 5_000, price: { type: "stain", size: "small" } }, "smaller").cents).toBe(5_000);
     expect(counterAmount({ amountCents: 7_000 }, "smaller", "small").cents).toBe(7_000);
+  });
+
+  it("a renter photo dated after check-out can't lower a line, whatever the verdict; dated before or undated, the verdict counts", () => {
+    const stain: Pick<ChargeLine, "amountCents" | "price"> = { amountCents: 10_000, price: { type: "stain", size: "medium" } };
+    for (const verdict of VERDICTS) for (const size of [undefined, ...DAMAGE_SIZES]) expect(counterAmount(stain, verdict, size, "after_check_out").cents).toBe(10_000);
+    expect(counterAmount(stain, "already_there", undefined, "before_check_in").cents).toBe(0);
+    expect(counterAmount(stain, "already_there", undefined, "undated").cents).toBe(0);
+    expect(counterAmount(stain, "already_there", undefined, "during_stay").cents).toBe(0);
+    expect(counterAmount(stain, "smaller", "small", "undated").cents).toBe(5_000);
+  });
+
+  it("dates a photo against the stay: before check-in, during, after check-out, or undated", () => {
+    const stay = { checkInAt: "2026-03-03T15:00:00.000Z", checkOutAt: "2026-03-07T11:00:00.000Z" };
+    expect(photoTiming("2026-03-03T09:12:00.000Z", stay)).toBe("before_check_in");
+    expect(photoTiming("2026-03-05T12:00:00.000Z", stay)).toBe("during_stay");
+    expect(photoTiming("2026-03-07T11:00:01.000Z", stay)).toBe("after_check_out");
+    expect(photoTiming(undefined, stay)).toBe("undated");
+    const line = { withPhoto: true, photoTakenAt: "2026-03-03T09:12:00.000Z" };
+    expect(photoDateLabel({ ...line, photoTiming: "before_check_in" })).toBe("Renter's photo: taken Mar 3, before check-in");
+    expect(photoDateLabel({ ...line, photoTiming: "after_check_out" })).toMatch(/taken Mar 3, after check-out, so it can't lower this line/);
+    expect(photoDateLabel({ withPhoto: true, photoTiming: "undated" })).toBe("Renter's photo: no date in the file");
+    expect(photoDateLabel({ withPhoto: false })).toBeUndefined();
+  });
+
+  it("only a flagged line is the host's to decide, and code sets its amount", () => {
+    const base = { lineId: "ai-1", description: "Stain", verdict: "unsure" as const, reasoning: "", fromCents: 10_000, toCents: 10_000, withPhoto: true };
+    expect(decideFlag({ ...base, flagged: true }, "drop")).toMatchObject({ hostChoice: "drop", toCents: 0 });
+    expect(decideFlag({ ...base, flagged: true }, "keep")).toMatchObject({ hostChoice: "keep", toCents: 10_000 });
+    expect(() => decideFlag({ ...base, verdict: "new" }, "drop")).toThrow(/Only a line Claude couldn't tell/);
+    expect(isUnchanged([{ ...base, flagged: true }])).toBe(false);
+    expect(isUnchanged([{ ...base, flagged: true, hostChoice: "keep" }])).toBe(true);
   });
 
   it("the renter's note reaches the model only as quoted data, and can't close the quote", () => {
@@ -186,6 +222,42 @@ describe("second look: contest with a photo, counter, accept, settle", () => {
     const captures = (await paypal().orders.get(done.orderId!)).purchase_units![0].payments!.captures!;
     expect(Object.fromEntries(captures.map((c) => [c.id, c.amount.value]))).toEqual({ [done.partCapture!.captureId!]: "150.00", [done.settlement!.captureId!]: "50.00" });
     expect(done.proposal!.lines[0].price).toEqual({ type: "stain", size: "small" });
+  });
+
+  it("a renter photo dated before check-in clears the stain, and the date is shown", async () => {
+    const booking = await contestStain(dated(CLOSE_UP, "2020-03-03T09:12:00.000Z"));
+    expect(booking.secondLook!.lines).toEqual([expect.objectContaining({ verdict: "already_there", toCents: 0, photoTiming: "before_check_in", photoTakenAt: "2020-03-03T09:12:00.000Z" })]);
+    expect(photoDateLabel(booking.secondLook!.lines[0])).toBe("Renter's photo: taken Mar 3, before check-in");
+  });
+
+  it("the same close-up dated after check-out can't lower the line, though the model says it was already there", async () => {
+    const booking = await contestStain(dated(CLOSE_UP, "2099-01-01T00:00:00.000Z"));
+    expect(booking.secondLook!.lines).toEqual([expect.objectContaining({ verdict: "already_there", fromCents: 10_000, toCents: 10_000, photoTiming: "after_check_out" })]);
+    expect(booking.secondLook!.counter).toBeUndefined();
+    expect(counterBlocked(booking)).toMatch(/changes nothing/);
+  });
+
+  it("unsure goes to the host, not to $0: dropping it makes the counter", async () => {
+    const booking = await contestStain(SAME_AS_CHECK_OUT);
+    expect(booking.secondLook!.lines).toEqual([expect.objectContaining({ verdict: "unsure", fromCents: 10_000, toCents: 10_000, flagged: true, photoTiming: "undated" })]);
+    expect(booking.secondLook!.counter).toBeUndefined();
+    expect(counterBlocked(booking)).toMatch(/keep it or drop it/);
+    expect(() => sendCounter(booking.id)).toThrow(/keep it or drop it/);
+    const { finished } = decideFlaggedLine(booking.id, "ai-1", "drop", "test");
+    await finished;
+    const after = requireBooking(booking.id);
+    expect(after.secondLook!.lines[0]).toMatchObject({ hostChoice: "drop", toCents: 0 });
+    expect(after.secondLook!.counter).toBeTruthy();
+    expect(() => decideFlaggedLine(booking.id, "ai-1", "keep", "test")).toThrow(/isn't waiting/);
+  });
+
+  it("unsure kept by the host leaves the line standing: no new offer", async () => {
+    const booking = await contestStain(SAME_AS_CHECK_OUT);
+    await decideFlaggedLine(booking.id, "ai-1", "keep", "test").finished;
+    const after = requireBooking(booking.id);
+    expect(after.secondLook!.lines[0]).toMatchObject({ hostChoice: "keep", toCents: 10_000 });
+    expect(after.secondLook!.counter).toBeUndefined();
+    expect(counterBlocked(after)).toMatch(/changes nothing/);
   });
 
   it("a note with no photo leaves the line standing, so there is no new offer to send", async () => {

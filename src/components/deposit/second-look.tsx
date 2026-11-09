@@ -4,7 +4,7 @@ import { ArrowRight, Eye, Send } from "lucide-react";
 import { useKit } from "@/components/kit/kit-provider";
 import { Badge, Button } from "@/components/ui";
 import { formatExactCents } from "@/lib/deposit/rules";
-import { isDropped, isUnchanged, verdictLabel } from "@/lib/deposit/second-look-rules";
+import { awaitsHost, isDropped, isUnchanged, photoDateLabel, verdictLabel } from "@/lib/deposit/second-look-rules";
 import { splitOf } from "@/lib/deposit/split-rules";
 import type { BookingPhoto, BookingView, ChargeLine, SecondLookLine } from "@/lib/deposit/types";
 import { PriceSource } from "./damage-items";
@@ -13,12 +13,17 @@ import { PhotoFrame } from "./photo-frame";
 /** The short label on a grey box. The card says the rest. */
 export const droppedTag = (line: Pick<SecondLookLine, "verdict" | "toCents">) => (isDropped(line) ? (line.verdict === "already_there" ? "Already there" : "Not charged") : undefined);
 
-const tone = (line: SecondLookLine) => (isDropped(line) ? "neutral" : line.toCents < line.fromCents ? "info" : "warning");
+const tone = (line: SecondLookLine) => (awaitsHost(line) ? "warning" : isDropped(line) ? "neutral" : line.toCents < line.fromCents ? "info" : "warning");
 
-/** One contested line, before and after: the host's box (grey once dropped), the renter's photo, the verdict and the amounts. */
-export function SecondLookLineRow({ line, charge, number, checkOut, evidence }: { line: SecondLookLine; charge?: ChargeLine; number: number; checkOut?: BookingPhoto; evidence?: BookingPhoto }) {
+/**
+ * One contested line, before and after: the host's box (grey once dropped), the renter's photo and
+ * when it was taken, the verdict and the amounts. A line Claude couldn't tell is flagged amber; the
+ * host (given `decide`) keeps or drops it, the renter sees that the host decides.
+ */
+export function SecondLookLineRow({ line, charge, number, checkOut, evidence, decide, busy }: { line: SecondLookLine; charge?: ChargeLine; number: number; checkOut?: BookingPhoto; evidence?: BookingPhoto; decide?: (choice: "keep" | "drop") => void; busy?: boolean }) {
+  const dated = photoDateLabel(line);
   return (
-    <li className="space-y-3" data-testid="second-look-line" data-verdict={line.verdict}>
+    <li className={`space-y-3 ${awaitsHost(line) ? "rounded-lg border border-amber-300 bg-amber-50/60 p-3" : ""}`} data-testid="second-look-line" data-verdict={line.verdict} data-flagged={awaitsHost(line) ? "true" : undefined}>
       <div className={`grid gap-3 ${evidence ? "grid-cols-2" : "grid-cols-1 sm:max-w-sm"}`}>
         {checkOut && charge?.box ? <PhotoFrame label="Host's check-out" photo={checkOut} items={[{ description: line.description, box: charge.box, photo: charge.photo, number, dropped: droppedTag(line) }]} on={charge.photo ?? "check_out"} /> : null}
         {evidence ? <PhotoFrame label="Renter's photo" photo={evidence} /> : null}
@@ -28,6 +33,11 @@ export function SecondLookLineRow({ line, charge, number, checkOut, evidence }: 
           <span className="font-medium">{number}. {line.description.split(/(?<=\.)\s/)[0]}</span>
           <Badge tone={tone(line)} className="whitespace-normal" data-testid="second-look-verdict">{verdictLabel(line)}</Badge>
         </div>
+        {dated ? (
+          <p className={`mt-1 text-xs font-medium ${line.photoTiming === "after_check_out" ? "text-amber-800" : line.photoTiming === "before_check_in" ? "text-emerald-800" : "text-zinc-600"}`} data-testid="second-look-photo-date">
+            {dated}
+          </p>
+        ) : null}
         <p className="mt-1 text-zinc-700" data-testid="second-look-reasoning">{line.reasoning}</p>
         {line.price ? <PriceSource price={line.price} className="mt-0.5" /> : null}
         <p className="mt-1 flex items-center gap-1.5 font-semibold tabular-nums" data-testid="second-look-amount">
@@ -35,6 +45,23 @@ export function SecondLookLineRow({ line, charge, number, checkOut, evidence }: 
           <ArrowRight className="size-3.5 text-zinc-400" aria-hidden />
           <span className={isDropped(line) ? "text-emerald-700" : "text-zinc-900"}>{formatExactCents(line.toCents)}</span>
         </p>
+        {awaitsHost(line) ? (
+          decide ? (
+            <div className="mt-2 space-y-1.5" data-testid="second-look-flag">
+              <p className="text-sm text-amber-900">Claude can&rsquo;t tell from the photos whether this is new. It stays at {formatExactCents(line.fromCents)} until you decide.</p>
+              <div className="flex flex-wrap gap-2">
+                <Button size="sm" variant="secondary" disabled={busy} onClick={() => decide("keep")} data-testid="flag-keep">
+                  Keep it: {formatExactCents(line.fromCents)}
+                </Button>
+                <Button size="sm" variant="secondary" disabled={busy} onClick={() => decide("drop")} data-testid="flag-drop">
+                  Drop it: $0
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <p className="mt-2 text-sm text-amber-900" data-testid="second-look-flag">Claude can&rsquo;t tell from the photos, so the host decides this line.</p>
+          )
+        ) : null}
       </div>
     </li>
   );
@@ -58,6 +85,7 @@ export function SecondLookCard({ booking, busy, act }: { booking: BookingView; b
   const numberOf = (id: string) => Math.max(1, allLines.findIndex((l) => l.id === id) + 1);
   const partPending = !!splitOf(booking) && !booking.partCapture?.captureId;
   const unchanged = look.status === "ready" && isUnchanged(look.lines);
+  const flagged = look.lines.filter(awaitsHost).length;
   const badge = look.mocked ? "Simulated AI result" : `${look.model ?? "Claude"} · second look`;
 
   return (
@@ -78,7 +106,16 @@ export function SecondLookCard({ booking, busy, act }: { booking: BookingView; b
         <>
           <ul className="space-y-5">
             {look.lines.map((line) => (
-              <SecondLookLineRow key={line.lineId} line={line} charge={lines.find((l) => l.id === line.lineId)} number={numberOf(line.lineId)} checkOut={booking.photos.check_out} evidence={response?.evidence?.[line.lineId]?.photo} />
+              <SecondLookLineRow
+                key={line.lineId}
+                line={line}
+                charge={lines.find((l) => l.id === line.lineId)}
+                number={numberOf(line.lineId)}
+                checkOut={booking.photos.check_out}
+                evidence={response?.evidence?.[line.lineId]?.photo}
+                busy={!!busy}
+                decide={(choice) => act(`flag-${line.lineId}`, "Could not save your decision", () => kitFetch<BookingView>(`/api/bookings/${booking.id}/second-look`, { method: "POST", body: JSON.stringify({ lineId: line.lineId, choice }) }))}
+              />
             ))}
           </ul>
           <p className="flex flex-wrap items-center gap-2 rounded-md bg-white px-3 py-2 text-base font-semibold tabular-nums text-zinc-900" data-testid="second-look-total">
@@ -100,10 +137,14 @@ export function SecondLookCard({ booking, busy, act }: { booking: BookingView; b
             <p className="rounded-md bg-white px-3 py-2 text-sm text-zinc-800" data-testid="second-look-unchanged">
               <span className="font-medium">The second look changes nothing.</span> The renter&rsquo;s photo and note don&rsquo;t show {look.lines.length === 1 ? "this mark" : "these marks"} before the stay, so the charge stays {formatExactCents(acceptedCents + toCents)} and there&rsquo;s no new offer to send. Decide the contested {formatExactCents(fromCents)} below: charge it, lower it or release it.
             </p>
+          ) : flagged ? (
+            <p className="text-sm text-amber-900" data-testid="second-look-waiting">
+              Keep or drop the {flagged === 1 ? "line" : `${flagged} lines`} Claude couldn&rsquo;t tell. Then the agent writes the new offer, or there is none if nothing changes.
+            </p>
           ) : look.status === "ready" && !look.counter ? (
             <p className="text-sm text-zinc-700" data-testid="counter-writing">The agent is writing the new offer for the renter. Amounts are already set by code.</p>
           ) : null}
-          {unchanged ? null : look.status === "ready" ? (
+          {unchanged || flagged ? null : look.status === "ready" ? (
             <div className="space-y-1">
               <Button icon={<Send className="size-4" />} loading={busy === "counter"} disabled={!!busy || partPending || !look.counter || booking.status !== "contested"} onClick={() => act("counter", "Could not send the counter", () => kitFetch<BookingView>(`/api/bookings/${booking.id}/counter`, { method: "POST" }))} data-testid="send-counter">
                 Send the counter to the renter: {formatExactCents(toCents)}

@@ -17,7 +17,8 @@ import { activeSettlements, requireBooking, saveBooking } from "./bookings";
 import { DEMO_RENTER_CHECK_IN, readPhoto } from "./photos";
 import { DAMAGE_SIZES, rowLabel } from "./prices";
 import { formatExactCents, itemizedCents } from "./rules";
-import { contestedLines, counterAmount, isUnchanged, VERDICTS } from "./second-look-rules";
+import { photoTakenAt, withoutExif } from "./exif";
+import { awaitsHost, contestedLines, counterAmount, decideFlag, isUnchanged, photoTiming, VERDICTS } from "./second-look-rules";
 import { requestRelease, requestSettlement } from "./settle";
 import { splitOf } from "./split-rules";
 import type { Booking, BookingPhoto, ChargeLine, Counter, SecondLook, SecondLookLine } from "./types";
@@ -83,12 +84,36 @@ export const MOCK_OTHER_SPOT: LineVerdict = {
   reasoning: "The renter's photo is a close-up of the dark stain, a different spot from this mark. The host's check-in photo shows this spot clean, so nothing in the evidence shows it before the stay, and the line stands.",
 };
 
-function mockVerdict(line: ChargeLine, photo: BookingPhoto | undefined): LineVerdict {
+export const MOCK_UNSURE: LineVerdict = {
+  verdict: "unsure",
+  new_size: "small",
+  reasoning: "The renter's photo shows the same view as the host's check-out photo, so it can't say whether the mark was there before the stay. The photos don't settle it either way.",
+};
+
+function mockVerdict(line: ChargeLine, photo: BookingPhoto | undefined, checkOut: BookingPhoto): LineVerdict {
   if (!photo) return MOCK_STANDS;
-  const demoCloseUp = readPhoto(photo).equals(readPhoto(DEMO_RENTER_CHECK_IN));
+  // A renter photo that is the host's own check-out shot shows nothing new: Claude can't tell.
+  // Compared without EXIF: a dated copy is the same picture.
+  const same = (a: BookingPhoto, b: BookingPhoto) => Buffer.from(withoutExif(readPhoto(a))).equals(Buffer.from(withoutExif(readPhoto(b))));
+  if (same(photo, checkOut)) return MOCK_UNSURE;
+  const demoCloseUp = same(photo, DEMO_RENTER_CHECK_IN);
   // The close-up shows only the stain: it clears a stain line and says nothing about another mark.
   if (demoCloseUp) return line.price?.type === "stain" ? MOCK_ALREADY_THERE : MOCK_OTHER_SPOT;
   return MOCK_SMALLER;
+}
+
+/**
+ * The stay, as the evidence dates it: check-in from the host's check-in photo (its EXIF date, else
+ * when it was uploaded, else when the hold was placed or the booking made); check-out from the host's check-out photo
+ * (EXIF, else upload), else when the host proposed the charge, which comes after check-out.
+ */
+export function stayOf(booking: Booking): { checkInAt?: string; checkOutAt?: string } {
+  const when = (photo: BookingPhoto | undefined) => {
+    if (!photo) return undefined;
+    const exif = photoTakenAt(new Uint8Array(readPhoto(photo)));
+    return exif ?? (photo.source.kind === "upload" ? photo.source.addedAt : undefined);
+  };
+  return { checkInAt: when(booking.photos.check_in) ?? booking.heldAt ?? booking.createdAt, checkOutAt: when(booking.photos.check_out) ?? booking.proposal?.proposedAt };
 }
 
 const image = (photo: BookingPhoto) => ({ base64: readPhoto(photo).toString("base64"), mediaType: photo.mediaType as ImageMediaType });
@@ -110,9 +135,12 @@ async function readLine(booking: Booking, line: ChargeLine): Promise<{ line: Sec
     labels: shown.map((s) => s.label),
     question: secondLookQuestion(line, response?.note, !!photo),
     schema: LineVerdict,
-    mock: () => mockVerdict(line, photo),
+    mock: () => mockVerdict(line, photo, check_out),
   });
-  const mapped = counterAmount(line, data.verdict, data.new_size);
+  // Code dates the renter's photo from its own file; a photo taken after check-out can't lower the line.
+  const takenAt = photo ? photoTakenAt(new Uint8Array(readPhoto(photo))) : undefined;
+  const timing = photo ? photoTiming(takenAt, stayOf(booking)) : undefined;
+  const mapped = counterAmount(line, data.verdict, data.new_size, timing);
   return {
     line: {
       lineId: line.id,
@@ -124,6 +152,8 @@ async function readLine(booking: Booking, line: ChargeLine): Promise<{ line: Sec
       toCents: mapped.cents,
       ...(mapped.price && mapped.price !== line.price ? { price: mapped.price } : {}),
       withPhoto: !!photo,
+      ...(photo ? { photoTiming: timing, ...(takenAt ? { photoTakenAt: takenAt } : {}) } : {}),
+      ...(mapped.flagged ? { flagged: true } : {}),
     },
     mocked,
     model: model ? modelLabel(model) : undefined,
@@ -175,6 +205,17 @@ async function look(id: string, channel: string) {
     model: results.find((r) => r.model)?.model,
     costUsd: results.reduce((sum, r) => sum + r.costUsd, 0),
   });
+  const flagged = after.secondLook!.lines.filter(awaitsHost).length;
+  if (flagged) {
+    timeline.emit({ kind: "info", status: "info", title: "Second look", detail: `Claude can't tell on ${flagged === 1 ? "one line" : `${flagged} lines`}, so ${flagged === 1 ? "it stays" : "they stay"} as charged until the host keeps or drops ${flagged === 1 ? "it" : "them"}.` });
+    return;
+  }
+  await afterLook(id, channel);
+}
+
+/** Once every line has its amount: no offer if nothing changed, else the agent writes the counter. */
+async function afterLook(id: string, channel: string) {
+  const after = requireBooking(id);
   const { fromCents, toCents } = secondLookSummary(after);
   if (isUnchanged(after.secondLook!.lines)) {
     // Nothing to offer: the host settles the contested part as it stands, as after any contest.
@@ -203,8 +244,25 @@ export function startSecondLook(id: string, channel: string): Promise<void> {
   );
 }
 
+/**
+ * The host keeps or drops a line Claude couldn't tell. Code sets its amount; once no line waits on
+ * the host, the second look goes on as if Claude had called it: no offer, or the agent's counter.
+ */
+export function decideFlaggedLine(id: string, lineId: string, choice: "keep" | "drop", channel: string): { booking: Booking; finished: Promise<void> } {
+  const booking = requireBooking(id);
+  const look = booking.secondLook;
+  const line = look?.lines.find((l) => l.lineId === lineId);
+  if (look?.status !== "ready" || !line || !awaitsHost(line)) throw new HttpError(409, "That line isn't waiting for your decision.", "conflict");
+  const saved = patchSecondLook(id, { lines: look.lines.map((l) => (l.lineId === lineId ? decideFlag(l, choice) : l)) });
+  timeline.emit({ kind: "info", status: "info", title: choice === "drop" ? "Host dropped a line" : "Host kept a line", detail: `${line.description.split(/[.,]/)[0]}: ${choice === "drop" ? `${formatExactCents(line.fromCents)} to $0` : `stays ${formatExactCents(line.fromCents)}`}. Claude couldn't tell from the photos.` });
+  const waiting = saved.secondLook!.lines.some(awaitsHost);
+  const finished = waiting ? Promise.resolve() : forBooking(id, () => withContext({ channel, actor: "agent:deposit-counter" }, () => afterLook(id, channel)));
+  return { booking: saved, finished };
+}
+
 /** Why the host can't send the counter yet, or null. */
 export function counterBlocked(booking: Booking): string | null {
+  if (booking.secondLook?.status === "ready" && booking.secondLook.lines.some(awaitsHost)) return "Decide the line Claude couldn't tell first: keep it or drop it.";
   if (booking.secondLook?.status === "ready" && isUnchanged(booking.secondLook.lines)) return "The second look changes nothing, so there's no new offer to send.";
   if (booking.secondLook?.status !== "ready" || !booking.secondLook.counter) return "There's no counter ready to send.";
   if (splitOf(booking) && !booking.partCapture?.captureId) return "Approve the items the renter accepted first.";
