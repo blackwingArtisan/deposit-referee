@@ -50,7 +50,6 @@ export function HostLink({ booking }: { booking: BookingView }) {
             <Smartphone className="mt-0.5 size-4 shrink-0 text-zinc-500" aria-hidden />
             <div className="min-w-0">
               <p className="font-semibold text-zinc-900">Open on another device</p>
-              <p className="text-zinc-600">Only this browser can act as the host. A one-time link lets your phone do it too.</p>
             </div>
           </div>
           <Button variant="secondary" size="sm" loading={busy} disabled={busy} onClick={make} data-testid="host-link-make">

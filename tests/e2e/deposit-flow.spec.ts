@@ -710,7 +710,7 @@ test("safe input: bad amounts and fake photos get a plain message, photos can be
 
   // The disabled button says what it's waiting for.
   await expect(page.getByTestId("request-approval")).toBeDisabled();
-  await expect(page.getByTestId("approval-why")).toContainText("Waiting for the renter to accept or contest");
+  await expect(page.getByTestId("approval-why")).toHaveText("Waiting for the renter.");
 
   // A negative line is a message on the line, not a broken page.
   await setCharge(page, await flow.booking(), "-5");

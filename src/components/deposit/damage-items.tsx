@@ -71,7 +71,7 @@ export function PriceTable({ highlight = [] }: { highlight?: PriceRow[] }) {
   const lit = (type: string, size: string) => highlight.some((row) => row.type === type && row.size === size);
   return (
     <details className="text-sm" data-testid="price-table">
-      <summary className="cursor-pointer text-zinc-600 hover:text-zinc-900">The price table every charge comes from</summary>
+      <summary className="cursor-pointer text-zinc-600 hover:text-zinc-900">Price table</summary>
       <p className="mt-2 text-sm text-zinc-600">The AI only names the kind of damage and its size. The amount comes from this table, so the same scratch always costs the same. These are starting figures for a typical repair, not quotes; the host can change a line and tells the renter why.</p>
       <div className="mt-2 overflow-x-auto">
         <table className="w-full min-w-[22rem] text-left text-sm">

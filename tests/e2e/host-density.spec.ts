@@ -31,6 +31,10 @@ test("the host's page: one line per item, the reasoning folded, one setup chip",
   await expect(page.getByTestId("proposal-rationale")).toBeVisible();
   await page.getByTestId("proposal-why-toggle").click();
 
+  // The finished wait list is one line; its steps fold.
+  await expect(page.getByTestId("wait-story")).toBeVisible();
+  await expect(page.getByTestId("wait-step-hold")).toBeHidden();
+
   // The setup is one chip; its details open on a click.
   await expect(page.getByTestId("mode-chip").filter({ visible: true })).toHaveCount(1);
   await expect(page.getByTestId("mode-details").filter({ visible: true })).toHaveCount(0);
