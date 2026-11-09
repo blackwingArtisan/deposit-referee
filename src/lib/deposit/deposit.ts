@@ -14,13 +14,17 @@ function stillDraft(booking: Booking) {
   if (booking.status !== "draft") throw new HttpError(409, "This deposit has already been placed.", "conflict");
 }
 
-/** Creates the PayPal order the renter approves. */
+/**
+ * Creates the PayPal order the renter approves. Its custom_id is the booking's id, so the order,
+ * its capture and any dispute on it trace back to the booking from PayPal's side. The id only opens
+ * a read-only view (no renter link, no actions), the same as sharing the booking's link.
+ */
 export async function createDepositOrder(token: string): Promise<{ orderId: string }> {
   const booking = requireBookingByToken(token);
   stillDraft(booking);
   const order = await getPayPal().orders.create({
     intent: "AUTHORIZE",
-    purchase_units: [{ amount: moneyFromMinor(booking.depositCents), description: `Damage deposit: ${booking.item}`.slice(0, 127) }],
+    purchase_units: [{ amount: moneyFromMinor(booking.depositCents), description: `Damage deposit: ${booking.item}`.slice(0, 127), custom_id: booking.id }],
   });
   saveBooking({ ...booking, orderId: order.id });
   return { orderId: order.id };

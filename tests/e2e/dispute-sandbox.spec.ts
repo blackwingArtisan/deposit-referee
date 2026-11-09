@@ -29,7 +29,8 @@ test("wallet: the sandbox buyer places the $300 hold with the PayPal button", as
   expect(order.intent).toBe("AUTHORIZE");
   expect(authorization.status).toBe("CREATED");
   expect(authorization.amount.value).toBe("300.00");
-  console.log(`PayPal re-read (wallet): order ${order.id} ${order.status}; authorization ${authorization.id} ${authorization.status} ${authorization.amount.value}`);
+  expect(order.purchase_units[0].custom_id, "PayPal's order names its booking").toBe(flow.id);
+  console.log(`PayPal re-read (wallet): booking ${flow.id}; order ${order.id} ${order.status}; custom_id ${order.purchase_units[0].custom_id}; authorization ${authorization.id} ${authorization.status} ${authorization.amount.value}`);
 });
 
 test("dispute run: the buyer disputes the charge in PayPal, the app finds it and the host sends the evidence pack", async ({ page, request, browser }) => {
@@ -116,6 +117,6 @@ test("dispute run: the buyer disputes the charge in PayPal, the app finds it and
 
   const event = await disputeCreatedEvent(dispute.disputeId).catch(() => undefined);
   console.log(
-    `PayPal re-read (dispute run): wallet authorization ${(await flow.booking()).authorizationId}; capture ${captureId}; dispute ${final.dispute_id} ${final.status} ${final.dispute_life_cycle_stage} ${final.reason} ${final.dispute_amount.value}; evidences ${final.evidences?.length ?? 0}; CUSTOMER.DISPUTE.CREATED event ${event?.id ?? "not in PayPal's recent list"}; send-message debug_id ${message?.debugId ?? "none"}; escalate debug_id ${escalated.debugId ?? "none"}; provide-evidence debug_id ${provide?.debugId ?? "none"}`,
+    `PayPal re-read (dispute run): booking ${flow.id} (DEMO_DISPUTE_BOOKING=${flow.id}; a visitor sees it at /bookings/${flow.id}); wallet authorization ${(await flow.booking()).authorizationId}; capture ${captureId}; dispute ${final.dispute_id} ${final.status} ${final.dispute_life_cycle_stage} ${final.reason} ${final.dispute_amount.value}; evidences ${final.evidences?.length ?? 0}; CUSTOMER.DISPUTE.CREATED event ${event?.id ?? "not in PayPal's recent list"}; send-message debug_id ${message?.debugId ?? "none"}; escalate debug_id ${escalated.debugId ?? "none"}; provide-evidence debug_id ${provide?.debugId ?? "none"}`,
   );
 });

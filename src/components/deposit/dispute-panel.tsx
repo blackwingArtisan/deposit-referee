@@ -41,6 +41,9 @@ export function DisputePanel({ booking, busy, act, onDecided }: { booking: Booki
   }, [approvalId]);
   const charged = !!(booking.settlement?.captureId || booking.partCapture?.captureId);
   if (!charged) return null;
+  // A browser that didn't make the booking sees the case read-only: no pack to download (it holds
+  // the renter's answer and photos) and no buttons, which the server would refuse anyway.
+  const readOnly = booking.viewer === "visitor" && !booking.sample;
   const d = booking.dispute;
   const evidence = d?.evidence;
   const waiting = !!evidence && !evidence.submittedAt && !evidence.error;
@@ -51,6 +54,7 @@ export function DisputePanel({ booking, busy, act, onDecided }: { booking: Booki
   );
 
   if (!d) {
+    if (readOnly) return null;
     return (
       <Card data-testid="evidence-panel">
         <CardBody className="flex flex-wrap items-center justify-between gap-3">
@@ -126,7 +130,7 @@ export function DisputePanel({ booking, busy, act, onDecided }: { booking: Booki
           </p>
         ) : null}
 
-        {booking.disputeApproval ? (
+        {readOnly ? null : booking.disputeApproval ? (
           <div ref={gate}>
             <ApprovalPrompt approvalId={booking.disputeApproval.id} summary={booking.disputeApproval.summary} reason="Your approval step. Nothing goes to PayPal until you approve." onDecided={onDecided} />
           </div>
@@ -134,7 +138,8 @@ export function DisputePanel({ booking, busy, act, onDecided }: { booking: Booki
           <p className="text-sm text-zinc-600">Checking the case with PayPal.</p>
         ) : null}
 
-        <div className="flex flex-wrap items-center gap-3 pt-1">
+        {readOnly ? null : (
+        <div className="flex flex-wrap items-center gap-3 pt-1" data-testid="dispute-actions">
           {canSendEvidence(d) && !waiting ? (
             <Button icon={<Send className="size-4" />} loading={busy === "evidence"} disabled={!!busy} onClick={() => act("evidence", "Could not send the evidence", () => kitFetch<BookingView>(`/api/bookings/${booking.id}/dispute/evidence`, { method: "POST" }))} data-testid="send-evidence">
               {evidence?.submittedAt ? "Send the evidence pack again, as evidence" : "Send the evidence pack to PayPal"}
@@ -145,6 +150,7 @@ export function DisputePanel({ booking, busy, act, onDecided }: { booking: Booki
           </Button>
           {download}
         </div>
+        )}
       </CardBody>
     </Card>
   );
