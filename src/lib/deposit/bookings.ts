@@ -88,6 +88,7 @@ export function viewBooking(input: Booking): BookingView {
     ...booking,
     visitorId: undefined,
     hostSecret: undefined,
+    hostLinks: undefined,
     hold: booking.holdExpiresAt ? holdClock(booking.holdExpiresAt) : null,
     approval: pendingApproval(booking),
     disputeApproval: evidence && !evidence.submittedAt ? pendingFor(evidence.runId) : null,
