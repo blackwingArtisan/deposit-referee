@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, type ReactNode } from "react";
+import { moneyLine, moneySteps } from "@/lib/deposit/money-strip";
 import { formatCents } from "@/lib/deposit/rules";
 import type { BookingView } from "@/lib/deposit/types";
 import { DamageItems } from "./damage-items";
@@ -45,6 +46,7 @@ export function Ruling({ booking, calls }: { booking: BookingView; calls?: React
   const released = settlement?.releasedCents;
   if (captured === undefined || released === undefined || authorizedCents === undefined) return null;
   const capturedShare = (captured / authorizedCents) * 100;
+  const money = moneySteps(booking);
   // A split: the accepted items were charged first, on their own, from the same hold.
   const part = booking.partCapture?.captureId ? booking.partCapture : undefined;
   const wholeRelease = settlement?.kind === "release" && !part;
@@ -61,6 +63,20 @@ export function Ruling({ booking, calls }: { booking: BookingView; calls?: React
         From {booking.renter}&rsquo;s {formatCents(authorizedCents)} deposit on {booking.item}.{" "}
         {wholeRelease ? `Nothing was charged. PayPal confirms the hold is ${settlement?.authorizationStatus?.toLowerCase()}.` : part && settlement?.kind === "release" ? `${formatCents(part.capturedCents ?? 0)} was charged for the items the renter accepted, read back from PayPal, and the rest of the hold went back. The hold is ${settlement?.authorizationStatus?.toLowerCase()}.` : part ? `Two charges from one hold, both read back from PayPal: ${formatCents(part.capturedCents ?? 0)} for the items the renter accepted, then ${formatCents(captured - (part.capturedCents ?? 0))} for the contested part. The hold is ${settlement?.authorizationStatus?.toLowerCase()}.` : `PayPal confirms the charge is ${settlement?.captureStatus?.toLowerCase()} and the hold is ${settlement?.authorizationStatus?.toLowerCase()}.`}
       </p>
+
+      {money ? (
+        <p className="mt-4 flex flex-wrap items-center gap-x-2 gap-y-1 text-base font-semibold tabular-nums sm:text-lg" data-testid="money-strip" aria-label={moneyLine(money)}>
+          {money.map((s, i) => (
+            <span key={i} className="inline-flex items-center gap-2">
+              {i ? <span className="text-zinc-400" aria-hidden>→</span> : null}
+              <span data-testid="money-step" data-kind={s.kind} className={s.kind === "captured" ? "text-red-700" : s.kind === "released" ? "text-emerald-700" : "text-zinc-900"}>
+                {s.label}
+              </span>
+            </span>
+          ))}
+          <span className="text-sm font-normal text-zinc-500">· each amount as PayPal returned it</span>
+        </p>
+      ) : null}
 
       <div className="mt-5 flex h-3 overflow-hidden rounded-full" role="img" aria-label={`${formatCents(captured)} of ${formatCents(authorizedCents)} captured`}>
         <div className="bg-red-600" style={{ width: `${capturedShare}%` }} />
