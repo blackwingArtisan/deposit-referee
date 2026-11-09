@@ -446,7 +446,7 @@ function RenterSecondLook({ view, busy, onAccept }: { view: RenterView; busy: st
           <h2 className="text-sm font-semibold text-zinc-900">The host&rsquo;s counter, from Claude&rsquo;s second look</h2>
           <p className="mt-1 text-sm text-zinc-700" data-testid="renter-counter-total">What you contested: {formatExactCents(from)} &rarr; {formatExactCents(to)}</p>
         </div>
-        <ul className="space-y-5">
+        <ul className="space-y-3">
           {lines.map((line, i) => (
             <SecondLookLineRow key={line.lineId} line={line} charge={proposal.find((l) => l.id === line.lineId)} number={i + 1} checkOut={view.photos.check_out} evidence={view.renterState?.response?.evidence?.[line.lineId]?.photo} />
           ))}

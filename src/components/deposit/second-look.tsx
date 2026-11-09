@@ -10,7 +10,7 @@ import { awaitsHost, isDropped, isUnchanged, photoDateLabel, verdictLabel } from
 import { splitOf } from "@/lib/deposit/split-rules";
 import type { BookingPhoto, BookingView, ChargeLine, SecondLookLine } from "@/lib/deposit/types";
 import { PriceSource } from "./damage-items";
-import { PhotoFrame } from "./photo-frame";
+import { LineCard, MarkThumb, NoMarkTile, PhotoTile, splitDescription } from "./line-card";
 
 /** The short label on a grey box. The card says the rest. */
 export const droppedTag = (line: Pick<SecondLookLine, "verdict" | "toCents">) => (isDropped(line) ? (line.verdict === "already_there" ? "Already there" : "Not charged") : undefined);
@@ -24,32 +24,45 @@ const tone = (line: SecondLookLine) => (awaitsHost(line) ? "warning" : isDropped
  */
 export function SecondLookLineRow({ line, charge, number, checkOut, evidence, decide, busy }: { line: SecondLookLine; charge?: ChargeLine; number: number; checkOut?: BookingPhoto; evidence?: BookingPhoto; decide?: (choice: "keep" | "drop") => void; busy?: boolean }) {
   const dated = photoDateLabel(line);
+  const flagged = awaitsHost(line);
+  const markPhoto = charge?.photo === "renter_check_out" ? undefined : checkOut;
+  const reasonLine = line.reasoning.split(/(?<=\.)\s/)[0];
   return (
-    <li className={`space-y-3 ${awaitsHost(line) ? "rounded-lg border border-amber-300 bg-amber-50/60 p-3" : ""}`} data-testid="second-look-line" data-verdict={line.verdict} data-flagged={awaitsHost(line) ? "true" : undefined}>
-      <div className={`grid gap-3 ${evidence ? "grid-cols-2" : "grid-cols-1 sm:max-w-sm"}`}>
-        {checkOut && charge?.box ? <PhotoFrame label="Host's check-out" photo={checkOut} items={[{ description: line.description, box: charge.box, photo: charge.photo, number, dropped: droppedTag(line) }]} on={charge.photo ?? "check_out"} /> : null}
-        {evidence ? <PhotoFrame label="Renter's photo" photo={evidence} /> : null}
-      </div>
-      <div className="text-sm text-zinc-800">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="font-medium">{number}. {line.description.split(/(?<=\.)\s/)[0]}</span>
-          <Badge tone={tone(line)} className="whitespace-normal" data-testid="second-look-verdict">{verdictLabel(line)}</Badge>
-        </div>
+    <li data-testid="second-look-line" data-verdict={line.verdict} data-flagged={flagged ? "true" : undefined}>
+      <LineCard
+        wide
+        tone={flagged ? "flagged" : isDropped(line) ? "dropped" : line.toCents < line.fromCents ? "lowered" : "plain"}
+        thumb={
+          <div className={`grid gap-2 ${evidence ? "grid-cols-2" : "grid-cols-1"}`}>
+            {markPhoto && charge?.box ? <MarkThumb photo={markPhoto} box={charge.box} number={number} description={line.description} dropped={droppedTag(line)} caption="Host's check-out" /> : <NoMarkTile number={number} />}
+            {evidence ? <PhotoTile photo={evidence} label="Renter's photo" /> : null}
+          </div>
+        }
+        title={`${number}. ${splitDescription(line.description).title}`}
+        reason={reasonLine}
+        chips={
+          <>
+            <Badge tone={tone(line)} className="whitespace-normal! text-sm!" data-testid="second-look-verdict">{verdictLabel(line)}</Badge>
+            <PriceSource price={line.price ?? charge?.price} />
+          </>
+        }
+        aside={
+          <p className="flex items-center gap-1.5 text-lg font-semibold tabular-nums sm:justify-end" data-testid="second-look-amount">
+            <span className={line.toCents < line.fromCents ? "text-zinc-400 line-through" : ""}>{formatExactCents(line.fromCents)}</span>
+            <ArrowRight className="size-4 text-zinc-400" aria-hidden />
+            <span className={isDropped(line) ? "text-emerald-700" : "text-zinc-900"}>{formatExactCents(line.toCents)}</span>
+          </p>
+        }
+      >
         {dated ? (
-          <p className={`mt-1 text-xs font-medium ${line.photoTiming === "after_check_out" ? "text-amber-800" : line.photoTiming === "before_check_in" ? "text-emerald-800" : "text-zinc-600"}`} data-testid="second-look-photo-date">
+          <p className={`text-sm font-medium ${line.photoTiming === "after_check_out" ? "text-amber-800" : line.photoTiming === "before_check_in" ? "text-emerald-800" : "text-zinc-600"}`} data-testid="second-look-photo-date">
             {dated}
           </p>
         ) : null}
         <Why testId="second-look-why" className="mt-1">
           <p className="text-zinc-700" data-testid="second-look-reasoning">{line.reasoning}</p>
         </Why>
-        {line.price ? <PriceSource price={line.price} className="mt-0.5" /> : null}
-        <p className="mt-1 flex items-center gap-1.5 font-semibold tabular-nums" data-testid="second-look-amount">
-          <span className={line.toCents < line.fromCents ? "text-zinc-400 line-through" : ""}>{formatExactCents(line.fromCents)}</span>
-          <ArrowRight className="size-3.5 text-zinc-400" aria-hidden />
-          <span className={isDropped(line) ? "text-emerald-700" : "text-zinc-900"}>{formatExactCents(line.toCents)}</span>
-        </p>
-        {awaitsHost(line) ? (
+        {flagged ? (
           decide ? (
             <div className="mt-2 space-y-1.5" data-testid="second-look-flag">
               <p className="text-sm text-amber-900">Claude can&rsquo;t tell from the photos whether this is new. It stays at {formatExactCents(line.fromCents)} until you decide.</p>
@@ -66,7 +79,7 @@ export function SecondLookLineRow({ line, charge, number, checkOut, evidence, de
             <p className="mt-2 text-sm text-amber-900" data-testid="second-look-flag">Claude can&rsquo;t tell from the photos, so the host decides this line.</p>
           )
         ) : null}
-      </div>
+      </LineCard>
     </li>
   );
 }
@@ -97,7 +110,7 @@ export function SecondLookCard({ booking, busy, act }: { booking: BookingView; b
       <div className="flex flex-wrap items-center gap-2">
         <Eye className="size-4 text-brand" aria-hidden />
         <h4 className="text-sm font-semibold text-zinc-900">Claude&rsquo;s second look</h4>
-        {look.status !== "running" && look.status !== "failed" ? <Badge tone={look.mocked ? "warning" : "brand"} data-testid="second-look-engine">{badge}</Badge> : null}
+        {look.status !== "running" && look.status !== "failed" ? <Badge tone={look.mocked ? "warning" : "brand"} className="text-sm!" data-testid="second-look-engine">{badge}</Badge> : null}
       </div>
       <p className={`text-lg font-semibold tracking-tight tabular-nums ${flagged ? "text-amber-900" : "text-zinc-900"}`} data-testid="second-look-headline">
         {secondLookHeadline(look)}
@@ -111,7 +124,7 @@ export function SecondLookCard({ booking, busy, act }: { booking: BookingView; b
         <p className="text-sm text-red-800" data-testid="second-look-error">{look.error}</p>
       ) : (
         <>
-          <ul className="space-y-5">
+          <ul className="space-y-3">
             {look.lines.map((line) => (
               <SecondLookLineRow
                 key={line.lineId}
@@ -135,8 +148,8 @@ export function SecondLookCard({ booking, busy, act }: { booking: BookingView; b
             <div className="text-sm" data-testid="counter">
               <p className="text-zinc-800"><span className="font-medium">The agent&rsquo;s counter:</span> <span data-testid="counter-rationale">{look.counter.rationale}</span></p>
               <div className="mt-1.5 flex flex-wrap items-center gap-2">
-                <Badge tone={look.counter.simulated ? "warning" : "brand"}>{look.counter.engine}</Badge>
-                <span className="text-xs text-zinc-500">Amounts by code from the second look. The agent can&rsquo;t move money.</span>
+                <Badge tone={look.counter.simulated ? "warning" : "brand"} className="text-sm!">{look.counter.engine}</Badge>
+                <span className="text-sm text-zinc-600">Amounts by code from the second look. The agent can&rsquo;t move money.</span>
               </div>
             </div>
           ) : null}
@@ -158,10 +171,10 @@ export function SecondLookCard({ booking, busy, act }: { booking: BookingView; b
           ) : null}
           {unchanged || flagged ? null : look.status === "ready" ? (
             <div className="space-y-1">
-              <Button icon={<Send className="size-4" />} loading={busy === "counter"} disabled={!!busy || partPending || !look.counter || booking.status !== "contested"} onClick={() => act("counter", "Could not send the counter", () => kitFetch<BookingView>(`/api/bookings/${booking.id}/counter`, { method: "POST" }))} data-testid="send-counter">
+              <Button className="h-auto! min-h-10 w-full whitespace-normal! py-2 sm:w-auto" icon={<Send className="size-4" />} loading={busy === "counter"} disabled={!!busy || partPending || !look.counter || booking.status !== "contested"} onClick={() => act("counter", "Could not send the counter", () => kitFetch<BookingView>(`/api/bookings/${booking.id}/counter`, { method: "POST" }))} data-testid="send-counter">
                 Send the counter to the renter: {formatExactCents(toCents)}
               </Button>
-              {partPending ? <p className="text-xs text-zinc-600" data-testid="send-counter-why">Approve the items the renter accepted first.</p> : null}
+              {partPending ? <p className="text-sm text-zinc-600" data-testid="send-counter-why">Approve the items the renter accepted first.</p> : null}
             </div>
           ) : look.status === "sent" ? (
             <p className="text-sm text-zinc-700" data-testid="counter-sent">Sent to the renter. If they accept, the charge comes back to you for approval. Nothing has moved.</p>
