@@ -188,7 +188,11 @@ export async function renterAccepts(page: Page, booking: BookingView) {
   return renter;
 }
 
+/** Contests every item on the renter's page with one note. */
 export async function renterContests(renter: Page, note: string) {
+  const contest = renter.locator('[data-testid^="line-contest-"]');
+  await contest.first().waitFor();
+  for (let i = 0; i < (await contest.count()); i++) await contest.nth(i).click();
   await renter.getByTestId("contest-note").fill(note);
   await renter.getByTestId("contest").click();
   await expect(renter.getByTestId("renter-contested")).toContainText(note);
