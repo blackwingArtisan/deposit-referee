@@ -5,7 +5,7 @@
  */
 import { TYPE_LABEL } from "./prices";
 import { formatCents, formatExactCents } from "./rules";
-import { isDropped, isUnchanged } from "./second-look-rules";
+import { awaitsHost, isDropped, isUnchanged } from "./second-look-rules";
 import type { Booking, ChargeLine } from "./types";
 
 export type RailWho = "renter" | "host" | "claude" | "paypal";
@@ -62,11 +62,16 @@ export function conversation(booking: RailBooking): RailEntry[] {
     else {
       for (const line of secondLook.lines) {
         const name = shortName(line);
-        const what = isDropped(line) ? (line.verdict === "already_there" ? "already there" : "not charged") : line.toCents < line.fromCents ? `down to ${formatExactCents(line.toCents)}` : "stands";
+        const what = awaitsHost(line)
+          ? "Claude can't tell; the host decides"
+          : line.hostChoice
+            ? `Claude couldn't tell; the host ${line.hostChoice === "drop" ? "dropped it" : "kept it"}`
+            : isDropped(line) ? (line.verdict === "already_there" ? "already there" : "not charged") : line.toCents < line.fromCents ? `down to ${formatExactCents(line.toCents)}` : "stands";
         out.push({ key: `look-${line.lineId}`, who: "claude", text: `Second look: ${name.toLowerCase()} ${what}`, at: secondLook.finishedAt });
       }
       const total = secondLook.lines.reduce((sum, l) => sum + l.toCents, 0);
       if (secondLook.sentAt) out.push({ key: "counter", who: "host", text: `Counter sent: ${formatExactCents(total)}`, at: secondLook.sentAt });
+      else if (secondLook.status === "ready" && secondLook.lines.some(awaitsHost)) out.push({ key: "counter", who: "host", text: "Host to keep or drop the line Claude couldn't tell", waiting: true });
       else if (secondLook.status === "ready" && isUnchanged(secondLook.lines)) out.push({ key: "counter", who: "claude", text: "No new offer: the second look changed nothing", at: secondLook.finishedAt });
       else if (secondLook.status === "ready") out.push({ key: "counter", who: "host", text: "Counter ready to send", waiting: true });
       if (secondLook.acceptedAt) out.push({ key: "counter-accepted", who: "renter", text: "Accepted the counter", at: secondLook.acceptedAt });

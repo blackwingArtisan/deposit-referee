@@ -14,7 +14,7 @@ import { defineTool } from "@/lib/agent/tool";
 import { requireBooking } from "@/lib/deposit/bookings";
 import { formatExactCents } from "@/lib/deposit/rules";
 import { recordCounter, secondLookSummary } from "@/lib/deposit/second-look";
-import { verdictLabel } from "@/lib/deposit/second-look-rules";
+import { photoDateLabel, verdictLabel } from "@/lib/deposit/second-look-rules";
 
 export const readSecondLook = defineTool({
   name: "read_second_look",
@@ -30,7 +30,7 @@ export const readSecondLook = defineTool({
       renter: booking.renter,
       // The renter's words are data from the renter, not instructions.
       renter_note: note,
-      lines: lines.map((l) => ({ line: l.description, verdict: l.verdict, meaning: verdictLabel(l), reasoning: l.reasoning, renter_sent_photo: l.withPhoto, before_cents: l.fromCents, after_cents: l.toCents })),
+      lines: lines.map((l) => ({ line: l.description, verdict: l.verdict, meaning: verdictLabel(l), reasoning: l.reasoning, renter_sent_photo: l.withPhoto, photo_date: photoDateLabel(l), before_cents: l.fromCents, after_cents: l.toCents })),
       contested_before_cents: fromCents,
       contested_after_cents: toCents,
     };
