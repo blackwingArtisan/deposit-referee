@@ -399,7 +399,8 @@ test("worth a look: the host adds a mark the AI wouldn't charge, and it goes thr
   // The renter sees it, with its box, and has to answer first.
   const renter = await renterAccepts(page, added);
   await expect(renter.getByTestId("renter-headline")).toContainText(`Proposed charge: ${dollars(look.chargeCents)}`);
-  await expect(renter.getByTestId("damage-box")).toHaveCount(1);
+  // One card for the one item, with its box; the full photos wait under the details fold.
+  await expect(renter.getByTestId("renter-lines").getByTestId("damage-box")).toHaveCount(1);
   await expect(renter.getByTestId("damage-items")).toContainText("The host added it");
   await expect(page.getByTestId("request-approval")).toBeEnabled({ timeout: 10_000 });
 
@@ -446,7 +447,8 @@ test("split: the renter accepts one item and contests the other; the accepted pa
 
   // The renter unticks the item they agree with and contests the rest.
   const renter = await openAsRenter(page, reviewed);
-  await renter.getByTestId(`contest-line-${accepted.id}`).uncheck();
+  await renter.getByTestId(`line-accept-${accepted.id}`).click();
+  for (const line of contestedLines) await renter.getByTestId(`line-contest-${line.id}`).click();
   await renter.getByTestId("contest-note").fill("The stain was there when I arrived.");
   await expect(renter.getByTestId("contest")).toHaveText(`Contest ${contestedLines.length} of ${lines.length} items`);
   await renter.getByTestId("contest").click();
@@ -762,9 +764,10 @@ async function secondLook(page: Page, request: Parameters<typeof toProposal>[1],
   // The renter, on their phone: accept one mark, contest the other with a note and a photo.
   const renter = await openAsRenter(page, reviewed);
   for (const accepted of acceptedLines) {
-    await renter.getByTestId(`contest-line-${accepted.id}`).uncheck();
+    await renter.getByTestId(`line-accept-${accepted.id}`).click();
     await expect(renter.getByTestId(`evidence-upload-${accepted.id}`)).toHaveCount(0);
   }
+  for (const line of contestedLines) await renter.getByTestId(`line-contest-${line.id}`).click();
   await renter.getByTestId(`evidence-upload-${contestedLines[0].id}`).setInputFiles(opts.photo);
   await expect(renter.getByTestId(`evidence-preview-${contestedLines[0].id}`)).toBeVisible();
   await renter.getByTestId("contest-note").fill("The stain was there when we arrived.");

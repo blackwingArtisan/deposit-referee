@@ -24,6 +24,8 @@ describe("the renter places the hold from their own page", () => {
     const held = await placeHold(booking.renterToken, orderId);
     expect(held.status).toBe("held");
     expect(held.authorizedCents).toBe(30_000);
+    // The host's conversation rail shows when the hold was placed.
+    expect(Date.parse(held.heldAt!)).toBeGreaterThan(Date.now() - 60_000);
     expect((await paypal().payments.getAuthorization(held.authorizationId!)).status).toBe("CREATED");
     expect(renterView(booking.renterToken).hold).toEqual({ authorizedCents: 30_000, expiresAt: held.holdExpiresAt });
   });

@@ -178,7 +178,12 @@ test("demo", async ({ page, request }) => {
   const view = await (await page.request.get(`/api/bookings/${id}`)).json();
   const lines = view.proposal.lines as { id: string; amountCents: number; description: string; price?: { type: string } }[];
   findingsText = [view.review?.reasoning ?? "", ...lines.map((l) => `${l.description} ${l.price?.type ?? ""} ${damageNamed(l)}`)].join(" ");
-  const [accepted, ...contestedLines] = lines;
+  // By what each line is, never by position (live AI lists the marks in either order): the renter
+  // contests the stain and accepts the other mark.
+  const isStain = (line: (typeof lines)[number]) => (line.price ? line.price.type === "stain" : /stain/i.test(line.description));
+  const contestedLines = lines.filter(isStain);
+  const accepted = lines.find((line) => !isStain(line))!;
+  expect(contestedLines.length && accepted && lines.length === contestedLines.length + 1, `the two-marks photo needs the stain and one other mark; the review found ${lines.map((l) => l.price?.type ?? "unpriced").join(", ")}`).toBeTruthy();
   const acceptedName = damageNamed(accepted);
   const contestedName = contestedLines.map(damageNamed).join(" and ");
   const acceptedCents = accepted.amountCents;
@@ -210,9 +215,10 @@ test("demo", async ({ page, request }) => {
   const phone = await openPhone(page, `/renter/${view.renterToken}`);
   await expect(phone.getByTestId("renter-headline")).toBeVisible({ timeout: 20_000 });
   await say(page, "The renter gets a link with the same photos and reasons.", 2400);
-  await phone.getByTestId(`contest-line-${accepted.id}`).scrollIntoViewIfNeeded();
+  await phone.getByTestId(`line-accept-${accepted.id}`).scrollIntoViewIfNeeded();
   await say(page, `They accept the ${acceptedName} and contest the ${contestedName}: it was there when they arrived.`);
-  await phone.getByTestId(`contest-line-${accepted.id}`).uncheck();
+  await phone.getByTestId(`line-accept-${accepted.id}`).click();
+  for (const line of contestedLines) await phone.getByTestId(`line-contest-${line.id}`).click();
   await phone.getByTestId("contest-note").pressSequentially(`The ${contestedName} was there when I arrived.`, { delay: 14 });
   await phone.getByTestId("contest").click();
   const contested = phone.getByTestId("renter-contested");
