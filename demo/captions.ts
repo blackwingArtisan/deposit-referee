@@ -6,6 +6,8 @@
  *   await caption(page, "The buyer approves a $120 hold with PayPal");
  *   await highlight(page, page.getByTestId("run-agent"));
  */
+import fs from "node:fs";
+import path from "node:path";
 import type { Locator, Page } from "@playwright/test";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -112,6 +114,23 @@ export async function openPhone(page: Page, url: string) {
   return page.frameLocator("#__demo_phone iframe");
 }
 
+/** Zooms the phone in on one element inside it, so a tap or an answer reads at video size. */
+export async function zoomPhone(page: Page, target: Locator, scale = 1.7) {
+  const box = await target.boundingBox();
+  if (!box) return;
+  await page.evaluate(
+    ({ box, scale }) => {
+      const phone = document.querySelector<HTMLElement>("#__demo_phone > div");
+      if (!phone) return;
+      const p = phone.getBoundingClientRect();
+      Object.assign(phone.style, { transition: "transform .6s ease", transformOrigin: `${box.x + box.width / 2 - p.left}px ${box.y + box.height / 2 - p.top}px` });
+      requestAnimationFrame(() => (phone.style.transform = `scale(${scale})`));
+    },
+    { box, scale },
+  );
+  await sleep(650);
+}
+
 export async function closePhone(page: Page) {
   await page.evaluate(() => document.getElementById("__demo_phone")?.remove());
 }
@@ -167,16 +186,82 @@ export async function highlight(page: Page, target: Locator, ms = 1600) {
   await sleep(Math.min(ms, 900));
 }
 
-/** Keeps the video under Devpost's 3-minute limit. */
+export interface Span {
+  label: string;
+  from: number;
+  to: number;
+}
+
+/**
+ * Keeps the edited video under its limit. A wait the edit cuts (Claude comparing, PayPal's form
+ * filling itself in, a capture on its way) is wrapped in `cut()`: it doesn't count, and its span in
+ * the raw recording goes into the edit list (videos/demo-*.cuts.json) that `npm run demo:mp4`
+ * applies. `sync()` marks the opening title card, which the edit finds in the video to line up.
+ */
 export class DemoClock {
   private readonly start = Date.now();
-  constructor(private readonly limitSeconds = 170) {}
+  private cutMs = 0;
+  readonly cuts: Span[] = [];
+  private syncAt?: number;
+  constructor(private readonly limitSeconds = 120) {}
+
+  /** Call just before the opening title card (a white page turning dark). */
+  sync() {
+    this.syncAt = this.raw + 0.2;
+  }
+  /** Seconds into the raw recording. */
+  get raw() {
+    return (Date.now() - this.start) / 1000;
+  }
+  /** Seconds into the edited video. */
   get seconds() {
-    return Math.round((Date.now() - this.start) / 1000);
+    return Math.round((Date.now() - this.start - this.cutMs) / 1000);
+  }
+  /** Runs a wait and cuts it from the video, keeping its first `keepMs`. */
+  async cut<T>(label: string, wait: () => Promise<T>, keepMs = 0): Promise<T> {
+    const from = this.raw;
+    const result = await wait();
+    const to = this.raw;
+    const cut = Math.max(0, (to - from) * 1000 - keepMs);
+    if (cut > 0) {
+      this.cutMs += cut;
+      this.cuts.push({ label, from: from + keepMs / 1000, to });
+      console.log(`[demo] cut "${label}": raw ${(from + keepMs / 1000).toFixed(1)}s to ${to.toFixed(1)}s`);
+    }
+    return result;
+  }
+  /** Ends the video here: everything after this moment is cut. */
+  end() {
+    this.cuts.push({ label: "after the end card", from: this.raw, to: this.raw + 3600 });
+  }
+  /** Seconds of `[from, to]` (raw) that stay in the edited video. */
+  onCamera(from: number, to: number) {
+    return to - from - merge(this.cuts).reduce((sum, c) => sum + Math.max(0, Math.min(to, c.to) - Math.max(from, c.from)), 0);
   }
   check(label: string) {
     const s = this.seconds;
-    console.log(`[demo] ${label} at ${s}s`);
+    console.log(`[demo] ${label} at ${s}s (raw ${Math.round(this.raw)}s)`);
     if (s > this.limitSeconds) throw new Error(`Demo is ${s}s at "${label}" (limit ${this.limitSeconds}s). Cut scenes or shorten captions.`);
   }
+  /** Writes the edit list webm-to-mp4.sh applies: raw-second spans to cut, merged and sorted. */
+  writeCuts(file: string) {
+    const cuts = merge(this.cuts);
+    const cutSeconds = cuts.reduce((sum, c) => sum + Math.max(0, Math.min(c.to, this.raw) - c.from), 0);
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, JSON.stringify({ rawSeconds: this.raw, cutSeconds, syncAt: this.syncAt, cuts }, null, 2));
+    return { cuts, videoSeconds: this.raw - cutSeconds };
+  }
+}
+
+/** Overlapping spans joined into one, in order. */
+function merge(spans: Span[]): Span[] {
+  const out: Span[] = [];
+  for (const s of [...spans].sort((a, b) => a.from - b.from)) {
+    const last = out.at(-1);
+    if (last && s.from <= last.to) {
+      last.to = Math.max(last.to, s.to);
+      last.label = `${last.label} + ${s.label}`;
+    } else out.push({ ...s });
+  }
+  return out;
 }

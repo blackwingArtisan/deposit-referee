@@ -9,7 +9,9 @@
  * DEMO_REQUIRE_LIVE=1: the run then fails if any frame shows mock or simulated text (live-guard.ts).
  */
 import { expect, test, type FrameLocator, type Page } from "@playwright/test";
-import { caption, closePhone, DemoClock, highlight, openPhone, titleCard, zoomOn } from "./captions";
+import fs from "node:fs";
+import { caption, closePhone, DemoClock, highlight, openPhone, titleCard, zoomOn, zoomPhone } from "./captions";
+import { damageNamed, damageNotShown } from "./damage-words";
 import { LiveGuard } from "./live-guard";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -17,7 +19,12 @@ const whole = (cents: number) => `$${(cents / 100).toFixed(cents % 100 ? 2 : 0)}
 /** A caption that stays up until the next one replaces it, so no frame is left without one. */
 const STAY = 10 * 60_000;
 let guard: LiveGuard | null = null;
+/** Everything the AI's findings say, once they're on screen. A caption may only name damage in here. */
+let findingsText = "";
+const CUTS_FILE = "test-results/demo/cuts.json";
 const say = async (page: Page, text: string, readMs = 0) => {
+  const unshown = damageNotShown(text, findingsText);
+  if (unshown.length) throw new Error(`The caption "${text}" names ${unshown.join(", ")}, which the findings on screen don't: ${findingsText.slice(0, 200) || "(none yet)"}`);
   await caption(page, text, { ms: STAY, wait: false });
   await guard?.check(`caption "${text.slice(0, 40)}"`);
   await sleep(readMs);
@@ -32,29 +39,38 @@ async function tap(page: Page, testId: string) {
 
 /** How long the approval card stays on screen before the host clicks Approve. */
 const APPROVAL_HOLD_MS = 4_000;
-/** The most the card form (or the mock's stand-in window) may be on screen. */
-const FORM_MAX_MS = 6_000;
 /** How long the renter's contest stays on the phone, and the PayPal calls stay open. */
 const CONTEST_HOLD_MS = 4_000;
 const CALLS_HOLD_MS = 3_500;
 
+/** The most PayPal's card form (or the mock's stand-in) may be on screen in the edited video. */
+const FORM_ON_CAMERA_S = 3;
+/** The edited video's limit. */
+const CUT_LIMIT_S = 120;
+
 /**
  * The renter fills PayPal's own card form (an iframe inside the renter's page), with PayPal's
- * sandbox test card. Returns when the form opened, so the caller can time it on screen.
+ * sandbox test card. The form's loading and most of its filling-in are cut from the video.
+ * Returns when the form opened (raw seconds), so the caller can time it on camera.
  */
-async function payInPayPal(phone: FrameLocator): Promise<number> {
+async function payInPayPal(phone: FrameLocator, clock: DemoClock): Promise<number> {
   // PayPal's button can take a moment to wire up after it draws, so click until its form opens.
-  const frames = phone.locator('iframe[src*="/smart/card-fields"]');
-  const button = phone.getByTestId("paypal-guest-button").locator("paypal-basic-card-button");
-  await button.waitFor({ state: "visible", timeout: 30_000 });
-  await sleep(1_500);
-  for (let i = 0; i < 4 && !(await frames.count()); i++) {
-    await button.click({ timeout: 30_000 });
-    await frames.first().waitFor({ state: "attached", timeout: 5_000 }).catch(() => {});
-  }
+  // All of that loading is cut.
   const form = phone.frameLocator('iframe[src*="/smart/card-fields"]');
-  await form.getByLabel("Email").waitFor({ state: "visible", timeout: 30_000 });
-  const opened = Date.now();
+  await clock.cut("PayPal's card form loading", async () => {
+    const frames = phone.locator('iframe[src*="/smart/card-fields"]');
+    const button = phone.getByTestId("paypal-guest-button").locator("paypal-basic-card-button");
+    await button.waitFor({ state: "visible", timeout: 30_000 });
+    await sleep(1_500);
+    for (let i = 0; i < 4 && !(await frames.count()); i++) {
+      await button.click({ timeout: 30_000 });
+      await frames.first().waitFor({ state: "attached", timeout: 5_000 }).catch(() => {});
+    }
+    await form.getByLabel("Email").waitFor({ state: "visible", timeout: 30_000 });
+  });
+  const opened = clock.raw;
+  await sleep(900);
+  await clock.cut("PayPal's card form filling in", async () => {
   await form.getByLabel("Email").fill("renter@example.com");
   await form.getByLabel("Card number").fill("4111111111111111");
   await form.getByLabel("Expires").fill("12/30");
@@ -67,12 +83,15 @@ async function payInPayPal(phone: FrameLocator): Promise<number> {
   await form.getByLabel(/ZIP/i).fill("78701");
   const mobile = form.getByLabel(/Mobile|Phone/i).first();
   if (await mobile.isVisible().catch(() => false)) await mobile.fill("5125550100");
+  }, 600);
   await form.getByRole("button", { name: /^Pay \$/ }).click();
   return opened;
 }
 
 test("demo", async ({ page, request }) => {
-  const clock = new DemoClock(148);
+  const clock = new DemoClock(CUT_LIMIT_S);
+  fs.rmSync(CUTS_FILE, { force: true });
+  findingsText = "";
   guard = new LiveGuard(page);
   const check = async (scene: string) => {
     clock.check(scene);
@@ -90,9 +109,11 @@ test("demo", async ({ page, request }) => {
   console.log(`[demo] PayPal ${status.paypal.mode}, AI ${status.ai.mode}`);
   guard.start();
 
-  // Open: the problem.
+  // Open: a title card the edit lines its cuts up on (the white page going dark), then the problem.
   await page.goto("/");
   await expect(page.getByTestId("landing-headline")).toBeVisible();
+  clock.sync();
+  await titleCard(page, "Deposit Referee", "Damage deposits settled from two photos, with PayPal holding the money", 2200);
   await say(page, "More than half of hosts have had a guest damage their place. Rent from your own site, and nobody settles it.", 4200);
   await check("open");
 
@@ -114,27 +135,27 @@ test("demo", async ({ page, request }) => {
   const renter = await openPhone(page, `/renter/${renterToken}`);
   await expect(renter.getByTestId("renter-headline")).toHaveText("Place your $300 deposit hold", { timeout: 20_000 });
   await say(page, `The renter opens their link and places a $300 hold with ${pp}. Nothing is charged.`, 2000);
-  // PayPal's card form (or the mock's stand-in) is on screen for at most 6 seconds.
+  // PayPal's card form (or the mock's stand-in) is on camera for at most 3 seconds of the edit.
   let formOpened: number;
   if (sandbox) {
     await say(page, "PayPal's own card form, with PayPal's sandbox test card.");
-    formOpened = await payInPayPal(renter);
+    formOpened = await payInPayPal(renter, clock);
   } else {
     await renter.getByTestId("simulate-paypal-approval").click();
     await expect(renter.getByTestId("mock-approve")).toBeVisible();
-    formOpened = Date.now();
-    await say(page, "Mock PayPal's stand-in for the card form. The sandbox take shows PayPal's own.", 3_500);
+    formOpened = clock.raw;
+    await say(page, "Mock PayPal's stand-in for the card form. The sandbox take shows PayPal's own.", 2_200);
     await renter.getByTestId("mock-approve").click();
   }
   const held = renter.getByTestId("renter-hold-headline");
-  await expect(held).toHaveText("$300 authorized, nothing charged", { timeout: 45_000 });
-  const formMs = Date.now() - formOpened;
-  console.log(`[demo] card form on screen ${(formMs / 1000).toFixed(1)}s`);
-  expect.soft(formMs, "the card form is on screen at most 6 s").toBeLessThanOrEqual(FORM_MAX_MS);
+  await clock.cut("the hold on its way", () => expect(held).toHaveText("$300 authorized, nothing charged", { timeout: 45_000 }));
+  const formS = clock.onCamera(formOpened, clock.raw);
+  console.log(`[demo] card form on camera ${formS.toFixed(1)}s`);
+  expect(formS, `the card form is on camera at most ${FORM_ON_CAMERA_S} s`).toBeLessThanOrEqual(FORM_ON_CAMERA_S);
   await say(page, "$300 authorized, nothing charged.", 1800);
   await closePhone(page);
   const authId = page.getByTestId("hold-authorization-id");
-  await expect(authId).toHaveText(/\w{10,}/, { timeout: 45_000 });
+  await clock.cut("the host's page catching up", () => expect(authId).toHaveText(/\w{10,}/, { timeout: 45_000 }));
   const authorizationId = (await authId.textContent())!.trim();
   await authId.scrollIntoViewIfNeeded();
   await highlight(page, authId, 2600);
@@ -151,38 +172,45 @@ test("demo", async ({ page, request }) => {
   await tap(page, "run-review");
   await say(page, liveAI ? "Claude Sonnet 5.5 compares the two photos and boxes only what's new. Each step shows as it happens." : "Mock AI: a recorded comparison stands in for Claude, who boxes only what's new.");
   const proposal = page.getByTestId("ai-proposal");
-  await expect(proposal).toBeVisible({ timeout: 90_000 });
+  // Claude's work stays on camera for a few seconds; the rest of the wait is cut.
+  await clock.cut("Claude comparing and the agent proposing", () => expect(proposal).toBeVisible({ timeout: 120_000 }), 4_000);
+  // Every caption from here names damage only as the findings on screen do.
+  const view = await (await page.request.get(`/api/bookings/${id}`)).json();
+  const lines = view.proposal.lines as { id: string; amountCents: number; description: string; price?: { type: string } }[];
+  findingsText = [view.review?.reasoning ?? "", ...lines.map((l) => `${l.description} ${l.price?.type ?? ""} ${damageNamed(l)}`)].join(" ");
+  const [accepted, ...contestedLines] = lines;
+  const acceptedName = damageNamed(accepted);
+  const contestedName = contestedLines.map(damageNamed).join(" and ");
+  const acceptedCents = accepted.amountCents;
+  const contestedCents = contestedLines.reduce((sum, l) => sum + l.amountCents, 0);
   // The finished steps fold to one line each; open the photos to show the boxes.
   await page.getByTestId("fold-photos").locator("summary").click();
-  await say(page, "Two new marks: a gouge in the floor and a stain on the rug.");
+  await say(page, `${lines.length === 2 ? "Two" : lines.length} new marks: ${lines.map((l) => `a ${damageNamed(l)}`).join(" and ")}.`);
   await zoomOn(page, page.getByTestId("damage-box").first(), { scale: 2.4, ms: 2600 });
   await page.getByTestId("fold-photos").locator("summary").click();
   await say(page, liveAI ? "The settlement agent prices each one from the price table, proposes, and stops." : "The agent's scripted stand-in prices each one from the price table, proposes, and stops.");
   await page.screenshot({ path: "docs/screenshot.png", style: "#__demo_caption { display: none !important; } body { padding-bottom: 0 !important; }" });
-  const view = await (await page.request.get(`/api/bookings/${id}`)).json();
-  const lines = view.proposal.lines as { id: string; amountCents: number }[];
-  const [accepted, ...contestedLines] = lines;
-  const acceptedCents = accepted.amountCents;
-  const contestedCents = contestedLines.reduce((sum, l) => sum + l.amountCents, 0);
   await proposal.scrollIntoViewIfNeeded();
   await highlight(page, proposal, 1800);
-  await say(page, `${whole(acceptedCents)} for the gouge, ${whole(contestedCents)} for the stain. It has no tool that can move money.`, 3600);
+  await say(page, `${whole(acceptedCents)} for the ${acceptedName}, ${whole(contestedCents)} for the ${contestedName}. It has no tool that can move money.`, 3600);
   await check("proposal");
 
-  // 4. The renter, on their phone: accepts the gouge, contests the stain.
+  // 4. The renter, on their phone: accepts the first item, contests the rest.
   const phone = await openPhone(page, `/renter/${view.renterToken}`);
   await expect(phone.getByTestId("renter-headline")).toBeVisible({ timeout: 20_000 });
   await say(page, "The renter gets a link with the same photos and reasons.", 2400);
   await phone.getByTestId(`contest-line-${accepted.id}`).scrollIntoViewIfNeeded();
-  await say(page, "They accept the gouge and contest the stain: it was there when they arrived.");
+  await say(page, `They accept the ${acceptedName} and contest the ${contestedName}: it was there when they arrived.`);
   await phone.getByTestId(`contest-line-${accepted.id}`).uncheck();
-  await phone.getByTestId("contest-note").pressSequentially("The rug stain was there when I arrived.", { delay: 14 });
+  await phone.getByTestId("contest-note").pressSequentially(`The ${contestedName} was there when I arrived.`, { delay: 14 });
   await phone.getByTestId("contest").click();
   const contested = phone.getByTestId("renter-contested");
   await expect(contested).toBeVisible();
   // The renter's answer stays on the phone for 4 seconds.
   const contestShown = Date.now();
   await contested.evaluate((el) => el.scrollIntoView({ block: "center" }));
+  // Zoomed in, so the renter's answer reads at video size.
+  await zoomPhone(page, contested, 1.7);
   await say(page, `Their answer goes to the host: ${whole(acceptedCents)} accepted, ${whole(contestedCents)} contested, with their note.`);
   await sleep(Math.max(0, CONTEST_HOLD_MS - (Date.now() - contestShown)));
   const contestMs = Date.now() - contestShown;
@@ -194,7 +222,7 @@ test("demo", async ({ page, request }) => {
   // 5. The split capture: the accepted part now, the contested part from the same hold later.
   const prompt = page.getByTestId("approval-prompt");
   await say(page, `The ${whole(acceptedCents)} they accepted can be charged now. Nothing moves until the host approves.`);
-  await expect(prompt).toBeVisible({ timeout: 30_000 });
+  await clock.cut("the approval card on its way", () => expect(prompt).toBeVisible({ timeout: 30_000 }), 1_500);
   // The approval card is held on screen for 4 seconds: each line, the renter's answer and the Guard's reason.
   await prompt.evaluate((el) => el.scrollIntoView({ block: "center" }));
   const cardShown = Date.now();
@@ -206,7 +234,7 @@ test("demo", async ({ page, request }) => {
   await prompt.getByTestId("approve-button").click();
   await say(page, `Approved. ${pp} captures the ${whole(acceptedCents)} the renter accepted.`);
   const part = page.getByTestId("part-capture");
-  await expect(part).toContainText(`${whole(acceptedCents)}`, { timeout: 60_000 });
+  await clock.cut("the capture on its way", () => expect(part).toContainText(`${whole(acceptedCents)}`, { timeout: 60_000 }), 1_000);
   await part.scrollIntoViewIfNeeded();
   await highlight(page, part, 2400);
   await say(page, `Captured with final_capture false, so the contested ${whole(contestedCents)} stays on the same ${pp} hold.`, 3800);
@@ -217,19 +245,19 @@ test("demo", async ({ page, request }) => {
   for (const line of rest) await page.getByTestId(`line-amount-${line.id}`).fill("0.00");
   const amount = page.getByTestId(`line-amount-${first.id}`);
   await amount.scrollIntoViewIfNeeded();
-  await say(page, `The host reads the renter's note and settles the stain at ${whole(chargeCents)}.`);
+  await say(page, `The host reads the renter's note and settles the ${contestedName} at ${whole(chargeCents)}.`);
   await amount.click({ clickCount: 3 });
   await amount.pressSequentially((chargeCents / 100).toFixed(2), { delay: 80 });
   const reason = page.getByTestId("host-reason");
-  if (await reason.isVisible().catch(() => false)) await reason.pressSequentially("Half: most of the stain came out.", { delay: 14 });
+  if (await reason.isVisible().catch(() => false)) await reason.pressSequentially("Part of it: most of it came out.", { delay: 14 });
   await tap(page, "request-approval");
-  await expect(prompt).toBeVisible({ timeout: 30_000 });
+  await clock.cut("the approval card on its way", () => expect(prompt).toBeVisible({ timeout: 30_000 }), 800);
   await say(page, `A second capture from the same hold, then ${pp} voids the rest.`);
   await highlight(page, prompt.getByTestId("approve-button"), 800);
   await prompt.getByTestId("approve-button").click();
   const totalCents = acceptedCents + chargeCents;
   const ruling = page.getByTestId("ruling-headline");
-  await expect(ruling).toContainText(`${whole(totalCents)} captured`, { timeout: 60_000 });
+  await clock.cut("the capture and the void on their way", () => expect(ruling).toContainText(`${whole(totalCents)} captured`, { timeout: 60_000 }), 800);
   await sleep(500);
   await ruling.scrollIntoViewIfNeeded();
   await highlight(page, ruling, 2200);
@@ -291,7 +319,11 @@ test("demo", async ({ page, request }) => {
   const released = whole(done.settlement.releasedCents);
   await say(page, "Deposit Referee: two photos, a fair charge, and PayPal holds the rest.");
   await titleCard(page, `${captured} captured, ${released} released, read back from ${pp}`, "Deposit Referee", 4200);
+  clock.end();
   await check("end");
+  const edit = clock.writeCuts(CUTS_FILE);
+  console.log(`[demo] edited video ${edit.videoSeconds.toFixed(1)}s, raw ${Math.round(clock.raw)}s, ${edit.cuts.length} cuts: ${edit.cuts.map((c) => `${c.label} ${c.from.toFixed(1)}-${c.to.toFixed(1)}`).join("; ")}`);
+  expect(edit.videoSeconds, `the edited video is under ${CUT_LIMIT_S} s`).toBeLessThan(CUT_LIMIT_S);
 });
 
 test.afterEach(async ({ page }, info) => {
@@ -301,6 +333,8 @@ test.afterEach(async ({ page }, info) => {
   if (video) {
     const name = `videos/demo-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-")}.webm`;
     await video.saveAs(name);
+    // The edit list goes beside the video; npm run demo:mp4 applies it.
+    if (fs.existsSync(CUTS_FILE)) fs.copyFileSync(CUTS_FILE, name.replace(/\.webm$/, ".cuts.json"));
     console.log(`[demo] saved ${name} (${info.duration / 1000 | 0}s)`);
   }
 });
