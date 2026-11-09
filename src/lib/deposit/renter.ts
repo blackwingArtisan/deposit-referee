@@ -13,7 +13,7 @@ import { contestedLines } from "./second-look-rules";
 import { itemizedCents, releasedCents } from "./rules";
 import { requestPartCapture } from "./split";
 import { heldCents, splitOf } from "./split-rules";
-import type { Booking, PhotoSlot, RenterResponse, RenterView, RulingView, SecondLook } from "./types";
+import type { Booking, PhotoSlot, RenterResponse, RenterView, SecondLook } from "./types";
 
 const OPEN = ["proposed", "contested", "awaiting_approval"];
 
@@ -37,21 +37,6 @@ function renterSecondLook(look: SecondLook | undefined): RenterView["secondLook"
   if (look.status === "running") return { status: "running", canAccept: false };
   if (look.status === "sent" || look.status === "accepted") return { status: look.status, lines: look.lines, rationale: look.counter?.rationale, canAccept: look.status === "sent" };
   return { status: "with_host", canAccept: false };
-}
-
-/** The settled result, as both sides see it. */
-function rulingOf(booking: Booking): RulingView | null {
-  if (booking.status !== "settled" || booking.settlement?.capturedCents === undefined) return null;
-  const { renter, item, status, authorizedCents, settlement, partCapture, proposal, review, photos, renterPhotos, orderId, authorizationId, secondLook } = booking;
-  return { renter, item, status, authorizedCents, settlement, partCapture, proposal, review, photos, renterPhotos, orderId, authorizationId, secondLook };
-}
-
-/** Notes the first time the renter opens their page with the proposal on it, for the host's conversation rail. */
-export function markRenterOpened(token: string): void {
-  const booking = requireBookingByToken(token);
-  if (booking.proposal && booking.renterState && !booking.renterState.openedAt && OPEN.includes(booking.status)) {
-    saveBooking({ ...booking, renterState: { ...booking.renterState, openedAt: new Date().toISOString() } });
-  }
 }
 
 export function renterView(token: string): RenterView {
@@ -80,7 +65,6 @@ export function renterView(token: string): RenterView {
     settled: status === "settled" && settlement?.capturedCents !== undefined && settlement.releasedCents !== undefined ? { capturedCents: settlement.capturedCents, releasedCents: settlement.releasedCents } : null,
     split: split ? { acceptedCents: split.acceptedCents, contestedCents: split.contestedCents, chargedCents: booking.partCapture?.capturedCents } : null,
     secondLook: renterSecondLook(booking.secondLook),
-    ruling: rulingOf(booking),
   };
 }
 

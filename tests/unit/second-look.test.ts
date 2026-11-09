@@ -6,7 +6,7 @@ import { runSettlementAgent } from "@/agents/settlement";
 import { requireBooking, saveBooking } from "@/lib/deposit/bookings";
 import { DEMO_TWO_MARKS_CHECK_OUT } from "@/lib/deposit/photos";
 import { DAMAGE_SIZES, DAMAGE_TYPES, priceOf } from "@/lib/deposit/prices";
-import { acceptCounterAsRenter, markRenterOpened, renterView, respondAsRenter } from "@/lib/deposit/renter";
+import { acceptCounterAsRenter, renterView, respondAsRenter } from "@/lib/deposit/renter";
 import { reviewPhotos } from "@/lib/deposit/review";
 import { acceptCounter, quoteNote, secondLookQuestion, sendCounter } from "@/lib/deposit/second-look";
 import { counterAmount, VERDICTS } from "@/lib/deposit/second-look-rules";
@@ -116,26 +116,6 @@ describe("second look: contest with a photo, counter, accept, settle", () => {
     await vi.waitFor(() => expect(requireBooking(booking.id).status).toBe("settled"), { timeout: 8_000 });
     expect(requireBooking(booking.id).settlement).toMatchObject({ kind: "release", capturedCents: 15_000, releasedCents: 15_000, authorizationStatus: "VOIDED" });
     expect(renterView(booking.renterToken).secondLook).toMatchObject({ status: "accepted", canAccept: false });
-
-    // Both sides end on the same ruling: the renter's copy carries the same amounts and PayPal ids.
-    const settled = requireBooking(booking.id);
-    const ruling = renterView(booking.renterToken).ruling!;
-    expect(ruling).toMatchObject({ orderId: settled.orderId, authorizationId: settled.authorizationId, settlement: settled.settlement, partCapture: settled.partCapture, secondLook: settled.secondLook });
-    expect(Object.keys(ruling)).not.toContain("renterToken");
-    expect(Object.keys(ruling)).not.toContain("hostSecret");
-  });
-
-  it("the renter's first open is noted once, for the host's rail, and only with a proposal to answer", async () => {
-    const held = await heldBooking(30_000);
-    markRenterOpened(held.renterToken);
-    expect(requireBooking(held.id).renterState?.openedAt).toBeUndefined();
-    expect(renterView(held.renterToken).ruling).toBeNull();
-    const booking = await twoMarks();
-    markRenterOpened(booking.renterToken);
-    const first = requireBooking(booking.id).renterState!.openedAt!;
-    expect(first).toBeTruthy();
-    markRenterOpened(booking.renterToken);
-    expect(requireBooking(booking.id).renterState!.openedAt).toBe(first);
   });
 
   it("a photo that shows the mark smaller lowers it a size: two captures from one hold", async () => {

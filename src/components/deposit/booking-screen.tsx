@@ -22,7 +22,6 @@ import { HostDecision } from "./host-decision";
 import { HostLink } from "./host-link";
 import { photoDataUrl } from "./photo-file";
 import { PhotoFrame, RENTER_SLOTS } from "./photo-frame";
-import { ConversationRail } from "./conversation-rail";
 import { Ruling } from "./ruling";
 import { WaitStory, type CompareRun } from "./wait-story";
 
@@ -329,13 +328,12 @@ export function BookingScreen() {
 
       {status === "settled" ? (
         <div className="space-y-6">
-          <Ruling booking={booking} calls={timeline} viewer="host" pack={booking.viewer === "host" || booking.sample ? `/api/bookings/${booking.id}/evidence` : undefined} />
+          <Ruling booking={booking} calls={timeline} />
           <DisputePanel booking={booking} busy={busy} act={run} onDecided={() => void refresh().catch(() => undefined)} />
           <HostLink booking={booking} />
         </div>
       ) : (
-        <div className={status === "draft" ? "mx-auto max-w-5xl" : "mx-auto max-w-6xl lg:grid lg:grid-cols-[minmax(0,1fr)_15rem] lg:items-start lg:gap-6"}>
-        <div className="min-w-0 space-y-6">
+        <div className="mx-auto max-w-5xl space-y-6">
           {approvalCard}
           <Card>
             <CardBody className="space-y-8 py-6">
@@ -460,12 +458,6 @@ export function BookingScreen() {
           <DisputePanel booking={booking} busy={busy} act={run} onDecided={() => void refresh().catch(() => undefined)} />
           <HostLink booking={booking} />
           {timeline}
-        </div>
-        {status === "draft" ? null : (
-          <div className="mt-6 lg:sticky lg:top-6 lg:mt-0">
-            <ConversationRail booking={booking} />
-          </div>
-        )}
         </div>
       )}
     </>
