@@ -1,25 +1,30 @@
 /**
- * The demo video (npm run demo:record): a booking, the renter placing the hold from their own page
- * on a phone, Claude comparing the photos, the renter accepting one item and contesting the other
- * with their own photo, the approval card and the first capture, Claude's second look at what was
- * contested, the counter the renter accepts, the settlement, every PayPal call, and an end card
- * read back from PayPal. A caption is on screen in every frame. Saves a .webm to videos/, its edit
- * list, and the voiceover script (videos/voiceover.json: [{ shot, at, text }], `at` in seconds of
- * the edited video). For PayPal's real card form, record on the sandbox:
- * DEMO_BASE_URL=https://deposit-referee.onrender.com records the hosted site with live AI;
- * DEMO_PAYPAL_MODE=sandbox records a local one. The captions follow the modes /api/kit/status
- * reports, so a mock run says it is one. For the take judges see, add DEMO_REQUIRE_LIVE=1: the run
- * then fails if any frame shows mock or simulated text (live-guard.ts).
+ * The demo video (npm run demo:record): a 3-second card on who it's for (a host and a guest), the
+ * problem and why PayPal, a booking, the renter placing the hold from their own page on a phone,
+ * Claude comparing the photos, the proposal as line cards, the renter accepting one item and
+ * contesting the other with their own dated photo, then one hold bar pinned at the side while the
+ * money moves: the first capture, Claude's second look (the stain was already there, so its line
+ * falls), the counter the renter accepts and the settlement. Then the money strip, the three
+ * PayPal calls that moved money, a 5-second dispute beat, and an end card read back from PayPal. A
+ * caption is on screen in every frame, each long enough to read at 15 characters a second. Saves
+ * a .webm to videos/, its edit list, and the voiceover script (videos/voiceover.json:
+ * [{ shot, at, text }], `at` in seconds of the edited video). For PayPal's real card form, record
+ * on the sandbox: DEMO_BASE_URL=https://deposit-referee.onrender.com records the hosted site with
+ * live AI; DEMO_PAYPAL_MODE=sandbox records a local one. The captions follow the modes
+ * /api/kit/status reports, so a mock run says it is one. For the take judges see, add
+ * DEMO_REQUIRE_LIVE=1: the run then fails if any frame shows mock or simulated text
+ * (live-guard.ts). On the sandbox, DEMO_DISPUTE_BOOKING names a booking whose real sandbox dispute
+ * the dispute beat shows; without it the beat is skipped.
  */
-import { expect, test, type FrameLocator, type Page } from "@playwright/test";
+import { expect, test, type APIRequestContext, type FrameLocator, type Page } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
 import { shortName } from "../src/lib/deposit/conversation";
 import type { ChargeLine } from "../src/lib/deposit/types";
-import { BAND_PX, caption, closePhone, DemoClock, highlight, openPhone, titleCard, zoomOn, zoomPhone } from "./captions";
+import { caption, closePhone, DemoClock, highlight, holdBar, openPhone, titleCard, zoomOn, zoomPhone } from "./captions";
 import { damageNamed, damageNotShown } from "./damage-words";
 import { LiveGuard } from "./live-guard";
-import { fitVoiceover, type VoiceLine } from "./voiceover";
+import { CHARS_PER_SECOND, fitVoiceover, type VoiceLine } from "./voiceover";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 /** Waits until `ms` have truly passed since `since` (Date.now()), however early a timer fires. */
@@ -35,9 +40,23 @@ let findingsText = "";
 const CUTS_FILE = "test-results/demo/cuts.json";
 const VOICE_FILE = "test-results/demo/voiceover.json";
 const DEMO_PHOTOS = path.join(process.cwd(), "public", "demo-photos");
+/** The edited video's clock, for timing captions. */
+let clockNow = () => 0;
+/** Each caption and how long it stayed up, in seconds of the edited video. */
+const shown: { text: string; seconds: number }[] = [];
+let current: { text: string; at: number } | null = null;
+/** The caption on screen is replaced (or the video ends): note how long it was up. */
+const closeCaption = () => {
+  if (current) shown.push({ text: current.text, seconds: clockNow() - current.at });
+  current = null;
+};
 const say = async (page: Page, text: string, readMs = 0) => {
   const unshown = damageNotShown(text, findingsText);
   if (unshown.length) throw new Error(`The caption "${text}" names ${unshown.join(", ")}, which the findings on screen don't: ${findingsText.slice(0, 200) || "(none yet)"}`);
+  // The caption on screen stays until it can be read at 15 characters a second.
+  if (current) while (clockNow() - current.at < current.text.length / CHARS_PER_SECOND + 0.05) await sleep(50);
+  closeCaption();
+  current = { text, at: clockNow() };
   await caption(page, text, { ms: STAY, wait: false });
   await guard?.check(`caption "${text.slice(0, 40)}"`);
   await sleep(readMs);
@@ -118,6 +137,9 @@ function spokenVerdict(line: { verdict: string; fromCents: number; toCents: numb
 
 test("demo", async ({ page, request }) => {
   const clock = new DemoClock(CUT_LIMIT_S);
+  clockNow = () => clock.exact;
+  shown.length = 0;
+  current = null;
   fs.rmSync(CUTS_FILE, { force: true });
   fs.rmSync(VOICE_FILE, { force: true });
   findingsText = "";
@@ -125,6 +147,10 @@ test("demo", async ({ page, request }) => {
   const voice: VoiceLine[] = [];
   /** The voiceover for shot `shot` starts now (or at `at`); the first line that fits is kept. */
   const vo = (shot: number, lines: string[], at = clock.exact) => voice.push({ shot, at, lines });
+  /** A narrated beat stays on screen at least BEAT_MIN_S (plus a breath): waits out the rest. */
+  const beatFrom = (at: number, seconds = BEAT_MIN_S + 0.4) => async () => {
+    while (clock.exact - at < seconds) await sleep(100);
+  };
   const check = async (scene: string) => {
     clock.check(scene);
     await guard?.check(scene);
@@ -138,48 +164,49 @@ test("demo", async ({ page, request }) => {
   const liveAI = status.ai.mode === "live";
   // A mock run says so in every caption that names PayPal, so no mock screen is captioned as the real thing.
   const pp = sandbox ? "PayPal" : "mock PayPal";
+  /** The same, starting a sentence. */
+  const Pp = sandbox ? "PayPal" : "Mock PayPal";
+  const holdTitle = sandbox ? "PayPal hold" : "Mock PayPal hold";
   console.log(`[demo] PayPal ${status.paypal.mode}, AI ${status.ai.mode}`);
   guard.start();
 
-  // 1. Open: a title card the edit lines its cuts up on (the white page going dark), then the problem.
+  // 1. Who it's for, on a 3-second card the edit lines its cuts up on (the white page going dark), then the problem.
   await page.goto("/");
   await expect(page.getByTestId("landing-headline")).toBeVisible();
   clock.sync();
   vo(1, [
-    "A guest damages your cabin and says it was already there. Rent from your own site, and nobody settles it. Why PayPal: one hold takes several captures, for up to 29 days, and the rest is released.",
-    "A guest damages your cabin and says it was already there. Why PayPal: several captures from one hold, up to 29 days, the rest released.",
+    "For a host who rents from their own site, and their guest. The guest damages the cabin and says it was already there. Why PayPal: one hold takes several captures, for up to 29 days, and the rest is released.",
+    "For a host and a guest. The guest says the damage was already there. Why PayPal: one hold, several captures, up to 29 days, the rest released.",
   ]);
-  await titleCard(page, "Deposit Referee", "Damage deposits settled from two photos, with PayPal holding the money", 2200);
-  await say(page, "More than half of hosts have had a guest damage their place. Rent from your own site, and nobody settles it.", 4600);
-  await say(page, "Why PayPal: one hold takes several captures, for up to 29 days, and the rest is released.", 4200);
+  await titleCard(page, "A host and a guest", "For hosts who rent a cabin, a room or gear from their own site, with no platform to settle damage", 2600);
+  await say(page, "A guest damages the cabin and says it was already there.", 3800);
+  await say(page, "Why PayPal: one hold, several captures for up to 29 days, the rest released.", 5200);
   expect(clock.exact, "the PayPal reason is on screen in the first 20 s").toBeLessThan(20);
   await check("open");
 
   // 2. The booking.
   await page.goto("/bookings");
-  vo(2, [
-    `The host books the cabin and asks for a $300 deposit. The renter gets a link, and the host never touches a card number.`,
-    "The host asks for a $300 deposit. The renter gets a link.",
-  ]);
+  const bookingAt = clock.exact;
+  vo(2, ["The host asks for a $300 deposit and sends the renter a link. The host never sees a card.", "The host asks for a $300 deposit. The renter gets a link.", "The host asks for a $300 deposit."]);
   await say(page, "The host books the cabin and asks for a $300 deposit.");
   await page.getByLabel("What's being rented").pressSequentially("Cedar cabin, weekend of Nov 13", { delay: 16 });
   await page.getByLabel("Renter").pressSequentially("Alex Rivera", { delay: 22 });
   await tap(page, "create-booking");
   await page.waitForURL(/\/bookings\/bk_/);
   const id = new URL(page.url()).pathname.split("/").pop()!;
+  await expect(page.getByTestId("waiting-headline")).toBeVisible();
+  await beatFrom(bookingAt)();
   await check("booking");
 
-  // The host waits; the renter places the hold from their own page, on their phone.
-  await expect(page.getByTestId("waiting-headline")).toBeVisible();
-  await highlight(page, page.getByTestId("waiting-for-hold"), 1400);
-  await say(page, "The host's page waits for the renter's hold. The host never sees a card form.", 3400);
+  // 3. The renter places the hold from their own page, on their phone.
   const { renterToken } = await (await page.request.get(`/api/bookings/${id}`)).json();
   vo(3, sandbox
     ? ["They place a $300 hold in PayPal's own card form. It's an authorization: nothing is charged.", "A $300 hold in PayPal's own card form. Nothing is charged."]
     : ["They place a $300 hold with mock PayPal. It's an authorization: nothing is charged.", "A $300 hold. Nothing is charged."]);
   const renter = await openPhone(page, `/renter/${renterToken}`);
   await expect(renter.getByTestId("renter-headline")).toHaveText("Place your $300 deposit hold", { timeout: 20_000 });
-  await say(page, `The renter opens their link and places a $300 hold with ${pp}. Nothing is charged.`, 2000);
+  // Readable before the card form opens, which is timed on camera.
+  await say(page, `The renter places a $300 hold with ${pp}.`, 3200);
   // PayPal's card form (or the mock's stand-in) is on camera for at most 3 seconds of the edit.
   let formOpened: number;
   if (sandbox) {
@@ -189,7 +216,7 @@ test("demo", async ({ page, request }) => {
     await renter.getByTestId("simulate-paypal-approval").click();
     await expect(renter.getByTestId("mock-approve")).toBeVisible();
     formOpened = clock.raw;
-    await say(page, "Mock PayPal's stand-in for the card form. The sandbox take shows PayPal's own.");
+    await say(page, "Mock PayPal's stand-in for the card form.");
     while (clock.onCamera(formOpened, clock.raw) < FORM_ON_CAMERA_S) await sleep(100);
     await renter.getByTestId("mock-approve").click();
   }
@@ -199,36 +226,37 @@ test("demo", async ({ page, request }) => {
   console.log(`[demo] card form on camera ${formS.toFixed(1)}s`);
   expect(formS, `the card form is on camera about ${FORM_ON_CAMERA_S} s`).toBeGreaterThanOrEqual(FORM_ON_CAMERA_S - 0.5);
   expect(formS, `the card form is on camera about ${FORM_ON_CAMERA_S} s`).toBeLessThanOrEqual(FORM_ON_CAMERA_S + 0.5);
-  // Zoomed in on the hold, so it reads at video size.
+  // Zoomed in on the hold, so it reads at video size; the hold bar comes in and stays to the settlement.
   await zoomPhone(page, renter.getByTestId("renter-hold"), 1.8);
-  await say(page, "$300 authorized, nothing charged.", 1800);
+  await say(page, "$300 authorized, nothing charged.");
+  await holdBar(page, { heldCents: 30_000, capturedCents: 0, contestedCents: 0, releasedCents: 0, note: "Authorized. Nothing charged." }, { title: holdTitle });
+  await sleep(1800);
   await closePhone(page);
   const authId = page.getByTestId("hold-authorization-id");
   await clock.cut("the host's page catching up", () => expect(authId).toHaveText(/\w{10,}/, { timeout: 45_000 }));
   const authorizationId = (await authId.textContent())!.trim();
   await authId.scrollIntoViewIfNeeded();
   vo(4, [
-    `The host's page reads the authorization back from ${pp}: guaranteed for 3 days, and capturable until day 29.`,
-    `The host's page reads it back from ${pp}: guaranteed 3 days, capturable until day 29.`,
-    `The host's page reads the authorization back from ${pp}.`,
+    `The host's page reads the authorization back from ${pp}: capturable until day 29.`,
+    `The host's page reads it back from ${pp}.`,
   ]);
   await highlight(page, authId, 3000);
-  await say(page, `The host's page picks it up: ${pp} authorization ${authorizationId}, guaranteed 3 days, capturable until day 29.`, 5000);
+  await say(page, `${Pp} authorization ${authorizationId}: capturable until day 29.`, 4800);
   await check("hold");
 
-  // 3. The comparison: the host uploads the two photos, captioned while Claude works.
+  // 4. The comparison: the host uploads the two photos, captioned while Claude works.
   const photosAt = clock.exact;
   await say(page, "After the stay, the host adds the check-in and check-out photos.");
   await page.getByTestId("upload-photo-check_in").setInputFiles(path.join(DEMO_PHOTOS, "cabin-check-in.jpg"));
   await expect(page.getByTestId("photo-source")).toHaveCount(1, { timeout: 20_000 });
   await page.getByTestId("upload-photo-check_out").setInputFiles(path.join(DEMO_PHOTOS, "cabin-check-out-two.jpg"));
   await expect(page.getByTestId("photo-source")).toHaveCount(2, { timeout: 20_000 });
-  await sleep(600);
+  await sleep(1200);
   await tap(page, "run-review");
-  await say(page, liveAI ? "Claude Sonnet 5.5 compares the two photos and boxes only what's new. Each step shows as it happens." : "Mock AI: a recorded comparison stands in for Claude, who boxes only what's new.");
+  await say(page, liveAI ? "Claude Sonnet 5.5 compares them and boxes only what's new." : "Mock AI stands in for Claude, boxing only what's new.");
   const proposal = page.getByTestId("ai-proposal");
   // Claude's work stays on camera for a few seconds; the rest of the wait is cut.
-  await clock.cut("Claude comparing and the agent proposing", () => expect(proposal).toBeVisible({ timeout: 120_000 }), 3_000);
+  await clock.cut("Claude comparing and the agent proposing", () => expect(proposal).toBeVisible({ timeout: 120_000 }), 4_000);
   // Every caption from here names damage only as the findings on screen do.
   const view = await (await page.request.get(`/api/bookings/${id}`)).json();
   const lines = view.proposal.lines as ChargeLine[];
@@ -246,7 +274,7 @@ test("demo", async ({ page, request }) => {
   const contestedCents = contestedLines.reduce((sum, l) => sum + l.amountCents, 0);
   const marks = `${lines.length === 2 ? "two" : lines.length} new marks, ${lines.map((l) => `a ${named(l)}`).join(" and ")}`;
   vo(5, [
-    `After the stay, the host adds the check-in and check-out photos. Claude compares them and boxes only what's new: ${marks}.`,
+    `After the stay, the host adds the two photos. Claude compares them and boxes only what's new: ${marks}.`,
     `The host adds the two photos. Claude boxes only what's new: ${marks}.`,
   ], photosAt);
   // The finished steps fold to one line each; open the photos to show the boxes.
@@ -254,35 +282,38 @@ test("demo", async ({ page, request }) => {
   await say(page, `${marks[0].toUpperCase()}${marks.slice(1)}.`);
   await zoomOn(page, page.getByTestId("damage-box").first(), { scale: 2.4, ms: 2600 });
   await page.getByTestId("fold-photos").locator(":scope > summary").click();
+  await check("photos");
+
+  // 5. The proposal: one card per line, zoomed so the mark, the price chip and the amount read at video size.
+  const proposalAt = clock.exact;
   vo(6, [
-    `The prices come from a table in code, not from the model. ${whole(acceptedCents)} for the ${acceptedName}, ${whole(contestedCents)} for the ${contestedName}. The agent proposes and stops: it has no tool that can move money.`,
-    `Prices come from a table in code. The agent proposes ${whole(acceptedCents + contestedCents)} and stops: it can't move money.`,
+    `Prices come from a table in code: ${whole(acceptedCents)} for the ${acceptedName}, ${whole(contestedCents)} for the ${contestedName}. The agent proposes and stops: it can't move money.`,
     "Prices come from a table in code. The agent proposes and stops; it can't move money.",
+    "Prices come from a table in code. The agent can't move money.",
   ]);
-  await say(page, liveAI ? "The settlement agent prices each one from the price table, proposes, and stops." : "The agent's scripted stand-in prices each one from the price table, proposes, and stops.");
-  await page.screenshot({ path: "docs/screenshot.png", style: "#__demo_caption { display: none !important; } body { padding-bottom: 0 !important; }" });
-  await proposal.scrollIntoViewIfNeeded();
-  await highlight(page, proposal, 1800);
-  await say(page, `${whole(acceptedCents)} for the ${acceptedName}, ${whole(contestedCents)} for the ${contestedName}. It has no tool that can move money.`, 6000);
+  await page.screenshot({ path: "docs/screenshot.png", style: "#__demo_caption, #__demo_holdbar { display: none !important; } body { padding-bottom: 0 !important; }" });
+  const itemized = page.getByTestId("itemized-charge");
+  await say(page, `${whole(acceptedCents)} and ${whole(contestedCents)}, from the price table. The agent can't move money.`);
+  await zoomOn(page, itemized, { scale: 1.35, ms: 3000, self: true });
+  await beatFrom(proposalAt, 5.2)();
   await check("proposal");
 
-  // 4. The renter, on their phone: accepts the first item, contests the rest with their own photo.
+  // 6. The renter, on their phone: accepts the first item, contests the rest with their own photo.
   vo(7, [
-    `The renter sees the same evidence on their phone. They accept the ${acceptedName}, and contest the ${contestedName} with their own photo from check-in.`,
-    `On their phone, the renter accepts the ${acceptedName} and contests the ${contestedName}, with their own photo.`,
+    `On their phone, the renter accepts the ${acceptedName} and contests the ${contestedName}, with their own photo from check-in.`,
+    `The renter accepts the ${acceptedName} and contests the ${contestedName}, with their own photo.`,
   ]);
   const phone = await openPhone(page, `/renter/${view.renterToken}`);
   await expect(phone.getByTestId("renter-summary")).toBeVisible({ timeout: 20_000 });
-  await say(page, "The renter gets a link: what's held, what's proposed, and one card per item.", 2400);
   await phone.getByTestId(`line-accept-${accepted.id}`).scrollIntoViewIfNeeded();
-  await say(page, `They accept the ${acceptedName} and contest the ${contestedName}, with their own photo from check-in.`);
+  await say(page, `The renter accepts the ${acceptedName} and contests the ${contestedName} with their check-in photo.`);
   await phone.getByTestId(`line-accept-${accepted.id}`).click();
   for (const line of contestedLines) await phone.getByTestId(`line-contest-${line.id}`).click();
   await phone.getByTestId(`evidence-upload-${contestedLines[0].id}`).setInputFiles(path.join(DEMO_PHOTOS, "renter-check-in-stain.jpg"));
   const preview = phone.getByTestId(`evidence-preview-${contestedLines[0].id}`);
   await expect(preview).toBeVisible();
   await preview.evaluate((el) => el.scrollIntoView({ block: "center" }));
-  await sleep(1200);
+  await sleep(1500);
   await phone.getByTestId("contest-note").pressSequentially(`The ${contestedName} was there when I arrived. My photo shows it.`, { delay: 12 });
   await phone.getByTestId("contest").click();
   const contested = phone.getByTestId("renter-contested");
@@ -292,7 +323,8 @@ test("demo", async ({ page, request }) => {
   await contested.evaluate((el) => el.scrollIntoView({ block: "center" }));
   // Zoomed in, so the renter's answer reads at video size.
   await zoomPhone(page, contested, 1.7);
-  await say(page, `Their answer goes to the host: ${whole(acceptedCents)} accepted, ${whole(contestedCents)} contested, with their note and photo.`);
+  await say(page, `${whole(acceptedCents)} accepted, ${whole(contestedCents)} contested, with their note and photo.`);
+  await holdBar(page, { heldCents: 30_000, capturedCents: 0, contestedCents, releasedCents: 0, note: `${whole(contestedCents)} contested by the renter.` }, { title: holdTitle });
   await holdUntil(contestShown, CONTEST_HOLD_MS);
   const contestMs = Date.now() - contestShown;
   console.log(`[demo] renter contest held ${(contestMs / 1000).toFixed(1)}s`);
@@ -300,98 +332,88 @@ test("demo", async ({ page, request }) => {
   await closePhone(page);
   await check("contest");
 
-  // 5. The first capture: the accepted part now, the contested part stays on the same hold.
+  // 7. The first capture: the accepted part now, the contested part stays on the same hold. The bar tells it.
   const prompt = page.getByTestId("approval-prompt");
   vo(8, [
-    `The ${whole(acceptedCents)} they accepted can be charged now, once the host approves. ${pp} captures it with final capture false, so the contested ${whole(contestedCents)} stays on the same hold.`,
+    `The host approves the ${whole(acceptedCents)} the renter accepted. ${Pp} captures it with final capture false, so the contested ${whole(contestedCents)} stays on the same hold.`,
     `The host approves the ${whole(acceptedCents)} they accepted. The contested ${whole(contestedCents)} stays on the same hold.`,
   ]);
-  await say(page, `The ${whole(acceptedCents)} they accepted can be charged now. Nothing moves until the host approves.`);
   await clock.cut("the approval card on its way", () => expect(prompt).toBeVisible({ timeout: 30_000 }));
   // The approval card is held on screen for 4 seconds: each line, the renter's answer and the Guard's reason.
   await prompt.evaluate((el) => el.scrollIntoView({ block: "center" }));
   const cardShown = Date.now();
+  await say(page, `Nothing moves until the host approves: ${await prompt.getByTestId("approval-money").textContent()}.`);
   await highlight(page, prompt, 1600);
-  await say(page, `Each line with its price row and the renter's answer. ${await prompt.getByTestId("approval-money").textContent()}.`);
   await holdUntil(cardShown, APPROVAL_HOLD_MS);
   await highlight(page, prompt.getByTestId("approve-button"), 900);
   console.log(`[demo] approval card held ${((Date.now() - cardShown) / 1000).toFixed(1)}s`);
   await prompt.getByTestId("approve-button").click();
-  await say(page, `Approved. ${pp} captures the ${whole(acceptedCents)} the renter accepted.`);
   const part = page.getByTestId("part-capture");
-  await clock.cut("the capture on its way", () => expect(part).toContainText(`${whole(acceptedCents)}`, { timeout: 60_000 }), 1_000);
-  await part.scrollIntoViewIfNeeded();
-  await highlight(page, part, 2400);
-  await say(page, `Captured with final_capture false, so the contested ${whole(contestedCents)} stays on the same ${pp} hold.`, 3400);
+  await clock.cut("the capture on its way", () => expect(part).toContainText(`${whole(acceptedCents)}`, { timeout: 60_000 }), 600);
+  const partDone = await (await page.request.get(`/api/bookings/${id}`)).json();
+  const partCents = partDone.partCapture.capturedCents as number;
+  expect(partDone.partCapture.finalCapture, "PayPal read the first capture back with final_capture false").toBe(false);
+  await holdBar(page, { heldCents: 30_000, capturedCents: partCents, contestedCents, releasedCents: 0, note: `${whole(partCents)} captured, final_capture false.` }, { title: holdTitle });
+  await say(page, `${Pp} captures ${whole(partCents)}. The contested ${whole(contestedCents)} stays on the same hold.`, 4800);
   await check("part");
 
-  // 6. Claude's second look at what the renter contested, with their photo and note. The charge can only fall.
+  // 8. Claude's second look at what the renter contested, with their dated photo and note. The charge can only fall.
   const look = page.getByTestId("second-look");
   await look.scrollIntoViewIfNeeded();
   const lookAt = clock.exact;
-  await say(page, liveAI ? `Claude looks again at the ${contestedName}, with the renter's photo and note. It can only lower a charge.` : `Mock AI: a recorded second look at the ${contestedName}, with the renter's photo. It can only lower a charge.`);
-  await clock.cut("Claude's second look", () => expect(look).toHaveAttribute("data-status", "ready", { timeout: 120_000 }), 1_200);
+  await say(page, liveAI ? `Claude looks again at the ${contestedName}, with the renter's dated photo.` : `Mock AI: a recorded second look at the ${contestedName}, with the renter's photo.`);
+  await clock.cut("Claude's second look", () => expect(look).toHaveAttribute("data-status", "ready", { timeout: 120_000 }), 2_000);
   const afterLook = await (await page.request.get(`/api/bookings/${id}`)).json();
   const lookLines = afterLook.secondLook.lines as { lineId: string; verdict: string; reasoning: string; fromCents: number; toCents: number; description: string }[];
   findingsText += ` ${lookLines.map((l) => `${l.description} ${l.reasoning}`).join(" ")}`;
   const verdictShown = (await look.getByTestId("second-look-verdict").first().textContent())!.trim();
   let [lookFrom, lookTo] = amountsIn((await look.getByTestId("second-look-total").textContent())!);
   const heard = spokenVerdict(lookLines[0]);
-  vo(9, [
-    `Claude takes a second look at the ${contestedName} with the renter's photo: ${heard}. The total falls from ${lookFrom} to ${lookTo}.`,
-    `A second look with the renter's photo: ${heard}. ${lookFrom} becomes ${lookTo}.`,
-    `Claude looks again: ${heard}. ${lookFrom} becomes ${lookTo}.`,
-  ], lookAt);
-  if (lookTo === lookFrom) voice.at(-1)!.lines = [`Claude takes a second look at the ${contestedName} with the renter's photo: ${heard}.`, `A second look with the renter's photo: ${heard}.`, `Claude looks again: ${heard}.`];
-  const lookHeadline = (await look.getByTestId("second-look-headline").textContent())!.trim();
   const flaggedRow = look.locator('[data-testid="second-look-line"][data-flagged="true"]').first();
   const flagged = (await flaggedRow.count()) > 0;
   const lineRow = flagged ? flaggedRow : look.getByTestId("second-look-line").first();
-  await say(page, flagged ? `${lookHeadline}.` : `${lookHeadline}: ${verdictShown}.`);
-  const lookShown = Date.now();
-  await zoomOn(page, lineRow, { scale: 1.5, ms: 3500 });
-  await holdUntil(lookShown, 3_500);
-  // A beat after it.
-  await sleep(1_000);
   if (flagged) {
+    // Claude couldn't tell: the host decides. Kept so a take still finishes; the story wants "already there".
+    console.log(`[demo] second look flagged the ${contestedName} for the host (${verdictShown})`);
+    await say(page, `Claude can't tell from the renter's photo, so the host decides.`);
+    await zoomOn(page, lineRow, { scale: 1.3, ms: 2600, self: true });
     await tap(page, "flag-drop");
     await expect(look.locator('[data-testid="second-look-line"][data-flagged="true"]')).toHaveCount(0, { timeout: 15_000 });
     await clock.cut("the agent writing the counter", () => expect(look.getByTestId("counter-rationale")).not.toBeEmpty({ timeout: 90_000 }), 800);
-    [lookFrom, lookTo] = amountsIn((await look.getByTestId("second-look-total").textContent())!);
-    voice.at(-1)!.lines = [
-      `Claude can't tell from the renter's photo, so the host decides, and drops the ${contestedName}. The total falls from ${lookFrom} to ${lookTo}.`,
-      `Claude can't tell, so the host drops it. ${lookFrom} becomes ${lookTo}.`,
-    ];
+  } else {
+    await say(page, `${verdictShown}. The ${contestedName} falls from ${whole(contestedCents)} to ${whole(lookLines[0].toCents)}.`);
+    await zoomOn(page, lineRow, { scale: 1.5, ms: 3000, self: true });
   }
-  const total = look.getByTestId("second-look-total");
-  [lookFrom, lookTo] = amountsIn((await total.textContent())!);
-  await total.evaluate((el) => el.scrollIntoView({ block: "center" }));
-  await highlight(page, total, 2200);
-  await say(page, lookTo === lookFrom ? `The total stays at ${lookTo}.` : `The total charge falls from ${lookFrom} to ${lookTo}. The model sets no amount: code maps its verdict.`, 1800);
-  vo(10, [
-    "The agent sends the renter a counter, and they accept it on their phone.",
-    "The renter accepts the counter.",
-  ]);
-  // The take's story is a charge that falls. If Claude kept the stain this time, the card says so
-  // and there is no offer to send: stop with the reason rather than record a broken beat.
+  [lookFrom, lookTo] = amountsIn((await look.getByTestId("second-look-total").textContent())!);
+  // The take's story is a charge that falls. If Claude kept the stain this time, stop with the
+  // reason rather than record a broken beat.
   expect(lookTo !== lookFrom, `Claude's second look kept the ${contestedName} at ${lookTo} on this take (${verdictShown}); the demo needs the charge to fall. Rerun the take.`).toBe(true);
+  const stillContested = afterLook.secondLook.lines.reduce((sum: number, l: { toCents: number }) => sum + l.toCents, 0) as number;
+  await holdBar(page, { heldCents: 30_000, capturedCents: partCents, contestedCents: stillContested, releasedCents: 0, note: `The ${contestedName}: ${whole(contestedCents)} to ${whole(stillContested)}.` }, { title: holdTitle });
+  vo(9, flagged
+    ? [`Claude can't tell from the renter's photo, so the host decides and drops the ${contestedName}. ${lookFrom} becomes ${lookTo}, and the renter accepts the new offer.`, `Claude can't tell, so the host drops it. ${lookFrom} becomes ${lookTo}.`]
+    : [`Claude takes a second look with the renter's dated photo: ${heard}. The total falls from ${lookFrom} to ${lookTo}, and the renter accepts the new offer.`, `A second look with the renter's photo: ${heard}. ${lookFrom} becomes ${lookTo}.`],
+    lookAt);
   await tap(page, "send-counter");
   await expect(look.getByTestId("counter-sent")).toBeVisible({ timeout: 20_000 });
-  await say(page, `The agent's new offer goes to the renter: ${lookTo} in all.`);
   await check("second look");
 
-  // 7. The renter accepts the counter on their phone; the host approves the rest.
+  // The renter accepts the counter on their phone.
   const phone2 = await openPhone(page, `/renter/${view.renterToken}`);
   const counter = phone2.getByTestId("renter-counter");
   await expect(counter).toBeVisible({ timeout: 20_000 });
   await counter.evaluate((el) => el.scrollIntoView({ block: "center" }));
   await zoomPhone(page, counter, 1.5);
-  await say(page, "The renter reads the new offer on their phone and accepts it.", 1600);
+  await say(page, `The renter accepts the new offer: ${lookTo} in all.`, 1600);
   await phone2.getByTestId("accept-counter").click();
   await expect(phone2.getByTestId("renter-counter-accepted")).toBeVisible({ timeout: 20_000 });
-  await sleep(1400);
+  await sleep(1200);
   await closePhone(page);
-  await say(page, `The host approves. ${pp} settles the rest of the same hold.`);
+  await check("counter");
+
+  // 9. The host approves the rest; PayPal settles the same hold. The money strip is the take's high point.
+  const settleAt = clock.exact;
+  await say(page, `The host approves. ${Pp} settles the rest of the same hold.`);
   await clock.cut("the approval card on its way", () => expect(prompt).toBeVisible({ timeout: 30_000 }));
   await prompt.evaluate((el) => el.scrollIntoView({ block: "center" }));
   await highlight(page, prompt.getByTestId("approve-button"), 900);
@@ -404,22 +426,28 @@ test("demo", async ({ page, request }) => {
   const captured = whole(done.settlement.capturedCents);
   const released = whole(done.settlement.releasedCents);
   await expect(ruling).toHaveText(`${captured} captured, ${released} released`);
-  vo(11, [
+  vo(10, [
+    `${captured} captured, ${released} released. Each amount as ${pp} returned it.`,
     `${captured} captured, ${released} released, read back from ${pp}.`,
-  ]);
-  await zoomOn(page, ruling, { scale: 1.4, ms: 2400 });
-  // The money in one line, each amount as PayPal returned it, held on screen.
+  ], settleAt);
+  await holdBar(page, { heldCents: 30_000, capturedCents: done.settlement.capturedCents, contestedCents: 0, releasedCents: done.settlement.releasedCents, note: `Settled, read back from ${pp}.` }, { title: holdTitle });
+  await sleep(1500);
+  // The result and the money strip are the high point: the bar steps aside for them.
+  await holdBar(page, null);
+  await zoomOn(page, ruling, { scale: 1.4, ms: 2000 });
+  // The money in one line, each amount as PayPal returned it, on its own: the bar steps aside.
   const strip = page.getByTestId("money-strip");
   await expect(strip).toBeVisible();
   const stripText = (await strip.getAttribute("aria-label"))!;
   await say(page, `${stripText}: each amount as ${pp} returned it.`);
-  await zoomOn(page, strip, { scale: 1.6, ms: 3000 });
+  await zoomOn(page, strip, { scale: 1.6, ms: 3400 });
   await highlight(page, strip, 1600);
   // The outline is fixed on the page: let it fade before the page scrolls to the calls.
-  await sleep(2000);
+  await sleep(1000);
   await check("ruling");
 
-  // 8. Every PayPal call, open with the capture and void rows on screen together.
+  // 10. The PayPal calls, cropped to three rows: the hold, the capture and the void.
+  const callsAt = clock.exact;
   const toggle = page.getByTestId("paypal-calls-toggle");
   await toggle.scrollIntoViewIfNeeded();
   await toggle.click();
@@ -427,7 +455,6 @@ test("demo", async ({ page, request }) => {
   const calls = page.getByTestId("paypal-calls");
   await expect(calls).toContainText(/authoriz/i);
   await expect(calls).toContainText(/void/i);
-  const callsOpened = Date.now();
   const row = (title: string) => calls.locator("li[data-paypal-call]").filter({ hasText: title });
   const capture = row("Capture authorization").last();
   const voided = row("Void authorization").last();
@@ -436,88 +463,119 @@ test("demo", async ({ page, request }) => {
   await expect(voided).toContainText(/HTTP 20\d/);
   await expect(voided).toContainText("debug_id");
   const captures = done.settlement.captureId && done.settlement.captureId !== done.partCapture?.captureId ? "both captures" : "the capture";
-  vo(12, [
-    `Every ${pp} call on this booking is listed: the authorization, ${captures} and the void, each with its status and debug id.`,
-    `Every ${pp} call is listed, with its status and debug id.`,
-  ]);
-  await say(page, `Every ${pp} call on this booking: the authorization, ${captures} and the void, each with its HTTP status and debug_id.`);
-  // The list scrolls inside its card: put the last capture at the top of it, so the void sits
-  // below it, then centre the card on the page. Both rows have to show inside the list. When a
-  // re-read sits between them, the list grows (on camera only) just enough to show both.
-  // For 2 s after the toggle the page keeps the result in view whenever the list changes size
-  // (ruling.tsx), so grow and scroll the list only after that.
-  await sleep(Math.max(0, 2_100 - (Date.now() - toggledAt)));
-  const voidHandle = await voided.elementHandle();
-  const inList = await capture.evaluate((el, [end, band]) => {
-    let list = el.parentElement;
-    while (list && !(list.scrollHeight > list.clientHeight + 1 && /auto|scroll/.test(getComputedStyle(list).overflowY))) list = list.parentElement;
-    if (!list) return null;
-    const span = (end as HTMLElement).getBoundingClientRect().bottom - el.getBoundingClientRect().top + 8;
-    if (span > list.clientHeight) {
-      // More re-reads than fit between the two rows: draw the list a little smaller (on camera only)
-      // rather than leave the void below the caption band.
-      // Centred, the list must end above the caption band.
-      const room = window.innerHeight - 2 * band - 16;
-      const zoom = span > room ? room / span : 1;
-      if (zoom < 1) list.style.zoom = zoom.toFixed(3);
-      list.style.maxHeight = `${Math.min(span, zoom < 1 ? span : room)}px`;
-      // Room below, so the page (or the pane that scrolls it) can scroll the grown list clear of the caption band.
-      let pane = list.parentElement;
-      while (pane && !(pane.scrollHeight > pane.clientHeight + 1 && /auto|scroll/.test(getComputedStyle(pane).overflowY))) pane = pane.parentElement;
-      const spacer = document.createElement("div");
-      spacer.style.height = "600px";
-      (pane ?? document.body).appendChild(spacer);
+  vo(11, [
+    `The ${pp} calls that moved money: the hold, ${captures} and the void, each with its HTTP status and debug id.`,
+    `${Pp}'s answers, with status and debug id.`,
+  ], callsAt);
+  // The crop, on camera only: every row but the hold and the money moves is hidden, and the list
+  // stops scrolling. Three rows: the authorization, the capture and the void (with two captures,
+  // both captures and the void).
+  const kept = await calls.evaluate((root) => {
+    const rows = [...root.querySelectorAll<HTMLElement>("li[data-paypal-call]")];
+    const titled = (re: RegExp) => rows.filter((li) => re.test(li.textContent ?? ""));
+    const moves = [...titled(/Capture authorization/).slice(-2), ...titled(/Void authorization/).slice(-1)];
+    const keep = [...(moves.length < 3 ? titled(/Authorize order/).slice(-1) : []), ...moves];
+    for (const li of root.querySelectorAll<HTMLElement>("li")) if (!keep.some((k) => k === li || k.contains(li) || li.contains(k))) li.style.display = "none";
+    for (let el = keep[0]?.parentElement; el && el !== root.parentElement; el = el.parentElement) {
+      if (/auto|scroll/.test(getComputedStyle(el).overflowY)) Object.assign(el.style, { maxHeight: "none", overflow: "visible" });
     }
-    // A few passes, so the scroll lands whether the browser counts it before or after the zoom.
-    const z = Number(list.style.zoom || 1);
-    for (let i = 0; i < 4; i++) list.scrollTop += (el.getBoundingClientRect().top - (list.getBoundingClientRect().top + 2)) / z;
-    list.scrollIntoView({ block: "center" });
-    const box = list.getBoundingClientRect();
-    return { top: box.top, bottom: box.bottom };
-  }, [voidHandle, BAND_PX] as const);
-  expect(inList, "the PayPal calls list scrolls inside its card").not.toBeNull();
-  await sleep(300);
-  const listBox = await capture.evaluate((el) => {
-    let list = el.parentElement;
-    while (list && !(list.scrollHeight > list.clientHeight + 1 && /auto|scroll/.test(getComputedStyle(list).overflowY))) list = list.parentElement;
-    const box = list!.getBoundingClientRect();
-    return { top: box.top, bottom: box.bottom };
+    return keep.length;
   });
-  expect(listBox.bottom, "the PayPal calls list ends above the caption band").toBeLessThanOrEqual(page.viewportSize()!.height - BAND_PX + 1);
-  for (const [name, rowEl] of [["capture", capture], ["void", voided]] as const) {
-    const b = (await rowEl.boundingBox())!;
-    console.log(`[demo] ${name} row ${Math.round(b.y)}-${Math.round(b.y + b.height)}, list ${Math.round(listBox.top)}-${Math.round(listBox.bottom)}`);
-    expect(b.y, `${name} row starts inside the list`).toBeGreaterThanOrEqual(listBox.top - 1);
-    // A row ends in 16px of empty padding (pb-4) under its card, which may fall below the list's edge.
-    expect(b.y + b.height - 16, `${name} row's card ends inside the list`).toBeLessThanOrEqual(listBox.bottom + 1);
-  }
-  await Promise.all([highlight(page, capture, 2600), highlight(page, voided, 2600)]);
+  console.log(`[demo] PayPal calls cropped to ${kept} rows`);
+  expect(kept, "the crop keeps three rows: the hold and the money moves").toBe(3);
+  const list = capture.locator("xpath=..");
+  await say(page, `The ${pp} calls that moved money, with HTTP status and debug_id.`);
+  const callsOpened = Date.now();
+  // For 2 s after the toggle the page keeps the result in view whenever the list changes size
+  // (ruling.tsx): the cropped rows show under the result, then the zoom brings them up.
+  await sleep(Math.max(0, 2_100 - (Date.now() - toggledAt)));
+  await zoomOn(page, list, { scale: 1.45, ms: 2_600, self: true });
   await holdUntil(callsOpened, CALLS_HOLD_MS);
-  const callsMs = Date.now() - callsOpened;
-  console.log(`[demo] PayPal calls open ${(callsMs / 1000).toFixed(1)}s`);
-  expect.soft(callsMs, "the PayPal calls stay open 3 to 5 s").toBeGreaterThanOrEqual(3_000);
+  console.log(`[demo] PayPal calls open ${((Date.now() - callsOpened) / 1000).toFixed(1)}s`);
   await check("calls");
 
-  // 9. The end card, from the amounts PayPal returned.
+  // 11. A dispute, 5 s: the renter disputes the charge with PayPal and the host sends the evidence pack.
+  const disputeShown = await showDispute(page, request, { id, sandbox, pp, clock });
+  if (disputeShown) {
+    vo(12, [
+      `If the renter disputes it with ${pp}, the app finds the case and sends the evidence pack, after the host approves.`,
+      `A ${pp} dispute: the host sends the evidence pack.`,
+    ], disputeShown.at);
+    await check("dispute");
+  }
+
+  // 12. The end card, from the amounts PayPal returned.
   vo(13, [`Deposit Referee. Two photos, a fair charge, and ${pp} holds the rest.`, "Deposit Referee."]);
-  await say(page, `Deposit Referee: two photos, a fair charge, and ${pp} holds the rest.`);
-  await titleCard(page, `${captured} captured, ${released} released, read back from ${pp}`, "Deposit Referee", 5000);
+  // The end card is its own caption: the line under it would be covered as soon as it showed.
+  await titleCard(page, `${captured} captured, ${released} released, read back from ${pp}`, `Deposit Referee: two photos, a fair charge, and ${pp} holds the rest`, 4200);
   const endAt = clock.exact;
+  closeCaption();
   clock.end();
   await check("end");
   const edit = clock.writeCuts(CUTS_FILE);
   console.log(`[demo] edited video ${edit.videoSeconds.toFixed(1)}s, raw ${Math.round(clock.raw)}s, ${edit.cuts.length} cuts: ${edit.cuts.map((c) => `${c.label} ${c.from.toFixed(1)}-${c.to.toFixed(1)}`).join("; ")}`);
   expect(edit.videoSeconds, `the edited video is under ${CUT_LIMIT_S} s`).toBeLessThan(CUT_LIMIT_S);
 
-  // The voiceover: each shot's first line that fits before the next one starts, at ~2.6 words a second.
+  // The captions: each one stays up long enough to read at 15 characters a second.
+  for (const c of shown) console.log(`[demo] caption ${c.seconds.toFixed(1)}s for ${c.text.length} chars: ${c.text}`);
+  const rushed = shown.filter((c) => c.seconds + 0.25 < c.text.length / CHARS_PER_SECOND);
+  expect(rushed.map((c) => `${c.seconds.toFixed(1)} s for ${c.text.length} chars: ${c.text}`), `every caption is on screen long enough to read at ${CHARS_PER_SECOND} characters a second`).toEqual([]);
+
+  // The voiceover: each shot's first line that fits before the next one starts, at 15 characters a second.
   const script = fitVoiceover(voice, endAt);
   fs.writeFileSync(VOICE_FILE, JSON.stringify(script, null, 2));
-  for (const line of script) console.log(`[demo] voiceover ${line.shot} at ${line.at.toFixed(1)}s (${line.room.toFixed(1)}s for ${line.words} words): ${line.text}`);
+  for (const line of script) console.log(`[demo] voiceover ${line.shot} at ${line.at.toFixed(1)}s (${line.room.toFixed(1)}s for ${line.chars} chars): ${line.text}`);
   const short = script.filter((l) => l.room + 0.3 < BEAT_MIN_S);
   expect(short.map((l) => `shot ${l.shot}: ${(l.room + 0.3).toFixed(1)} s`), `every narrated beat is on screen at least ${BEAT_MIN_S} s`).toEqual([]);
   const tooLong = script.filter((l) => !l.fits);
-  expect(tooLong.map((l) => `shot ${l.shot}: ${l.words} words in ${l.room.toFixed(1)} s`), "every voiceover line fits before the next one at 2.6 words a second").toEqual([]);
+  expect(tooLong.map((l) => `shot ${l.shot}: ${l.chars} chars in ${l.room.toFixed(1)} s`), `every voiceover line fits before the next one at ${CHARS_PER_SECOND} characters a second`).toEqual([]);
 });
+
+/**
+ * The dispute beat, 5 s. In mock mode the renter disputes this booking's charge as a chargeback
+ * (mock-only route) and the host sends the evidence pack through the approval gate. On the sandbox
+ * only a buyer can open a dispute, so it shows the booking named by DEMO_DISPUTE_BOOKING, one
+ * that tests/e2e/dispute-sandbox.spec.ts ran on that site, or skips the beat with a note.
+ */
+async function showDispute(page: Page, request: APIRequestContext, o: { id: string; sandbox: boolean; pp: string; clock: DemoClock }) {
+  const at = o.clock.exact;
+  let bookingId = o.id;
+  if (o.sandbox) {
+    const named = process.env.DEMO_DISPUTE_BOOKING;
+    const found = named ? await (await request.get(`/api/bookings/${named}`)).json().catch(() => null) : null;
+    if (!found?.dispute?.evidence?.submittedAt) {
+      console.log(`[demo] dispute beat skipped: set DEMO_DISPUTE_BOOKING to a booking on this site whose sandbox dispute has its evidence sent${named ? ` (${named} has none)` : ""}`);
+      return null;
+    }
+    bookingId = found.id;
+  } else {
+    const opened = await request.post(`/api/dev/mock/dispute/${o.id}`, { data: { stage: "CHARGEBACK", message: "I don't agree with this charge." } });
+    expect(opened.status(), "the mock dispute opens").toBe(200);
+  }
+  const panel = page.getByTestId("dispute-panel");
+  // The page picking the case up, and (in mock mode) the send going through the Guard's gate: the
+  // click, the host's approval and PayPal's answer are cut to the result.
+  const { disputeId, stage } = await o.clock.cut("the dispute arriving and the evidence going through the approval gate", async () => {
+    if (o.sandbox) await page.goto(`/bookings/${bookingId}`);
+    else await page.reload();
+    await expect(panel).toBeVisible({ timeout: 30_000 });
+    if (!o.sandbox) {
+      await panel.getByTestId("send-evidence").click();
+      await panel.getByTestId("approval-prompt").getByTestId("approve-button").click({ timeout: 30_000 });
+    }
+    await expect(panel.getByTestId("evidence-sent")).toContainText("as evidence", { timeout: 30_000 });
+    // The approval's toast would sit over the panel: it fades by itself, off camera.
+    await expect(page.getByText("Approved", { exact: true })).toHaveCount(0, { timeout: 15_000 }).catch(() => undefined);
+    await panel.evaluate((el) => el.scrollIntoView({ block: "center" }));
+    await sleep(500);
+    return { disputeId: (await panel.getByTestId("dispute-id").textContent())!.trim(), stage: (await panel.getByTestId("dispute-stage").textContent())!.trim() };
+  });
+  expect(stage, "the dispute is a claim, where PayPal takes evidence").not.toBe("INQUIRY");
+  await say(page, `A ${stage} on ${o.pp} case ${disputeId}: the evidence pack is sent.`);
+  await zoomOn(page, panel, { scale: 1.3, ms: 4_000, self: true });
+  console.log(`[demo] dispute ${disputeId} ${stage}, evidence sent, on ${bookingId}`);
+  return { at };
+}
 
 test.afterEach(async ({ page }, info) => {
   guard?.stop();
