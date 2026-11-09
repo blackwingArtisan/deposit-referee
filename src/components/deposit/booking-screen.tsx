@@ -156,7 +156,7 @@ function PayPalCalls({ steps, loading }: { steps: TimelineStep[]; loading: boole
       </button>
       {open ? (
         <CardBody className="border-t border-zinc-100">
-          <ToolCallTimeline steps={steps} showQuiet autoScroll={false} className="max-h-[560px]" />
+          <ToolCallTimeline steps={steps} showQuiet autoScroll={false} className="max-h-[min(720px,70vh)]" />
         </CardBody>
       ) : null}
     </Card>

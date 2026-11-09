@@ -223,6 +223,8 @@ Design system: `@/components/ui` (Button/ButtonLink, Card/CardHeader/CardBody/Ca
 
 **Record against the real sandbox:** `PAYPAL_MODE=sandbox npm run demo:record`. It starts from a clean `.data-demo` and runs the sandbox seed into it first. The real PayPal button needs a buyer login, and Playwright only records the main page, not PayPal's popup. So recordings set `DEMO_TEST_CARD=1`, which adds a "Skip the form: pay with the sandbox card in one tap" button under it (`data-testid="sandbox-test-card"`): the same server flow, approved by `POST /api/dev/sandbox/approve-order/:id`. The button and route don't exist without that flag. In your own spec, branch on `paypal.mode` from `/api/kit/status`, as `demo/demo.spec.ts` does. Mock-only steps (`/api/dev/reset`, `simulateDispute`...) don't run in sandbox.
 
+**The take judges see:** `DEMO_REQUIRE_LIVE=1 DEMO_BASE_URL=<hosted site> npm run demo:record`. With `DEMO_REQUIRE_LIVE=1` the run fails as soon as any frame (the page, the phone, PayPal's own frames) or caption shows text matching `/\bmock\b|simulated/i` (`demo/live-guard.ts`), so a mock take can't be mistaken for the real one. Without it, a mock run records as usual and its captions say mock PayPal and mock AI.
+
 **Make the upload file:** `npm run demo:mp4` turns the newest `videos/demo-*.webm` into an MP4 next to it (H.264, 30 fps, silent AAC track, faststart) and fails if it runs 3:00 or longer. Or `npm run demo:mp4 -- in.webm out.mp4`. It needs ffmpeg (`brew install ffmpeg`).
 
 **Keeping it under 3 minutes:** design to length. Keep `DemoClock(170)` and tune `caption` reading times; each scene logs its timestamp. To trim a finished take without re-recording: `ffmpeg -ss 0 -i in.webm -t 175 -c copy out.webm`, then run `demo:mp4` on it.
