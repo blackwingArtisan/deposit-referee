@@ -210,9 +210,10 @@ test("demo", async ({ page, request }) => {
   const phone = await openPhone(page, `/renter/${view.renterToken}`);
   await expect(phone.getByTestId("renter-headline")).toBeVisible({ timeout: 20_000 });
   await say(page, "The renter gets a link with the same photos and reasons.", 2400);
-  await phone.getByTestId(`contest-line-${accepted.id}`).scrollIntoViewIfNeeded();
+  await phone.getByTestId(`line-accept-${accepted.id}`).scrollIntoViewIfNeeded();
   await say(page, `They accept the ${acceptedName} and contest the ${contestedName}: it was there when they arrived.`);
-  await phone.getByTestId(`contest-line-${accepted.id}`).uncheck();
+  await phone.getByTestId(`line-accept-${accepted.id}`).click();
+  for (const line of contestedLines) await phone.getByTestId(`line-contest-${line.id}`).click();
   await phone.getByTestId("contest-note").pressSequentially(`The ${contestedName} was there when I arrived.`, { delay: 14 });
   await phone.getByTestId("contest").click();
   const contested = phone.getByTestId("renter-contested");

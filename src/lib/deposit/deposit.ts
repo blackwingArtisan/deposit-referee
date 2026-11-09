@@ -36,5 +36,5 @@ export async function placeHold(token: string, orderId: string): Promise<Booking
   if (!auth || auth.status !== "CREATED") throw new HttpError(402, `PayPal did not place the hold (status ${auth?.status ?? "missing"}).`, "hold_failed");
   const authorizedCents = dollarsToCents(auth.amount.value);
   if (authorizedCents !== booking.depositCents) throw new HttpError(409, "PayPal held a different amount from the booking's deposit.", "conflict");
-  return saveBooking({ ...booking, status: "held", authorizationId: auth.id, authorizedCents, holdExpiresAt: auth.expiration_time });
+  return saveBooking({ ...booking, status: "held", authorizationId: auth.id, authorizedCents, holdExpiresAt: auth.expiration_time, heldAt: new Date().toISOString() });
 }

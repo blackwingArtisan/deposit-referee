@@ -158,6 +158,8 @@ export interface SecondLook {
 export interface RenterState {
   /** With no answer by this time, the host may go ahead. */
   deadline: string;
+  /** The first time the renter opened their page with this proposal on it. */
+  openedAt?: string;
   response?: RenterResponse;
 }
 
@@ -218,6 +220,8 @@ export interface Booking {
   refreshedAuthorizationId?: string;
   authorizedCents?: number;
   holdExpiresAt?: string;
+  /** When PayPal placed the hold. */
+  heldAt?: string;
   photos: Partial<Record<PhotoSlot, BookingPhoto>>;
   /** The renter's own photos, added on their page before the comparison. */
   renterPhotos?: Partial<Record<PhotoSlot, BookingPhoto>>;
@@ -322,4 +326,12 @@ export interface RenterView {
   split: { acceptedCents: number; contestedCents: number; chargedCents?: number } | null;
   /** Claude's second look: "running" while it reads the renter's evidence, the counter once the host sends it. */
   secondLook: { status: "running" | "with_host" | "sent" | "accepted"; lines?: SecondLookLine[]; rationale?: string; canAccept: boolean } | null;
+  /** Once settled: the same ruling the host sees, PayPal's ids included. */
+  ruling: RulingView | null;
 }
+
+/** The settled result both sides see on one page: amounts and ids as PayPal returned them, the photos with the final boxes. */
+export type RulingView = Pick<
+  Booking,
+  "renter" | "item" | "status" | "authorizedCents" | "settlement" | "partCapture" | "proposal" | "review" | "photos" | "renterPhotos" | "orderId" | "authorizationId" | "secondLook"
+>;
