@@ -21,6 +21,7 @@ import { HostDecision } from "./host-decision";
 import { photoDataUrl } from "./photo-file";
 import { PhotoFrame, RENTER_SLOTS } from "./photo-frame";
 import { Ruling } from "./ruling";
+import { WaitStory, type CompareRun } from "./wait-story";
 
 const STATUS_LABEL: Record<BookingStatus, { label: string; tone: "neutral" | "info" | "warning" | "brand" | "success" }> = {
   draft: { label: "Waiting for the renter’s hold", tone: "neutral" },
@@ -145,6 +146,7 @@ export function BookingScreen() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [reviewError, setReviewError] = useState<string | null>(null);
+  const [compareRun, setCompareRun] = useState<CompareRun | null>(null);
 
   const load = useCallback(() => kitFetch<BookingView>(`/api/bookings/${id}`), [id, kitFetch]);
   const refresh = useCallback(() => load().then(setBooking), [load]);
@@ -210,10 +212,14 @@ export function BookingScreen() {
   async function compare() {
     setBusy("review");
     setReviewError(null);
+    const startedAt = Date.now();
+    setCompareRun({ startedAt });
     try {
       setBooking(await kitFetch<BookingView>(`/api/bookings/${id}/review`, { method: "POST" }));
+      setCompareRun({ startedAt, finishedAt: Date.now() });
     } catch (e) {
       setReviewError((e as Error).message);
+      setCompareRun({ startedAt, finishedAt: Date.now(), error: (e as Error).message });
     } finally {
       setBusy(null);
     }
@@ -340,6 +346,7 @@ export function BookingScreen() {
                 <Step n={3} title="AI compares the photos" done={!!review}>
                   {review ? (
                     <div className="space-y-3" data-testid="review">
+                      {compareRun?.finishedAt && !compareRun.error ? <WaitStory run={compareRun} events={events} bookingId={booking.id} /> : null}
                       {!review.items.length && review.worthALook?.length ? (
                         <p className="text-sm text-zinc-700">Nothing the AI would charge for, but it flagged something worth a look.</p>
                       ) : (
@@ -356,11 +363,17 @@ export function BookingScreen() {
                     </div>
                   ) : (
                     <div className="space-y-3">
+                      {reviewError && compareRun?.error && busy !== "review" ? <WaitStory run={compareRun} events={events} bookingId={booking.id} /> : null}
                       {reviewError ? <Notice tone="error"><span data-testid="review-error">{reviewError}</span></Notice> : null}
                       <Button icon={<ScanSearch className="size-4" />} loading={busy === "review"} disabled={!!busy} onClick={compare} data-testid="run-review">
                         {reviewError ? "Try again" : "Compare photos"}
                       </Button>
-                      {busy === "review" ? <p className="text-sm text-zinc-600" data-testid="review-wait">Claude is comparing the two photos. This takes about 20 seconds.</p> : null}
+                      {busy === "review" && compareRun ? (
+                        <div data-testid="review-wait">
+                          <WaitStory run={compareRun} events={events} bookingId={booking.id} />
+                          <p className="mt-2 text-xs text-zinc-500">Claude usually takes about 20 seconds to compare two photos.</p>
+                        </div>
+                      ) : null}
                     </div>
                   )}
                 </Step>
