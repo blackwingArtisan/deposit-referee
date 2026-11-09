@@ -15,6 +15,15 @@ export interface Flow {
 }
 
 /** A phone page wider than its screen scrolls sideways, and mobile browsers rescale it, which breaks tapping. */
+/**
+ * At the approval gate the host's headline names the same action and amount as the Approve button,
+ * e.g. "Your approval: capture $90.00, keep $210.00 on hold" over "Approve: capture $90.00".
+ */
+export async function expectHeadlineMatchesApprove(page: Page, action: string) {
+  await expect(page.getByTestId("approve-button")).toHaveText(`Approve: ${action}`, { timeout: 30_000 });
+  await expect(page.getByTestId("host-headline")).toHaveText(new RegExp(`^Your approval: ${action.replace(/[$.]/g, "\\$&")}(,|$)`), { timeout: 30_000 });
+}
+
 export async function expectNoSidewaysScroll(page: Page) {
   const width = await page.evaluate(() => ({ screen: document.documentElement.clientWidth, content: document.documentElement.scrollWidth }));
   expect(width.content).toBeLessThanOrEqual(width.screen);

@@ -5,22 +5,13 @@ import { Check, MessageSquareWarning, ShieldAlert, ShieldCheck, X } from "lucide
 import { useKit } from "@/components/kit/kit-provider";
 import { useToast } from "@/components/toast";
 import { Badge, Button, Card, CardBody } from "@/components/ui";
-import { formatExactCents, localTime, releasedCents } from "@/lib/deposit/rules";
+import { approvalAction, approvalPlan } from "@/lib/deposit/approval-plan";
+import { formatExactCents, localTime } from "@/lib/deposit/rules";
 import { heldCents } from "@/lib/deposit/split-rules";
 import type { BookingView, ChargeLine } from "@/lib/deposit/types";
 import { PriceSource } from "./damage-items";
 
-/** What the waiting approval would do, worked out from the booking, never from the browser's inputs. */
-export function approvalPlan(booking: BookingView) {
-  const part = booking.partCapture && !booking.partCapture.captureId ? booking.partCapture : undefined;
-  const held = heldCents(booking);
-  if (part) return { kind: "part" as const, lines: part.lines, captureCents: part.requestedCents, releaseCents: 0, keepCents: held - part.requestedCents };
-  const settlement = booking.settlement;
-  if (!settlement || settlement.kind === "release") return { kind: "release" as const, lines: [] as ChargeLine[], captureCents: 0, releaseCents: held, keepCents: 0 };
-  return { kind: "charge" as const, lines: booking.proposal?.lines ?? [], captureCents: settlement.requestedCents, releaseCents: releasedCents(held, settlement.requestedCents), keepCents: 0 };
-}
-
-function RenterAnswer({ booking, kind }: { booking: BookingView; kind: "part" | "charge" | "release" }) {
+function RenterAnswer({ booking, kind }: { booking: BookingView; kind: "part" | "charge" | "release" | "unknown" }) {
   const state = booking.renterState;
   const response = state?.response;
   let text: string;
@@ -46,7 +37,7 @@ function RenterAnswer({ booking, kind }: { booking: BookingView; kind: "part" | 
   );
 }
 
-function lineAnswer(booking: BookingView, line: ChargeLine, kind: "part" | "charge" | "release"): string | null {
+function lineAnswer(booking: BookingView, line: ChargeLine, kind: "part" | "charge" | "release" | "unknown"): string | null {
   if (kind === "part" || booking.secondLook?.status === "accepted") return "Renter accepts";
   const response = booking.renterState?.response;
   if (!response) return null;
@@ -79,11 +70,14 @@ export function ApprovalHero({ booking, onDecided }: { booking: BookingView; onD
     }
   }
 
-  const title = plan.kind === "release" ? "Approve the release" : plan.kind === "part" ? "Approve the accepted items" : "Approve the charge";
+  const title = plan.kind === "release" ? "Approve the release" : plan.kind === "part" ? "Approve the accepted items" : plan.kind === "charge" ? "Approve the charge" : "Approve this step";
+  const action = approvalAction(plan);
   const money =
-    plan.kind === "part"
-      ? `Capture ${formatExactCents(plan.captureCents)} · keep ${formatExactCents(plan.keepCents)} on hold`
-      : `Capture ${formatExactCents(plan.captureCents)} · release ${formatExactCents(plan.releaseCents)}`;
+    plan.kind === "unknown"
+      ? "No amount named: check the summary above"
+      : plan.kind === "part"
+        ? `Capture ${formatExactCents(plan.captureCents)} · keep ${formatExactCents(plan.keepCents)} on hold`
+        : `Capture ${formatExactCents(plan.captureCents)} · release ${formatExactCents(plan.releaseCents)}`;
 
   return (
     <Card className="border-amber-300 ring-2 ring-amber-200" data-testid="approval-prompt">
@@ -138,7 +132,7 @@ export function ApprovalHero({ booking, onDecided }: { booking: BookingView; onD
             Decline
           </Button>
           <Button variant="success" icon={<Check className="size-4" />} loading={busy === "approved"} disabled={!!busy} onClick={() => decide("approved")} data-testid="approve-button">
-            {plan.kind === "release" ? `Approve: release ${formatExactCents(plan.releaseCents)}` : `Approve: capture ${formatExactCents(plan.captureCents)}`}
+            {action ? `Approve: ${action}` : "Approve"}
           </Button>
         </div>
       </CardBody>
