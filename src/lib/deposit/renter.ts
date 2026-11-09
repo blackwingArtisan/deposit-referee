@@ -4,16 +4,13 @@
  * This is inside the app only. It isn't a PayPal dispute.
  */
 import { getApprovals } from "@/lib/agent/approvals";
-import { getContext } from "@/lib/events/bus";
 import { HttpError } from "@/lib/http";
 import { requireBookingByToken, saveBooking } from "./bookings";
-import { DEMO_RENTER_CHECK_IN, saveEvidence, saveUpload } from "./photos";
-import { acceptCounter, startSecondLook } from "./second-look";
-import { contestedLines } from "./second-look-rules";
+import { DEMO_RENTER_CHECK_IN, saveUpload } from "./photos";
 import { itemizedCents, releasedCents } from "./rules";
 import { requestPartCapture } from "./split";
 import { heldCents, splitOf } from "./split-rules";
-import type { Booking, PhotoSlot, RenterResponse, RenterView, SecondLook } from "./types";
+import type { Booking, PhotoSlot, RenterResponse, RenterView } from "./types";
 
 const OPEN = ["proposed", "contested", "awaiting_approval"];
 
@@ -26,17 +23,6 @@ const canAddPhotos = (booking: Booking) => booking.status === "held";
 
 function canRespond(booking: Booking): boolean {
   return OPEN.includes(booking.status) && chargeOf(booking) > 0 && booking.settlement?.kind !== "release";
-}
-
-/**
- * What the renter sees of the second look: that it's running, then nothing until the host sends
- * the counter, then the counter itself.
- */
-function renterSecondLook(look: SecondLook | undefined): RenterView["secondLook"] {
-  if (!look) return null;
-  if (look.status === "running") return { status: "running", canAccept: false };
-  if (look.status === "sent" || look.status === "accepted") return { status: look.status, lines: look.lines, rationale: look.counter?.rationale, canAccept: look.status === "sent" };
-  return { status: "with_host", canAccept: false };
 }
 
 export function renterView(token: string): RenterView {
@@ -64,7 +50,6 @@ export function renterView(token: string): RenterView {
     canContest: canRespond(booking) && response?.decision !== "contested",
     settled: status === "settled" && settlement?.capturedCents !== undefined && settlement.releasedCents !== undefined ? { capturedCents: settlement.capturedCents, releasedCents: settlement.releasedCents } : null,
     split: split ? { acceptedCents: split.acceptedCents, contestedCents: split.contestedCents, chargedCents: booking.partCapture?.capturedCents } : null,
-    secondLook: renterSecondLook(booking.secondLook),
   };
 }
 
@@ -80,12 +65,8 @@ export function addRenterPhoto(token: string, slot: PhotoSlot, dataUrl?: string)
   return renterView(token);
 }
 
-/**
- * Records the renter's answer. A contest also turns down any approval the host has waiting, and
- * starts Claude's second look at the contested lines with the renter's note and photos.
- * `evidence` is the renter's own photo (a data: URL) for a contested line, by line id.
- */
-export function respondAsRenter(token: string, decision: RenterResponse["decision"], note?: string, acceptedLineIds?: string[], evidence: Record<string, string> = {}): RenterView {
+/** Records the renter's answer. A contest also turns down any approval the host has waiting. */
+export function respondAsRenter(token: string, decision: RenterResponse["decision"], note?: string, acceptedLineIds?: string[]): RenterView {
   const booking = requireBookingByToken(token);
   if (!canRespond(booking)) throw new HttpError(409, "There's no proposed charge to answer on this booking.", "conflict");
   if (booking.renterState?.response?.decision === "contested") throw new HttpError(409, "You've already contested this charge. It's with the host.", "conflict");
@@ -96,12 +77,7 @@ export function respondAsRenter(token: string, decision: RenterResponse["decisio
   if (accepted.some((id) => !lineIds.includes(id))) throw new HttpError(422, "That item isn't on this charge.", "rule");
   if (accepted.length && accepted.length === lineIds.length) throw new HttpError(422, "You accepted every item. Press Accept instead.", "rule");
 
-  const contestedIds = decision === "contested" ? contestedLines(booking.proposal?.lines ?? [], accepted).map((line) => line.id) : [];
-  const photoIds = Object.keys(evidence);
-  if (photoIds.some((id) => !contestedIds.includes(id))) throw new HttpError(422, "A photo can only go with an item you contest.", "rule");
-  const photos = Object.fromEntries(photoIds.map((id) => [id, { photo: saveEvidence(booking.id, id, evidence[id]) }]));
-
-  const response: RenterResponse = { decision, note: note?.trim() || undefined, amountCents: chargeOf(booking), ...(accepted.length ? { acceptedLineIds: accepted } : {}), ...(photoIds.length ? { evidence: photos } : {}), at: new Date().toISOString() };
+  const response: RenterResponse = { decision, note: note?.trim() || undefined, amountCents: chargeOf(booking), ...(accepted.length ? { acceptedLineIds: accepted } : {}), at: new Date().toISOString() };
   const waiting = booking.status === "awaiting_approval";
   saveBooking({ ...booking, renterState: { ...booking.renterState!, response }, status: decision === "contested" && !waiting ? "contested" : booking.status });
 
@@ -110,12 +86,5 @@ export function respondAsRenter(token: string, decision: RenterResponse["decisio
   }
   // The accepted items go to the approval gate at once; the contested ones wait for the host.
   if (accepted.length && !waiting) requestPartCapture(booking.id);
-  if (decision === "contested") void startSecondLook(booking.id, getContext().channel);
-  return renterView(token);
-}
-
-/** The renter accepts the agent's counter, which the host sent. The charge then goes to the host's approval gate. */
-export function acceptCounterAsRenter(token: string): RenterView {
-  acceptCounter(requireBookingByToken(token).id, getContext().channel);
   return renterView(token);
 }

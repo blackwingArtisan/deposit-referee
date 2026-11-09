@@ -25,16 +25,14 @@ function RenterAnswer({ booking, kind }: { booking: BookingView; kind: "part" | 
   const response = state?.response;
   let text: string;
   let quote: string | undefined;
-  const counterAccepted = booking.secondLook?.status === "accepted";
-  if (counterAccepted && kind !== "part") text = kind === "release" ? "The renter accepted the counter from Claude’s second look: nothing more is charged." : "The renter accepted the counter from Claude’s second look.";
-  else if (kind === "release") text = "Nothing is charged, so the renter doesn’t need to answer first.";
+  if (kind === "release") text = "Nothing is charged, so the renter doesn’t need to answer first.";
   else if (kind === "part") text = `The renter accepted these items and contested the rest.`;
   else if (response?.decision === "accepted") text = `The renter accepted the ${formatExactCents(response.amountCents)} charge.`;
   else if (response?.decision === "contested") {
     text = `The renter contested ${response.acceptedLineIds?.length ? "part of the charge" : formatExactCents(response.amountCents)}. You’re going ahead knowing they disagree.`;
     quote = response.note;
   } else text = state ? `The renter didn’t answer by ${localTime(state.deadline)}.` : "The renter hasn’t answered.";
-  const contested = kind === "charge" && response?.decision === "contested" && !counterAccepted;
+  const contested = kind === "charge" && response?.decision === "contested";
   return (
     <div data-testid="approval-renter-answer" className={contested ? "rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950" : "rounded-lg border border-zinc-200 px-4 py-3 text-sm text-zinc-800"}>
       <p className="flex items-center gap-2 font-medium">
@@ -47,7 +45,7 @@ function RenterAnswer({ booking, kind }: { booking: BookingView; kind: "part" | 
 }
 
 function lineAnswer(booking: BookingView, line: ChargeLine, kind: "part" | "charge" | "release"): string | null {
-  if (kind === "part" || booking.secondLook?.status === "accepted") return "Renter accepts";
+  if (kind === "part") return "Renter accepts";
   const response = booking.renterState?.response;
   if (!response) return null;
   if (response.decision === "accepted") return "Renter accepts";

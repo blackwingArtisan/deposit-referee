@@ -61,16 +61,6 @@ const SIGNATURES: { mediaType: BookingPhoto["mediaType"]; ext: string; matches: 
 const uploadFile = (bookingId: string, key: string, ext: string) => dataPath("photos", `${bookingId}-${key}.${ext}`);
 
 export function saveUpload(bookingId: string, slot: PhotoSlot, dataUrl: string, by: "host" | "renter" = "host"): BookingPhoto {
-  return saveAs(bookingId, by === "renter" ? `renter_${slot}` : slot, dataUrl, by);
-}
-
-/** The renter's photo for one contested line, sent with their contest. Served as evidence_<line id>. */
-export function saveEvidence(bookingId: string, lineId: string, dataUrl: string): BookingPhoto {
-  if (!/^[\w-]{1,40}$/.test(lineId)) throw new HttpError(422, "That item isn't on this charge.", "rule");
-  return saveAs(bookingId, `evidence_${lineId}`, dataUrl, "renter");
-}
-
-function saveAs(bookingId: string, key: string, dataUrl: string, by: "host" | "renter"): BookingPhoto {
   let bytes: Buffer;
   try {
     bytes = Buffer.from(parseDataUrl(dataUrl).base64, "base64");
@@ -81,6 +71,7 @@ function saveAs(bookingId: string, key: string, dataUrl: string, by: "host" | "r
   const kind = SIGNATURES.find((s) => s.matches(bytes));
   if (!kind) throw new HttpError(400, "Upload a JPEG, PNG or WebP photo.", "invalid_photo");
   if (!isReadablePhoto(bytes, kind.mediaType)) throw new HttpError(400, UNREADABLE_PHOTO, "invalid_photo");
+  const key = by === "renter" ? `renter_${slot}` : slot;
   const file = uploadFile(bookingId, key, kind.ext);
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, bytes);
