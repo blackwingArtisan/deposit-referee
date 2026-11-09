@@ -1,5 +1,7 @@
 "use client";
 
+import { secondLookHeadline } from "@/lib/deposit/headline";
+import { Why } from "./why";
 import { ArrowRight, Eye, Send } from "lucide-react";
 import { useKit } from "@/components/kit/kit-provider";
 import { Badge, Button } from "@/components/ui";
@@ -38,7 +40,9 @@ export function SecondLookLineRow({ line, charge, number, checkOut, evidence, de
             {dated}
           </p>
         ) : null}
-        <p className="mt-1 text-zinc-700" data-testid="second-look-reasoning">{line.reasoning}</p>
+        <Why testId="second-look-why" className="mt-1">
+          <p className="text-zinc-700" data-testid="second-look-reasoning">{line.reasoning}</p>
+        </Why>
         {line.price ? <PriceSource price={line.price} className="mt-0.5" /> : null}
         <p className="mt-1 flex items-center gap-1.5 font-semibold tabular-nums" data-testid="second-look-amount">
           <span className={line.toCents < line.fromCents ? "text-zinc-400 line-through" : ""}>{formatExactCents(line.fromCents)}</span>
@@ -95,6 +99,9 @@ export function SecondLookCard({ booking, busy, act }: { booking: BookingView; b
         <h4 className="text-sm font-semibold text-zinc-900">Claude&rsquo;s second look</h4>
         {look.status !== "running" && look.status !== "failed" ? <Badge tone={look.mocked ? "warning" : "brand"} data-testid="second-look-engine">{badge}</Badge> : null}
       </div>
+      <p className={`text-lg font-semibold tracking-tight tabular-nums ${flagged ? "text-amber-900" : "text-zinc-900"}`} data-testid="second-look-headline">
+        {secondLookHeadline(look)}
+      </p>
 
       {look.status === "running" ? (
         <p className="text-sm text-zinc-700" data-testid="second-look-running">
@@ -134,9 +141,14 @@ export function SecondLookCard({ booking, busy, act }: { booking: BookingView; b
             </div>
           ) : null}
           {unchanged ? (
-            <p className="rounded-md bg-white px-3 py-2 text-sm text-zinc-800" data-testid="second-look-unchanged">
-              <span className="font-medium">The second look changes nothing.</span> The renter&rsquo;s photo and note don&rsquo;t show {look.lines.length === 1 ? "this mark" : "these marks"} before the stay, so the charge stays {formatExactCents(acceptedCents + toCents)} and there&rsquo;s no new offer to send. Decide the contested {formatExactCents(fromCents)} below: charge it, lower it or release it.
-            </p>
+            <div className="rounded-md bg-white px-3 py-2 text-sm text-zinc-800" data-testid="second-look-unchanged">
+              <p>
+                <span className="font-medium">The second look changes nothing.</span> Decide the contested {formatExactCents(fromCents)} below: charge it, lower it or release it.
+              </p>
+              <Why testId="second-look-unchanged-why" className="mt-1">
+                <p>The renter&rsquo;s photo and note don&rsquo;t show {look.lines.length === 1 ? "this mark" : "these marks"} before the stay, so the charge stays {formatExactCents(acceptedCents + toCents)} and there&rsquo;s no new offer to send.</p>
+              </Why>
+            </div>
           ) : flagged ? (
             <p className="text-sm text-amber-900" data-testid="second-look-waiting">
               Keep or drop the {flagged === 1 ? "line" : `${flagged} lines`} Claude couldn&rsquo;t tell. Then the agent writes the new offer, or there is none if nothing changes.
