@@ -105,6 +105,9 @@ export function Hero() {
             ))}
           </p>
           <p className="mt-5 max-w-xl text-lg leading-relaxed text-zinc-600">{l.subheadline}</p>
+          <p className="mt-3 max-w-xl text-base font-medium text-zinc-900" data-testid="paypal-reason">
+            {l.paypalReason}
+          </p>
           <div className="mt-8 flex flex-wrap gap-3">
             <ButtonLink href={l.primaryCta.href} size="lg">
               {l.primaryCta.label} <ArrowRight className="size-4" />

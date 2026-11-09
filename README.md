@@ -2,7 +2,11 @@
 
 > **For hosts who rent out a cabin, a room or gear on their own, with no AirCover.** A guest leaves, there's a new scratch, and the guest says it was already there. With Deposit Referee the money stays on a PayPal hold; only what you approve is captured. Claude compares the check-in and check-out photos and boxes the new damage, the renter sees the same evidence and can contest, and nothing moves until the host approves, inside limits set by code.
 
-**Status:** live at https://deposit-referee.onrender.com on the PayPal sandbox with Claude (Sonnet 5.5 for the photos, Haiku 5.5 for the agent), under an app-side daily AI spend cap · **Video (≤3 min):** <!-- TODO: YouTube link --> · **License:** MIT
+**Why PayPal:** one hold takes several captures, for up to 29 days, and the rest is released.
+
+**Status:** live at https://deposit-referee.onrender.com on the PayPal sandbox with Claude (Sonnet 5.5 for the photos, Haiku 5.5 for the agent), under an app-side daily AI spend cap · **Video:** link added at submission · **License:** MIT
+
+**PayPal Agent Toolkit:** reads go through the Toolkit (`get_order`, which the agent's `get_authorization` tool is built on, plus `list_disputes` and `get_dispute`); the money moves (capture, void, reauthorize) go through the Guard, which waits for the host's approval.
 
 **Holds:** PayPal guarantees an authorized deposit for 3 days and lets it be captured until day 29. A charge after day 3 refreshes the hold first (a PayPal reauthorization). That suits stays and gear rentals; it doesn't suit long leases.
 
