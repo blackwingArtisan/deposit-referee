@@ -85,7 +85,7 @@ export async function payInPayPalCardForm(page: Page, opts: { pause?: number } =
 }
 
 /** Creates a booking, places the deposit and adds both photos. */
-export async function toPhotos(page: Page, request: APIRequestContext, opts: { item?: string; checkOut?: "demo" | "upload" | "clean" | "faint" | "two"; checkCalls?: boolean; payWith?: "card-form" | "one-tap" } = {}): Promise<Flow> {
+export async function toPhotos(page: Page, request: APIRequestContext, opts: { item?: string; checkOut?: "demo" | "upload" | "clean" | "faint" | "two"; checkCalls?: boolean; payWith?: "card-form" | "one-tap" | ((renter: Page) => Promise<void>) } = {}): Promise<Flow> {
   const { sandbox, live, mode } = await kitStatus(request);
   const checkOut = opts.checkOut ?? "demo";
 
@@ -107,7 +107,8 @@ export async function toPhotos(page: Page, request: APIRequestContext, opts: { i
   const renter = await openAsRenter(page, await booking());
   await expect(renter.getByTestId("renter-headline")).toHaveText("Place your $300 deposit hold");
   if (sandbox) await expect(renter.getByTestId("paypal-v6-button")).toBeVisible();
-  if (sandbox && opts.payWith === "card-form") await payInPayPalCardForm(renter);
+  if (sandbox && typeof opts.payWith === "function") await opts.payWith(renter);
+  else if (sandbox && opts.payWith === "card-form") await payInPayPalCardForm(renter);
   else {
     await renter.getByTestId(sandbox ? "sandbox-test-card" : "simulate-paypal-approval").click();
     if (!sandbox) await renter.getByTestId("mock-approve").click();

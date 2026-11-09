@@ -1236,8 +1236,9 @@ export class MockPayPal implements PayPalApi {
     const links: T.Link[] = [{ href: base, rel: "self", method: "GET" }];
     if (d.status !== "RESOLVED") {
       links.push({ href: `${base}/accept-claim`, rel: "accept_claim", method: "POST" });
-      if (d.status === "WAITING_FOR_SELLER_RESPONSE") links.push({ href: `${base}/provide-evidence`, rel: "provide_evidence", method: "POST" });
-      links.push({ href: `${base}/send-message`, rel: "send_message", method: "POST" });
+      // As on PayPal: an inquiry takes messages; formal evidence opens once it is a claim.
+      if (d.dispute_life_cycle_stage === "INQUIRY") links.push({ href: `${base}/send-message`, rel: "send_message", method: "POST" });
+      else if (d.status === "WAITING_FOR_SELLER_RESPONSE") links.push({ href: `${base}/provide-evidence`, rel: "provide_evidence", method: "POST" });
     }
     return links;
   }
@@ -1275,6 +1276,7 @@ export class MockPayPal implements PayPalApi {
         const rec = this.getDisputeRec(id);
         const d = rec.dispute;
         if (d.status !== "WAITING_FOR_SELLER_RESPONSE") throw unprocessable("ACTION_NOT_ALLOWED_IN_CURRENT_DISPUTE_STATE", `Evidence can only be provided while WAITING_FOR_SELLER_RESPONSE (dispute is ${d.status}).`, "customer-disputes/v1");
+        if (d.dispute_life_cycle_stage === "INQUIRY") throw unprocessable("ACTION_NOT_ALLOWED_IN_CURRENT_DISPUTE_STATE", "Evidence can't be provided while the dispute is an inquiry; send a message instead.", "customer-disputes/v1");
         if (!input?.evidences?.length) throw invalidRequest("MISSING_REQUIRED_PARAMETER", "At least one evidence is required.");
         for (const ev of input.evidences) {
           if (ev.evidence_type === "PROOF_OF_FULFILLMENT" && !ev.evidence_info?.tracking_info?.length) throw unprocessable("MISSING_TRACKING_INFO", "Tracking info is required for PROOF_OF_FULFILLMENT.", "customer-disputes/v1");
@@ -1294,6 +1296,22 @@ export class MockPayPal implements PayPalApi {
         d.update_time = this.iso();
         d.links = this.disputeLinks(d);
         this.emit("CUSTOMER.DISPUTE.UPDATED", d, `Seller provided evidence for dispute ${d.dispute_id}`);
+        return { links: [{ href: `${API}/v1/customer/disputes/${id}`, rel: "self", method: "GET" as const }] };
+      }),
+
+    sendMessage: (id, message, file) =>
+      this.io("disputes.sendMessage", undefined, () => {
+        const d = this.getDisputeRec(id).dispute;
+        if (d.status === "RESOLVED" || d.dispute_life_cycle_stage !== "INQUIRY") throw unprocessable("ACTION_NOT_ALLOWED_IN_CURRENT_DISPUTE_STATE", `Messages can only be sent while the dispute is an inquiry (it is ${d.dispute_life_cycle_stage}, ${d.status}).`, "customer-disputes/v1");
+        if (!message?.trim()) throw invalidRequest("MISSING_REQUIRED_PARAMETER", "A message is required.");
+        if (message.length > 2000) throw invalidRequest("INVALID_PARAMETER_SYNTAX", "The message can be at most 2000 characters.");
+        if (file && (!["application/pdf", "image/png", "image/jpeg", "image/gif"].includes(file.contentType) || file.data.byteLength > 10 * 1024 * 1024)) throw unprocessable("INVALID_EVIDENCE_FILE", `${file.name}: only PDF/PNG/JPEG/GIF under 10 MB are accepted.`, "customer-disputes/v1");
+        d.messages = [...(d.messages ?? []), { posted_by: "SELLER", time_posted: this.iso(), content: message, ...(file ? { documents: [{ name: file.name }] } : {}) }];
+        // PayPal now waits on the buyer, as the sandbox does after a seller's message.
+        d.status = "WAITING_FOR_BUYER_RESPONSE";
+        d.update_time = this.iso();
+        d.links = this.disputeLinks(d);
+        this.emit("CUSTOMER.DISPUTE.UPDATED", d, `Seller sent a message on dispute ${d.dispute_id}`);
         return { links: [{ href: `${API}/v1/customer/disputes/${id}`, rel: "self", method: "GET" as const }] };
       }),
 
@@ -1356,6 +1374,21 @@ export class MockPayPal implements PayPalApi {
   }
 
   /** Dev helper mirroring the sandbox-only adjudicate endpoint. */
+  /** Dev helper: the buyer escalates an inquiry to a claim, and PayPal asks the seller for evidence. */
+  simulateDisputeEscalation(disputeId: string): Promise<T.Dispute> {
+    return this.io("dev.escalate", undefined, () => {
+      const d = this.getDisputeRec(disputeId).dispute;
+      if (d.status === "RESOLVED" || d.dispute_life_cycle_stage !== "INQUIRY") throw unprocessable("ACTION_NOT_ALLOWED_IN_CURRENT_DISPUTE_STATE", "Only an open inquiry can be escalated.", "customer-disputes/v1");
+      d.dispute_life_cycle_stage = "CHARGEBACK";
+      d.status = "WAITING_FOR_SELLER_RESPONSE";
+      d.dispute_state = "REQUIRED_ACTION";
+      d.update_time = this.iso();
+      d.links = this.disputeLinks(d);
+      this.emit("CUSTOMER.DISPUTE.UPDATED", d, `Dispute ${d.dispute_id} escalated to a claim`);
+      return clone(d);
+    });
+  }
+
   simulateDisputeResolution(disputeId: string, outcome: "SELLER_FAVOR" | "BUYER_FAVOR"): Promise<T.Dispute> {
     return this.io("dev.adjudicate", undefined, () => {
       const rec = this.getDisputeRec(disputeId);

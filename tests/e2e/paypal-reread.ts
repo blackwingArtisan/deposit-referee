@@ -47,3 +47,47 @@ export async function tryCapture(authorizationId: string, value: string): Promis
   const body = (await res.json().catch(() => ({}))) as { details?: { issue?: string }[] };
   return { status: res.status, issue: body.details?.[0]?.issue };
 }
+
+export interface PayPalDispute {
+  dispute_id: string;
+  status: string;
+  reason: string;
+  dispute_amount: Amount;
+  disputed_transactions: { seller_transaction_id: string }[];
+  dispute_life_cycle_stage?: string;
+  evidences?: { evidence_type: string; documents?: { name: string }[] }[];
+  messages?: { posted_by: string; documents?: { name: string }[] }[];
+  links?: { rel: string }[];
+}
+
+export async function readDispute(disputeId: string): Promise<PayPalDispute> {
+  return read(`/v1/customer/disputes/${disputeId}`, await token());
+}
+
+/**
+ * Escalates an inquiry to a claim, the step a renter takes from their PayPal account when the
+ * messages don't settle it. A test step only (the app never escalates); not a money move.
+ */
+export async function escalateDispute(disputeId: string, note: string): Promise<{ status: number; issue?: string; debugId: string | null }> {
+  // PayPal offers escalate a little after the seller's message lands; wait for the link first.
+  for (let i = 0; i < 30; i++) {
+    const links = (await readDispute(disputeId)).links?.map((l) => l.rel) ?? [];
+    if (links.includes("escalate")) break;
+    await new Promise((r) => setTimeout(r, 10_000));
+  }
+  const res = await fetch(`${API}/v1/customer/disputes/${disputeId}/escalate`, { method: "POST", headers: { Authorization: `Bearer ${await token()}`, "Content-Type": "application/json" }, body: JSON.stringify({ note }) });
+  const body = (await res.json().catch(() => ({}))) as { details?: { issue?: string }[] };
+  return { status: res.status, issue: body.details?.[0]?.issue, debugId: res.headers.get("paypal-debug-id") };
+}
+
+/** The CUSTOMER.DISPUTE.CREATED event PayPal sent for a dispute, if it is in PayPal's recent event list. */
+export async function disputeCreatedEvent(disputeId: string): Promise<{ id: string; create_time: string } | undefined> {
+  // PayPal's event list can trail the dispute by a minute or two, so look again for a while.
+  for (let i = 0; i < 12; i++) {
+    if (i) await new Promise((r) => setTimeout(r, 10_000));
+    const { events } = await read<{ events: { id: string; create_time: string; resource?: { dispute_id?: string } }[] }>("/v1/notifications/webhooks-events?event_type=CUSTOMER.DISPUTE.CREATED&page_size=50", await token());
+    const event = (events ?? []).find((e) => e.resource?.dispute_id === disputeId);
+    if (event) return event;
+  }
+  return undefined;
+}
