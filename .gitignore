@@ -55,3 +55,5 @@ screenshots/
 # other browser engines
 test-results-*/
 videos/*.cuts.json
+videos/*.voiceover.json
+videos/voiceover.json
