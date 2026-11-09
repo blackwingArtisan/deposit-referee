@@ -158,6 +158,8 @@ test("lists carry no renter links, and the ledger holds only this app's PayPal r
 test("a first visit lands on the researched problem, labelled samples with their PayPal calls, and the blind test", async ({ page, request }) => {
   await page.goto("/");
   await expect(page.getByTestId("landing-headline")).toHaveText("More than half of hosts have had a guest damage their place.");
+  // Why PayPal, in one line in the hero.
+  await expect(page.getByTestId("paypal-reason")).toHaveText("Why PayPal: one hold takes several captures, for up to 29 days, and the rest is released.");
   await expect(page.getByTestId("headline-sources").getByRole("link")).toHaveCount(2);
   await expect(page.getByTestId("pain-point")).toHaveCount(4);
   for (const point of await page.getByTestId("pain-point").all()) expect(await point.getByRole("link").count()).toBeGreaterThan(0);
