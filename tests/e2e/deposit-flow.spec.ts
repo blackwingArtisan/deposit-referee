@@ -9,8 +9,12 @@ import { expect, test, type Page } from "@playwright/test";
 import { dollars, expectCallsSurviveReload, expectMoneyStrip, expectNoSidewaysScroll, headline, kitStatus, openAsRenter, openDemoTools, renterAccepts, renterContests, setCharge, toPhotos, toProposal, unfold, type Flow } from "./booking-flow";
 import { readPayPalObjects, tryCapture } from "./paypal-reread";
 import { priceOf } from "../../src/lib/deposit/prices";
+import type { ChargeLine } from "../../src/lib/deposit/types";
 
 const DEPOSIT_CENTS = 30_000;
+
+/** The stain line, by its price-table row (or its words): live AI lists the two marks in either order. */
+const isStain = (line: ChargeLine) => (line.price ? line.price.type === "stain" : /stain/i.test(line.description));
 
 /** Holds at the approval card, then proves no capture was asked of PayPal before the click. */
 async function expectNoCaptureBeforeApproval(page: Page, flow: Flow) {
@@ -433,8 +437,10 @@ test("split: the renter accepts one item and contests the other; the accepted pa
   const flow = await toProposal(page, request, { checkOut: "two", item: "Lakeside cabin, weekend of Nov 27" });
   const reviewed = await flow.booking();
   const lines = reviewed.proposal!.lines;
-  test.skip(lines.length < 2, `The review found ${lines.length} chargeable item(s) on the two-marks photo, so there is nothing to split`);
-  const [accepted, ...contestedLines] = lines;
+  // By what each line is, not where it is listed: the renter contests the stain, as their note says.
+  const contestedLines = lines.filter(isStain);
+  const accepted = lines.find((line) => !isStain(line))!;
+  test.skip(!contestedLines.length || !accepted || lines.length !== contestedLines.length + 1, `The review found ${lines.map((l) => l.price?.type ?? "unpriced").join(", ") || "nothing"} on the two-marks photo, not the stain and one other mark, so there is nothing to split`);
   const acceptedCents = accepted.amountCents;
   const contestedCents = contestedLines.reduce((sum, line) => sum + line.amountCents, 0);
 
@@ -718,4 +724,151 @@ test("the wait for the comparison is a live list of steps, with Claude's elapsed
   await expect(page.getByTestId("ai-proposal")).toBeVisible({ timeout: 90_000 });
   for (const step of ["hold", "photos", "compare", "price", "proposal"]) await expect(page.getByTestId(`wait-step-${step}`)).toHaveAttribute("data-state", "done");
   await expect(page.getByTestId("wait-step-compare")).toContainText("Claude compared the photos");
+});
+
+/** The host sends the agent's counter; the renter sees it on their phone and accepts. */
+async function sendAndAcceptCounter(page: Page, renter: Page, shot: string, flow: Flow, fromCents: number, toCents: number) {
+  await page.getByTestId("send-counter").click();
+  await expect(page.getByTestId("second-look").getByTestId("counter-sent")).toBeVisible();
+  await expect(renter.getByTestId("renter-counter")).toBeVisible({ timeout: 15_000 });
+  await expect(renter.getByTestId("renter-headline")).toHaveText(`Counter: ${dollars(toCents)} for what you contested`);
+  await expect(renter.getByTestId("renter-counter-total")).toContainText(`${dollars(fromCents)} → ${dollars(toCents)}`);
+  await expectNoSidewaysScroll(renter);
+  await renter.screenshot({ path: `screenshots/${shot}-renter-${flow.mode}-${flow.live ? "live-ai" : "mock-ai"}.png`, fullPage: true });
+  await renter.getByTestId("accept-counter").click();
+  await expect(renter.getByTestId("renter-counter-accepted")).toBeVisible();
+}
+
+/**
+ * The second look, end to end: the renter accepts one mark and contests the other with a note and
+ * their own photo; the host approves the accepted part; Claude re-reads each contested line against
+ * the renter's evidence and code maps the verdict (never up). If that lowers anything, the agent
+ * writes a counter, the host sends it and the renter accepts; if it changes nothing, the card says
+ * so and the host settles the contested part as it stands. Either way the settlement goes through
+ * the approval gate. Lines are picked by what they are, never by position. Tolerant of live AI: it
+ * checks that no line went up and that PayPal holds exactly what the screen says.
+ */
+async function secondLook(page: Page, request: Parameters<typeof toProposal>[1], opts: { item: string; photo: string; shot: string; contest: "stain" | "other mark" }) {
+  const flow = await toProposal(page, request, { checkOut: "two", item: opts.item });
+  const reviewed = await flow.booking();
+  const lines = reviewed.proposal!.lines;
+  const stain = lines.filter(isStain);
+  const others = lines.filter((line) => !isStain(line));
+  test.skip(!stain.length || !others.length, `The review found ${lines.map((l) => l.price?.type ?? "unpriced").join(", ") || "nothing"} on the two-marks photo, not the stain and another mark, so there is nothing to split`);
+  const contestedLines = opts.contest === "stain" ? stain : others;
+  const acceptedLines = opts.contest === "stain" ? others : stain;
+  const acceptedCents = acceptedLines.reduce((sum, l) => sum + l.amountCents, 0);
+
+  // The renter, on their phone: accept one mark, contest the other with a note and a photo.
+  const renter = await openAsRenter(page, reviewed);
+  for (const accepted of acceptedLines) {
+    await renter.getByTestId(`contest-line-${accepted.id}`).uncheck();
+    await expect(renter.getByTestId(`evidence-upload-${accepted.id}`)).toHaveCount(0);
+  }
+  await renter.getByTestId(`evidence-upload-${contestedLines[0].id}`).setInputFiles(opts.photo);
+  await expect(renter.getByTestId(`evidence-preview-${contestedLines[0].id}`)).toBeVisible();
+  await renter.getByTestId("contest-note").fill("The stain was there when we arrived.");
+  await renter.getByTestId("contest").click();
+  await expect(renter.getByTestId("renter-contested")).toBeVisible();
+  await expect(renter.getByTestId("renter-second-look")).toBeVisible();
+  await expectNoSidewaysScroll(renter);
+
+  // The host approves the accepted part first: one capture, not final, so the rest stays on the hold.
+  await expect(page.getByTestId("approval-prompt")).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByTestId("approval-money")).toHaveText(`Capture ${dollars(acceptedCents)} · keep ${dollars(DEPOSIT_CENTS - acceptedCents)} on hold`);
+  await page.getByTestId("approve-button").click();
+  await expect(page.getByTestId("part-capture")).toBeVisible({ timeout: 60_000 });
+
+  // Claude's second look, on the host's page.
+  const card = page.getByTestId("second-look");
+  await expect(card).toHaveAttribute("data-status", "ready", { timeout: 120_000 });
+  const look = (await flow.booking()).secondLook!;
+  expect(look.lines.map((l) => l.lineId)).toEqual(contestedLines.map((l) => l.id));
+  for (const line of look.lines) {
+    // The model names a verdict; code sets the amount, and it never goes up.
+    expect(["new", "already_there", "smaller", "unsure"]).toContain(line.verdict);
+    expect(line.toCents).toBeLessThanOrEqual(line.fromCents);
+    expect(line.fromCents).toBe(contestedLines.find((l) => l.id === line.lineId)!.amountCents);
+  }
+  const fromCents = look.lines.reduce((sum, l) => sum + l.fromCents, 0);
+  const toCents = look.lines.reduce((sum, l) => sum + l.toCents, 0);
+  await expect(card.getByTestId("second-look-total")).toHaveText(new RegExp(`Total charge\\s*${dollars(acceptedCents + fromCents).replace("$", "\\$")}\\s*${dollars(acceptedCents + toCents).replace("$", "\\$")}`));
+  await expect(card.getByTestId("damage-box").filter({ visible: true })).toHaveCount(look.lines.length);
+  await expect(card.locator('[data-testid="damage-box"][data-state="dropped"]')).toHaveCount(look.lines.filter((l) => l.toCents === 0).length);
+  const unchanged = look.lines.every((l) => l.toCents >= l.fromCents);
+  if (unchanged) {
+    // Nothing to offer, said plainly: no counter and no greyed-out button with no reason.
+    await expect(card.getByTestId("second-look-unchanged")).toContainText(`The second look changes nothing.`);
+    await expect(card.getByTestId("second-look-unchanged")).toContainText(`the charge stays ${dollars(acceptedCents + fromCents)}`);
+    await expect(card.getByTestId("send-counter")).toHaveCount(0);
+  } else {
+    // The agent writes the counter after the lines are in; a live agent can take a while.
+    await expect(card.getByTestId("counter-rationale")).not.toBeEmpty({ timeout: 90_000 });
+  }
+  // Both photos side by side: the host's check-out with the box, and the renter's own photo, loaded.
+  await expect(card.getByRole("img", { name: "Renter's photo" })).toHaveCount(look.lines.filter((l) => l.withPhoto).length);
+  await expect.poll(() => card.locator("img").evaluateAll((imgs) => imgs.every((img) => (img as HTMLImageElement).complete && (img as HTMLImageElement).naturalWidth > 0)), { timeout: 15_000 }).toBe(true);
+  await expectNoSidewaysScroll(page);
+  await card.screenshot({ path: `screenshots/${opts.shot}-host-${flow.mode}-${flow.live ? "live-ai" : "mock-ai"}.png` });
+  console.log(`Second look (${flow.live ? "live AI" : "mock AI"}, ${look.model ?? "mock"}): ${look.lines.map((l) => `${l.description.slice(0, 40)}… ${l.verdict} ${dollars(l.fromCents)} -> ${dollars(l.toCents)}`).join("; ")}; counter: ${look.counter ? `${look.counter.engine}: ${look.counter.rationale}` : "none, the second look changed nothing"}`);
+
+  const heldCents = DEPOSIT_CENTS - acceptedCents;
+  if (unchanged) {
+    // The host settles the contested part as it stands, through the same approval gate.
+    await expect(page.getByTestId("charge-preview")).toContainText(`Charge exactly ${dollars(fromCents)} and release ${dollars(heldCents - fromCents)}`);
+    await page.getByTestId("request-approval").click();
+  } else await sendAndAcceptCounter(page, renter, opts.shot, flow, fromCents, toCents);
+
+  // Back at the host's approval gate: a capture of what's left, or a release if nothing is.
+  const prompt = page.getByTestId("approval-prompt");
+  await expect(prompt).toBeVisible({ timeout: 30_000 });
+  if (!unchanged) await expect(prompt.getByTestId("approval-renter-answer")).toContainText("accepted the counter");
+  await expect(prompt.getByTestId("approval-money")).toHaveText(`Capture ${dollars(toCents)} · release ${dollars(heldCents - toCents)}`);
+  await page.getByTestId("approve-button").click();
+
+  const totalCents = acceptedCents + toCents;
+  await expect(page.getByTestId("ruling-headline")).toHaveText(`${headline(totalCents)} captured, ${headline(DEPOSIT_CENTS - totalCents)} released`, { timeout: 60_000 });
+  await expectMoneyStrip(page, flow, [`${headline(DEPOSIT_CENTS)} held`, `${headline(acceptedCents)} captured`, ...(toCents ? [`${headline(toCents)} captured`] : []), `${headline(DEPOSIT_CENTS - totalCents)} released`]);
+  await expect(renter.getByTestId("renter-headline")).toContainText(`${headline(totalCents)} charged`, { timeout: 15_000 });
+  await page.screenshot({ path: `screenshots/${opts.shot}-ruling-${flow.mode}-${flow.live ? "live-ai" : "mock-ai"}.png`, fullPage: true });
+
+  const done = await flow.booking();
+  expect(done.settlement).toMatchObject({ capturedCents: totalCents, releasedCents: DEPOSIT_CENTS - totalCents, authorizationStatus: "VOIDED" });
+  if (flow.sandbox) {
+    // Straight from PayPal: every capture on the order, and the hold voided.
+    const ids = [done.partCapture!.captureId!, ...(toCents ? [done.settlement!.captureId!] : [])];
+    const { order, authorization } = await readPayPalObjects(done.orderId!, done.authorizationId!);
+    const byId = (rows: string[][]) => [...rows].sort((x, y) => x[0].localeCompare(y[0]));
+    expect(byId(order.purchase_units[0].payments.captures.map((c) => [c.id, c.amount.value]))).toEqual(byId([[ids[0], (acceptedCents / 100).toFixed(2)], ...(toCents ? [[ids[1], (toCents / 100).toFixed(2)]] : [])]));
+    for (const id of ids) {
+      const { capture } = await readPayPalObjects(done.orderId!, done.authorizationId!, id);
+      expect(capture!.status).toBe("COMPLETED");
+      expect(capture!.final_capture).toBe(false);
+    }
+    expect(authorization.status).toBe("VOIDED");
+    const further = await tryCapture(done.authorizationId!, "1.00");
+    expect(further.status).toBe(422);
+    console.log(`PayPal re-read (second look, ${opts.shot}): order ${order.id} ${order.status}; authorization ${authorization.id} ${authorization.status} ${authorization.amount.value}; captures ${order.purchase_units[0].payments.captures.map((c) => `${c.id} ${c.amount.value}`).join(", ")}; further $1.00 capture refused: ${further.status} ${further.issue}`);
+  }
+  await renter.context().close();
+  return { flow, look, toCents };
+}
+
+test("second look: the renter contests the stain with their check-in close-up, Claude re-reads it, and the charge can only fall", { tag: "@live-ai" }, async ({ page, request }) => {
+  const { look, flow } = await secondLook(page, request, { item: "Lakeside cabin, weekend of Dec 11", photo: "public/demo-photos/renter-check-in-stain.jpg", shot: "second-look", contest: "stain" });
+  if (!flow.live) {
+    // The close-up shows the stain before the stay: it goes to $0, and its box greys.
+    expect(look.lines.map((l) => [l.verdict, l.toCents])).toEqual([["already_there", 0]]);
+  }
+});
+
+test("second look, smaller: a photo that shows the mark smaller lowers it a size, then two captures from one hold", async ({ page, request }) => {
+  const { look, flow } = await secondLook(page, request, { item: "Lakeside cabin, weekend of Dec 18", photo: "public/demo-photos/cabin-check-in.jpg", shot: "second-look-smaller", contest: "stain" });
+  if (!flow.live) expect(look.lines.map((l) => [l.verdict, l.fromCents, l.toCents])).toEqual([["smaller", 10_000, 5_000]]);
+});
+
+test("second look, unchanged: the stain close-up sent against the gouge changes nothing, and the card says so", { tag: "@live-ai" }, async ({ page, request }) => {
+  const { look, flow } = await secondLook(page, request, { item: "Lakeside cabin, weekend of Dec 25", photo: "public/demo-photos/renter-check-in-stain.jpg", shot: "second-look-unchanged", contest: "other mark" });
+  // The close-up shows the stain, a different spot: the gouge stands at its price.
+  if (!flow.live) expect(look.lines.map((l) => [l.verdict, l.fromCents, l.toCents])).toEqual([["new", 15_000, 15_000]]);
 });

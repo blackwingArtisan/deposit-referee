@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState, type ChangeEvent } from "react";
 import { useParams } from "next/navigation";
-import { Check, ImagePlus, Lock, MessageSquareWarning, Upload } from "lucide-react";
+import { Camera, Check, Eye, ImagePlus, Lock, MessageSquareWarning, Upload, X } from "lucide-react";
 import { CheckoutButton } from "@/components/paypal/checkout-button";
 import { useKit } from "@/components/kit/kit-provider";
 import { useToast } from "@/components/toast";
@@ -12,6 +12,7 @@ import type { PhotoSlot, RenterView } from "@/lib/deposit/types";
 import { DamageItems, PriceTable } from "./damage-items";
 import { photoDataUrl } from "./photo-file";
 import { PhotoFrame, RENTER_SLOTS } from "./photo-frame";
+import { SecondLookLineRow } from "./second-look";
 
 const longDate = (iso: string) => new Date(iso).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
 
@@ -19,6 +20,7 @@ function Headline({ view }: { view: RenterView }) {
   if (view.status === "draft") return <>Place your {formatCents(view.depositCents)} deposit hold</>;
   if (view.settled) return <>{formatCents(view.settled.capturedCents)} charged, {formatCents(view.settled.releasedCents)} released</>;
   if (!view.proposal) return <>Your {formatCents(view.depositCents)} deposit is on hold</>;
+  if (view.secondLook?.status === "sent" && view.secondLook.lines) return <>Counter: {formatExactCents(view.secondLook.lines.reduce((sum, l) => sum + l.toCents, 0))} for what you contested</>;
   if (view.split?.chargedCents) return <>{formatExactCents(view.split.chargedCents)} charged for what you accepted. {formatExactCents(view.split.contestedCents)} you contested is with the host.</>;
   if (view.chargeCents === 0) return <>No charge proposed. Your {formatCents(view.depositCents)} deposit is going back.</>;
   return <>Proposed charge: {formatExactCents(view.chargeCents)}. {formatExactCents(view.releaseCents)} goes back to you.</>;
@@ -35,6 +37,8 @@ export function RenterScreen() {
   // With more than one item, the renter can accept some and contest the rest. Ticked = contested.
   const [contested, setContested] = useState<Record<string, boolean>>({});
   const [busy, setBusy] = useState<string | null>(null);
+  // The renter's own photo for a contested item, by line id, sent with the contest.
+  const [evidence, setEvidence] = useState<Record<string, string>>({});
 
   const load = useCallback(() => kitFetch<RenterView>(`/api/renter/${token}`), [kitFetch, token]);
 
@@ -83,12 +87,43 @@ export function RenterScreen() {
     }
   }
 
+  async function attach(lineId: string, event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    try {
+      const dataUrl = await photoDataUrl(file);
+      setEvidence((all) => ({ ...all, [lineId]: dataUrl }));
+    } catch (e) {
+      toast({ title: "The photo didn't go through", description: (e as Error).message, variant: "error", durationMs: 7000 });
+    }
+  }
+
+  const dropEvidence = (lineId: string) =>
+    setEvidence((all) => {
+      const next = { ...all };
+      delete next[lineId];
+      return next;
+    });
+
+  async function acceptCounter() {
+    setBusy("counter");
+    try {
+      setView(await kitFetch<RenterView>(`/api/renter/${token}/counter`, { method: "POST" }));
+    } catch (e) {
+      toast({ title: "That didn't go through", description: (e as Error).message, variant: "error", durationMs: 7000 });
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function respond(decision: "accepted" | "contested") {
     setBusy(decision);
     try {
       const lines = view?.proposal?.lines ?? [];
       const accepted = lines.length > 1 ? lines.filter((line) => contested[line.id] === false).map((line) => line.id) : [];
-      setView(await kitFetch<RenterView>(`/api/renter/${token}/respond`, { json: { decision, note: decision === "contested" ? note : undefined, ...(decision === "contested" && accepted.length ? { accepted_line_ids: accepted } : {}) } }));
+      const photos = decision === "contested" ? Object.entries(evidence).filter(([id]) => !accepted.includes(id) && lines.some((line) => line.id === id)).map(([line_id, data_url]) => ({ line_id, data_url })) : [];
+      setView(await kitFetch<RenterView>(`/api/renter/${token}/respond`, { json: { decision, note: decision === "contested" ? note : undefined, ...(decision === "contested" && accepted.length ? { accepted_line_ids: accepted } : {}), ...(photos.length ? { evidence: photos } : {}) } }));
     } catch (e) {
       toast({ title: "That didn't go through", description: (e as Error).message, variant: "error", durationMs: 7000 });
     } finally {
@@ -110,7 +145,7 @@ export function RenterScreen() {
       <header>
         <p className="text-sm font-medium text-brand">Deposit for {view.item}</p>
         <h1 data-testid="renter-headline" className="mt-1 text-2xl font-semibold tracking-tight text-zinc-900 tabular-nums sm:text-3xl"><Headline view={view} /></h1>
-        <p className="mt-2 text-[15px] text-zinc-600">Hi {view.renter}. Nothing is charged while this is open. The money is held by PayPal, not taken.</p>
+        <p className="mt-2 text-[15px] text-zinc-600">Hi {view.renter}. {split?.chargedCents ? `Only the ${formatExactCents(split.chargedCents)} you accepted is charged. The rest is held by PayPal, not taken, while this is open.` : "Nothing is charged while this is open. The money is held by PayPal, not taken."}</p>
       </header>
 
       {view.status === "draft" ? (
@@ -136,7 +171,7 @@ export function RenterScreen() {
         <div data-testid="renter-hold" className="flex items-start gap-3 rounded-lg bg-brand-50/70 px-4 py-3 text-sm text-zinc-700">
           <Lock className="mt-0.5 size-4 shrink-0 text-brand" aria-hidden />
           <div className="min-w-0">
-            <p className="font-medium text-zinc-900" data-testid="renter-hold-headline">{formatCents(view.hold.authorizedCents)} authorized, nothing charged</p>
+            <p className="font-medium text-zinc-900" data-testid="renter-hold-headline">{split?.chargedCents ? `${formatExactCents(split.chargedCents)} charged, ${formatExactCents(view.hold.authorizedCents - split.chargedCents)} still held` : `${formatCents(view.hold.authorizedCents)} authorized, nothing charged`}</p>
             <p className="mt-0.5">PayPal is holding it on your account. Any charge the host proposes shows here first, and you can answer it line by line.</p>
             {view.hold.expiresAt ? <p className="mt-0.5" data-testid="renter-hold-ends">The hold ends on {longDate(view.hold.expiresAt)} at the latest. Anything not charged goes back to you.</p> : null}
           </div>
@@ -212,6 +247,8 @@ export function RenterScreen() {
         </section>
       ) : null}
 
+      {view.secondLook ? <RenterSecondLook view={view} busy={busy} onAccept={acceptCounter} /> : null}
+
       {response?.decision === "contested" ? (
         <div data-testid="renter-contested" className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950">
           <p className="font-semibold">{split ? `You accepted ${formatExactCents(split.acceptedCents)} and contested ${formatExactCents(split.contestedCents)}. The contested part is stopped until the host decides.` : "Your note went to the host. The charge is stopped until they decide."}</p>
@@ -231,15 +268,20 @@ export function RenterScreen() {
               <fieldset className="space-y-2" data-testid="contest-lines">
                 <legend className="mb-1 text-sm font-medium text-zinc-900">Which items do you disagree with?</legend>
                 {lines.map((line) => (
-                  <label key={line.id} className="flex items-start gap-2 text-sm text-zinc-700">
-                    <input type="checkbox" className="mt-0.5 size-4 accent-brand" checked={contested[line.id] !== false} onChange={(e) => setContested((all) => ({ ...all, [line.id]: e.target.checked }))} data-testid={`contest-line-${line.id}`} />
-                    <span>{line.description} <span className="tabular-nums text-zinc-500">({formatExactCents(line.amountCents)})</span></span>
-                  </label>
+                  <div key={line.id} className="space-y-1.5">
+                    <label className="flex items-start gap-2 text-sm text-zinc-700">
+                      <input type="checkbox" className="mt-0.5 size-4 accent-brand" checked={contested[line.id] !== false} onChange={(e) => setContested((all) => ({ ...all, [line.id]: e.target.checked }))} data-testid={`contest-line-${line.id}`} />
+                      <span>{line.description} <span className="tabular-nums text-zinc-500">({formatExactCents(line.amountCents)})</span></span>
+                    </label>
+                    {contested[line.id] !== false ? <EvidencePicker lineId={line.id} dataUrl={evidence[line.id]} disabled={!!busy} onPick={attach} onClear={dropEvidence} /> : null}
+                  </div>
                 ))}
                 <p className="text-xs text-zinc-500">Untick an item to accept it. Accepted items can be charged right away; the rest waits for the host.</p>
               </fieldset>
+            ) : lines.length === 1 ? (
+              <EvidencePicker lineId={lines[0].id} dataUrl={evidence[lines[0].id]} disabled={!!busy} onPick={attach} onClear={dropEvidence} />
             ) : null}
-            <Field label="Disagree? Tell the host why" htmlFor="contest-note" hint="Contesting stops the charge and sends this note to the host. This isn't a PayPal dispute.">
+            <Field label="Disagree? Tell the host why" htmlFor="contest-note" hint="Contesting stops the charge and sends this note, and any photo, to the host. Claude looks again with your evidence, and a contested item can only go down. This isn't a PayPal dispute.">
               <Textarea id="contest-note" maxLength={500} value={note} onChange={(e) => setNote(e.target.value)} data-testid="contest-note" />
             </Field>
             <div className="flex flex-wrap gap-2">
@@ -257,5 +299,67 @@ export function RenterScreen() {
         </Card>
       ) : null}
     </main>
+  );
+}
+
+/** An optional photo of one contested item, from the renter's camera or files. */
+function EvidencePicker({ lineId, dataUrl, disabled, onPick, onClear }: { lineId: string; dataUrl?: string; disabled: boolean; onPick: (lineId: string, e: ChangeEvent<HTMLInputElement>) => void; onClear: (lineId: string) => void }) {
+  return (
+    <div className="ml-6 flex flex-wrap items-center gap-2" data-testid={`evidence-${lineId}`}>
+      {dataUrl ? (
+        <>
+          {/* eslint-disable-next-line @next/next/no-img-element -- a local preview of the renter's own photo */}
+          <img src={dataUrl} alt="Your photo for this item" className="h-14 w-20 rounded object-cover" data-testid={`evidence-preview-${lineId}`} />
+          <button type="button" className="inline-flex items-center gap-1 text-xs text-zinc-600 underline underline-offset-2" disabled={disabled} onClick={() => onClear(lineId)}>
+            <X className="size-3" aria-hidden /> Remove
+          </button>
+        </>
+      ) : (
+        <label className="inline-flex h-8 cursor-pointer items-center justify-center gap-2 rounded-lg border border-zinc-200 px-3 text-sm font-medium text-zinc-700 hover:bg-zinc-100 focus-within:ring-2 focus-within:ring-brand-300">
+          <Camera className="size-4" aria-hidden /> Add your photo (optional)
+          <input type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" disabled={disabled} onChange={(e) => onPick(lineId, e)} data-testid={`evidence-upload-${lineId}`} />
+        </label>
+      )}
+    </div>
+  );
+}
+
+/** Claude's second look, as the renter sees it: running, with the host, then the counter to accept. */
+function RenterSecondLook({ view, busy, onAccept }: { view: RenterView; busy: string | null; onAccept: () => void }) {
+  const look = view.secondLook!;
+  if (look.status === "running" || look.status === "with_host") {
+    return (
+      <p data-testid="renter-second-look" data-status={look.status} className="flex items-start gap-2 rounded-lg bg-brand-50/70 px-4 py-3 text-sm text-zinc-800">
+        <Eye className="mt-0.5 size-4 shrink-0 text-brand" aria-hidden />
+        {look.status === "running" ? "Claude is taking a second look at what you contested, with your evidence. A contested item can only go down." : "Claude's second look is with the host. You'll see their answer here."}
+      </p>
+    );
+  }
+  const lines = look.lines ?? [];
+  const from = lines.reduce((sum, l) => sum + l.fromCents, 0);
+  const to = lines.reduce((sum, l) => sum + l.toCents, 0);
+  const proposal = view.proposal?.lines ?? [];
+  return (
+    <Card>
+      <CardBody className="space-y-4 py-6" data-testid="renter-counter" data-status={look.status}>
+        <div>
+          <h2 className="text-sm font-semibold text-zinc-900">The host&rsquo;s counter, from Claude&rsquo;s second look</h2>
+          <p className="mt-1 text-sm text-zinc-700" data-testid="renter-counter-total">What you contested: {formatExactCents(from)} &rarr; {formatExactCents(to)}</p>
+        </div>
+        <ul className="space-y-5">
+          {lines.map((line, i) => (
+            <SecondLookLineRow key={line.lineId} line={line} charge={proposal.find((l) => l.id === line.lineId)} number={i + 1} checkOut={view.photos.check_out} evidence={view.renterState?.response?.evidence?.[line.lineId]?.photo} />
+          ))}
+        </ul>
+        {look.rationale ? <p className="text-sm text-zinc-700" data-testid="renter-counter-rationale">{look.rationale}</p> : null}
+        {look.canAccept ? (
+          <Button icon={<Check className="size-4" />} loading={busy === "counter"} disabled={!!busy} onClick={onAccept} data-testid="accept-counter">
+            Accept the counter: {formatExactCents(to)}
+          </Button>
+        ) : (
+          <p className="text-sm text-zinc-700" data-testid="renter-counter-accepted">You accepted the counter. The host approves the final charge, and anything not charged goes back to you.</p>
+        )}
+      </CardBody>
+    </Card>
   );
 }

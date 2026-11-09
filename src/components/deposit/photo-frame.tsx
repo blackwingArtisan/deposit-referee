@@ -33,7 +33,10 @@ function PhotoSourceLine({ photo }: { photo: BookingPhoto }) {
 
 /** A photo, its source, the AI's red boxes and its amber worth-a-look boxes. Box positions are fractions, so they scale with the photo. */
 /** `on` is which check-out photo this is; only boxes drawn on it show. Numbering stays the list's. */
-export function PhotoFrame({ label, photo, items = [], looks = [], on = "check_out" }: { label: string; photo: BookingPhoto; items?: Pick<DamageItem, "description" | "box" | "photo">[]; looks?: Pick<DamageItem, "description" | "box" | "photo">[]; on?: FindingPhoto }) {
+/** An item with `dropped` set was taken off the charge by Claude's second look: its box shows grey, with why. */
+type BoxItem = Pick<DamageItem, "description" | "box" | "photo"> & { dropped?: string; number?: number };
+
+export function PhotoFrame({ label, photo, items = [], looks = [], on = "check_out" }: { label: string; photo: BookingPhoto; items?: BoxItem[]; looks?: Pick<DamageItem, "description" | "box" | "photo">[]; on?: FindingPhoto }) {
   const here = (item: Pick<DamageItem, "photo">) => (item.photo ?? "check_out") === on;
   return (
     <figure className="min-w-0">
@@ -45,13 +48,17 @@ export function PhotoFrame({ label, photo, items = [], looks = [], on = "check_o
             <div
               key={i}
               data-testid="damage-box"
+              data-state={item.dropped ? "dropped" : "charged"}
               role="img"
-              aria-label={`Damage ${i + 1}: ${item.description}`}
-              className="absolute rounded-[3px] border-[3px] border-red-600 shadow-[0_0_0_1.5px_rgba(255,255,255,0.85)]"
+              aria-label={`Damage ${item.number ?? i + 1}: ${item.description}${item.dropped ? `. Not charged: ${item.dropped}` : ""}`}
+              className={`absolute rounded-[3px] border-[3px] shadow-[0_0_0_1.5px_rgba(255,255,255,0.85)] transition-colors duration-700 ${item.dropped ? "border-zinc-400 bg-zinc-200/30" : "border-red-600"}`}
               style={{ left: `${item.box.x * 100}%`, top: `${item.box.y * 100}%`, width: `${item.box.w * 100}%`, height: `${item.box.h * 100}%` }}
             >
               {/* Sits above the box so it doesn't cover the damage, unless the box is at the top of the photo. */}
-              <span className={`absolute left-[-3px] flex size-5 items-center justify-center bg-red-600 text-xs font-semibold text-white ${item.box.y > 0.06 ? "bottom-full" : "top-0"}`}>{i + 1}</span>
+              <span className={`absolute left-[-3px] flex h-5 min-w-5 items-center justify-center whitespace-nowrap px-1 text-xs font-semibold transition-colors duration-700 ${item.dropped ? "bg-zinc-500 text-white" : "bg-red-600 text-white"} ${item.box.y > 0.06 ? "bottom-full" : "top-0"}`}>
+                {item.number ?? i + 1}
+                {item.dropped ? <span className="ml-1 font-medium" data-testid="damage-box-dropped">{item.dropped}</span> : null}
+              </span>
             </div>
           ) : null,
         )}
