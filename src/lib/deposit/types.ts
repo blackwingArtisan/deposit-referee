@@ -234,6 +234,8 @@ export interface RenterView {
   renter: string;
   depositCents: number;
   status: BookingStatus;
+  /** The hold the renter placed from this page, once PayPal returns it. Its PayPal id stays with the host. */
+  hold: { authorizedCents: number; expiresAt?: string } | null;
   chargeCents: number;
   releaseCents: number;
   proposal: Pick<Proposal, "kind" | "lines" | "rationale" | "engine" | "simulated" | "hostReason"> | null;
