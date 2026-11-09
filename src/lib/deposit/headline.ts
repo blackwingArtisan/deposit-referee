@@ -41,7 +41,9 @@ export function hostHeadline(b: HeadlineBooking): string {
       // The same plan as the Approve button: never a number the button doesn't move.
       const plan = approvalPlan(b);
       const action = approvalAction(plan);
-      if (!b.approval || !action) return "Waiting for your approval: nothing moves until you decide";
+      // No pending approval: the gate is opening, or the host approved and PayPal is answering.
+      if (!b.approval) return "Working with PayPal";
+      if (!action) return "Waiting for your approval: nothing moves until you decide";
       const remainder = approvalRemainder(plan);
       return `Your approval: ${action}${remainder ? `, ${remainder}` : ""}`;
     }

@@ -49,6 +49,8 @@ describe("one money headline per state", () => {
     expect(unknown).toBe("Waiting for your approval: nothing moves until you decide");
     expect(unknown).not.toMatch(/\$/);
     expect(approvalAction(approvalPlan({ ...base }))).toBeNull();
+    // Approved, PayPal answering: no "waiting for your approval" once the host has clicked.
+    expect(hostHeadline({ ...gate, approval: null })).toBe("Working with PayPal");
     expect(hostHeadline({ ...base, status: "settled", settlement: { capturedCents: 15_000, releasedCents: 15_000 } as never })).toBe("$150.00 captured, $150.00 released");
   });
 
