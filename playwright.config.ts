@@ -32,6 +32,8 @@ export default defineConfig({
       AI_MODE: process.env.E2E_AI_MODE ?? "mock",
       KIT_DATA_DIR: ".data-e2e",
       MOCK_PAYPAL_LATENCY_MS: "60-160",
+      // The whole mock suite captures more than the Guard's $2,000 a day; mock PayPal only (app.config.ts).
+      ...((process.env.E2E_PAYPAL_MODE ?? "mock") === "mock" ? { MOCK_MAX_PER_DAY: "10000.00" } : {}),
       NEXT_DIST_DIR: ".next-e2e",
     },
   },
