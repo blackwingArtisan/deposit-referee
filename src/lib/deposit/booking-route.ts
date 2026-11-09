@@ -37,5 +37,9 @@ async function withViewer(id: string, out: unknown): Promise<unknown> {
   if (!out || typeof out !== "object" || out instanceof Response) return out;
   const view = out as Partial<BookingView>;
   if (view.id !== id || !("status" in view) || view.viewer) return out;
-  return { ...view, viewer: (await isHost(requireBooking(id))) ? "host" : "visitor" };
+  if (await isHost(requireBooking(id))) return { ...view, viewer: "host" };
+  // Only the host's copy carries the renter's link.
+  const seen: Partial<BookingView> = { ...view, viewer: "visitor" };
+  delete seen.renterToken;
+  return seen;
 }

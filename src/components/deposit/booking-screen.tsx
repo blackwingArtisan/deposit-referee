@@ -314,7 +314,12 @@ export function BookingScreen() {
 
       {booking.sample ? (
         <div className="mb-6" data-testid="sample-note">
-          <Notice tone="muted">This is a sample booking. Its hold and any charge are {kit?.paypal.mode === "sandbox" ? "real objects on the PayPal sandbox" : "on mock PayPal"}. Its photo findings were written for the sample, not made by Claude on this booking. Its PayPal calls are the ones made when the sample was loaded.</Notice>
+          <Notice tone="muted">
+            This is a sample booking. Its hold and any charge are {kit?.paypal.mode === "sandbox" ? "real objects on the PayPal sandbox" : "on mock PayPal"}. Its photo findings were written for the sample, not made by Claude on this booking. Its PayPal calls are the ones made when the sample was loaded.{" "}
+            <a href={`/renter/sample/${booking.id}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 font-medium text-brand underline underline-offset-2" data-testid="sample-renter-link">
+              Open the renter&rsquo;s view (sample) <ExternalLink className="size-3.5" aria-hidden />
+            </a>
+          </Notice>
         </div>
       ) : null}
 

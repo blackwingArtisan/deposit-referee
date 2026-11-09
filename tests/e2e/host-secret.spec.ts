@@ -4,7 +4,7 @@
  * 403 (wrong secret), and PayPal is never called.
  */
 import { expect, test, type APIRequestContext } from "@playwright/test";
-import { renterAccepts, toProposal, type Flow } from "./booking-flow";
+import { kitStatus, renterAccepts, toProposal, type Flow } from "./booking-flow";
 
 const ACTIONS: { method: "post" | "get"; path: string; data?: object }[] = [
   { method: "post", path: "settle", data: { chargeCents: 100 } },
@@ -47,7 +47,8 @@ test("without the host's booking secret nothing can be approved, captured, voide
 
   // Someone with the booking's link sees no renter link and no secret.
   const seen = await (await request.get(`/api/bookings/${flow.id}`)).json();
-  expect(seen).toMatchObject({ viewer: "visitor", renterToken: "" });
+  expect(seen.viewer).toBe("visitor");
+  expect(seen).not.toHaveProperty("renterToken");
   expect(JSON.stringify(seen)).not.toContain("hostSecret");
   const visitor = await browser.newContext({ baseURL: new URL(page.url()).origin });
   const other = await visitor.newPage();
@@ -74,4 +75,46 @@ test("without the host's booking secret nothing can be approved, captured, voide
   await page.getByTestId("approve-button").click();
   await expect(page.getByTestId("ruling")).toBeVisible({ timeout: 60_000 });
   expect((await paypalCalls(flow, request)).some((c) => /capture/i.test(c))).toBe(true);
+});
+
+test("no visitor's copy of a booking carries the renter's link, samples included; the host's does", async ({ page, request }) => {
+  // A booking made in this browser: the host gets the renter's link, a visitor gets no such field.
+  await page.goto("/bookings");
+  await page.getByLabel("What's being rented").fill("Harbor loft, weekend of Dec 25");
+  await page.getByLabel("Renter").fill("Test Renter");
+  await page.getByTestId("create-booking").click();
+  await page.waitForURL(/\/bookings\/bk_/);
+  const id = new URL(page.url()).pathname.split("/").pop()!;
+  const host = await (await page.request.get(`/api/bookings/${id}`)).json();
+  expect(host.viewer).toBe("host");
+  expect(host.renterToken).toMatch(/^[0-9a-f-]{36}$/);
+  const raw = await (await request.get(`/api/bookings/${id}`)).text();
+  expect(raw).not.toContain("renterToken");
+  expect(raw).not.toContain(host.renterToken);
+  // The sample route never opens a real booking's renter page.
+  expect((await request.get(`/renter/sample/${id}`, { maxRedirects: 0 })).status()).toBe(404);
+
+  // Every sample, read by a visitor: no renterToken either. A local sandbox run has no samples.
+  const { sandbox } = await kitStatus(request);
+  if (!sandbox) expect((await request.post("/api/dev/seed")).ok()).toBe(true);
+  const { bookings } = (await (await request.get("/api/bookings")).json()) as { bookings: { id: string; sample?: boolean }[] };
+  const samples = bookings.filter((b) => b.sample).map((b) => b.id);
+  if (sandbox && !process.env.E2E_BASE_URL) return;
+  expect(samples.length).toBeGreaterThan(0);
+  for (const sample of samples) {
+    const text = await (await request.get(`/api/bookings/${sample}`)).text();
+    expect(text, sample).not.toContain("renterToken");
+  }
+
+  // A sample says plainly where its renter view is, and the link opens it.
+  const sample = samples.includes("bk_sample_lakeside") ? "bk_sample_lakeside" : samples[0];
+  const jump = await request.get(`/renter/sample/${sample}`, { maxRedirects: 0 });
+  expect(jump.status()).toBe(307);
+  expect(jump.headers().location).toMatch(/^\/renter\/[0-9a-f-]{36}$/);
+  await page.goto(`/bookings/${sample}`);
+  const link = page.getByTestId("sample-renter-link");
+  await expect(link).toHaveText("Open the renter’s view (sample)");
+  const [renter] = await Promise.all([page.context().waitForEvent("page"), link.click()]);
+  await expect(renter.getByTestId("renter-headline")).toBeVisible();
+  await renter.close();
 });

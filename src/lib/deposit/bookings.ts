@@ -30,6 +30,11 @@ export function requireBooking(id: string): Booking {
   return booking;
 }
 
+/** A booking by id, or undefined. */
+export function findBooking(id: string): Booking | undefined {
+  return bookings().get(id);
+}
+
 export function saveBooking(booking: Booking): Booking {
   return bookings().upsert(booking);
 }

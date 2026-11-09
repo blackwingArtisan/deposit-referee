@@ -219,8 +219,12 @@ export interface PendingApproval {
   amountValue?: string;
 }
 
-/** What the browser receives: the record plus values worked out at read time. */
-export interface BookingView extends Booking {
+/**
+ * What the browser receives: the record plus values worked out at read time. The renter's link
+ * (`renterToken`) is only there for the host's browser; a visitor's copy has no such field.
+ */
+export interface BookingView extends Omit<Booking, "renterToken"> {
+  renterToken?: string;
   hold: HoldClock | null;
   approval: PendingApproval | null;
   /** Waiting at the gate: sending the evidence pack to PayPal. */
