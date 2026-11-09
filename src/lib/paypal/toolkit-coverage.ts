@@ -15,6 +15,7 @@ export const TOOLKIT_GAPS: Partial<Record<string, string>> = {
   "payments.reauthorize": `The Agent Toolkit ${TOOLKIT_VERSION} has no tool to refresh a hold, so this uses the kit's own call.`,
   "payments.getCapture": `The Agent Toolkit ${TOOLKIT_VERSION} has no get_capture tool, so this uses the kit's own call.`,
   "disputes.provideEvidence": `The Agent Toolkit ${TOOLKIT_VERSION} has no tool to send dispute evidence, so this uses the kit's own call, behind the same Guard.`,
+  "disputes.sendMessage": `The Agent Toolkit ${TOOLKIT_VERSION} has no tool to message a dispute, so this uses the kit's own call, behind the same Guard.`,
 };
 
 /** How a PayPal call was made, for the calls strip. */

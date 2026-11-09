@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { FileDown, RefreshCw, Scale, Send } from "lucide-react";
+import { FileDown, RefreshCw, Scale, Search, Send } from "lucide-react";
 import { ApprovalPrompt } from "@/components/agent/approval-prompt";
 import { useKit } from "@/components/kit/kit-provider";
 import { Badge, Button, Card, CardBody, CardHeader } from "@/components/ui";
 import { formatExactCents, localTime } from "@/lib/deposit/rules";
+import { canSendEvidence } from "@/lib/deposit/dispute-state";
 import type { BookingDispute, BookingView } from "@/lib/deposit/types";
 
 const REASON: Record<string, string> = {
@@ -20,6 +21,7 @@ const REASON: Record<string, string> = {
 function statusWords(d: BookingDispute): { label: string; tone: "warning" | "info" | "success" | "neutral" } {
   if (d.status === "WAITING_FOR_SELLER_RESPONSE") return { label: "PayPal is waiting for your evidence", tone: "warning" };
   if (d.status === "UNDER_REVIEW") return { label: "PayPal is reviewing", tone: "info" };
+  if (d.status === "WAITING_FOR_BUYER_RESPONSE") return { label: "Waiting for the renter's reply", tone: "info" };
   if (d.status === "RESOLVED") {
     if (d.outcome === "RESOLVED_SELLER_FAVOUR") return { label: "Resolved: you keep the charge", tone: "success" };
     if (d.outcome === "RESOLVED_BUYER_FAVOUR") return { label: "Resolved: PayPal refunded the renter", tone: "neutral" };
@@ -53,7 +55,18 @@ export function DisputePanel({ booking, busy, act, onDecided }: { booking: Booki
       <Card data-testid="evidence-panel">
         <CardBody className="flex flex-wrap items-center justify-between gap-3">
           <p className="text-sm text-zinc-600">The photos with each finding boxed, the price-table rows, the renter&rsquo;s answer and the PayPal ids, in one file. If the renter disputes the charge with PayPal, this is what the app sends.</p>
-          {download}
+          <div className="flex flex-wrap items-center gap-3">
+            {download}
+            {/* PayPal's dispute webhook can be late, or can't reach this server: ask PayPal directly. */}
+            <Button variant="secondary" size="sm" icon={<Search className="size-4" />} loading={busy === "dispute-check"} disabled={!!busy} onClick={() => act("dispute-check", "Could not ask PayPal about disputes", () => kitFetch<BookingView>(`/api/bookings/${booking.id}/dispute/check`, { method: "POST" }))} data-testid="check-dispute">
+              Check PayPal for a dispute
+            </Button>
+          </div>
+          {booking.disputeCheckedAt ? (
+            <p className="w-full text-xs text-zinc-500" data-testid="dispute-checked">
+              PayPal showed no dispute on this charge at {localTime(booking.disputeCheckedAt)}.
+            </p>
+          ) : null}
         </CardBody>
       </Card>
     );
@@ -96,7 +109,9 @@ export function DisputePanel({ booking, busy, act, onDecided }: { booking: Booki
 
         {evidence?.submittedAt ? (
           <p className="text-sm text-emerald-800" data-testid="evidence-sent">
-            Sent {evidence.fileName} to PayPal on {localTime(evidence.submittedAt)}.
+            {evidence.sentAs === "message"
+              ? `Sent ${evidence.fileName} to the renter on PayPal's case, attached to a message, on ${localTime(evidence.submittedAt)}. While the case is an inquiry PayPal takes messages, not evidence; if the renter escalates it to a claim, you can send the pack again as evidence.`
+              : `Sent ${evidence.fileName} to PayPal as evidence on ${localTime(evidence.submittedAt)}.`}
           </p>
         ) : null}
         {evidence?.error ? (
@@ -114,9 +129,9 @@ export function DisputePanel({ booking, busy, act, onDecided }: { booking: Booki
         ) : null}
 
         <div className="flex flex-wrap items-center gap-3 pt-1">
-          {d.status === "WAITING_FOR_SELLER_RESPONSE" && !evidence?.submittedAt && !waiting ? (
+          {canSendEvidence(d) && !waiting ? (
             <Button icon={<Send className="size-4" />} loading={busy === "evidence"} disabled={!!busy} onClick={() => act("evidence", "Could not send the evidence", () => kitFetch<BookingView>(`/api/bookings/${booking.id}/dispute/evidence`, { method: "POST" }))} data-testid="send-evidence">
-              Send the evidence pack to PayPal
+              {evidence?.submittedAt ? "Send the evidence pack again, as evidence" : "Send the evidence pack to PayPal"}
             </Button>
           ) : null}
           <Button variant="secondary" size="sm" icon={<RefreshCw className="size-4" />} loading={busy === "dispute"} disabled={!!busy} onClick={() => act("dispute", "Could not read the dispute", () => kitFetch<BookingView>(`/api/bookings/${booking.id}/dispute`, { method: "POST" }))} data-testid="refresh-dispute">

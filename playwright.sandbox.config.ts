@@ -11,7 +11,7 @@ const HOSTED = process.env.E2E_BASE_URL;
 
 export default defineConfig({
   testDir: "tests/e2e",
-  testMatch: ["deposit-flow.spec.ts", "insights.spec.ts", "judge-path.spec.ts"],
+  testMatch: ["deposit-flow.spec.ts", "insights.spec.ts", "judge-path.spec.ts", "dispute-sandbox.spec.ts"],
   timeout: 180_000,
   expect: { timeout: 15_000 },
   workers: 1,

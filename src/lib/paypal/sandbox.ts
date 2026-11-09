@@ -209,6 +209,12 @@ export class SandboxPayPal implements PayPalApi {
       files.forEach((f, i) => form.append(`file${i + 1}`, new Blob([new Uint8Array(f.data)], { type: f.contentType }), f.name));
       return this.request("disputes.provideEvidence", { id, form });
     },
+    sendMessage: (id, message, file) => {
+      const form = new FormData();
+      form.append("input", new Blob([JSON.stringify({ message })], { type: "application/json" }));
+      if (file) form.append("message_document", new Blob([new Uint8Array(file.data)], { type: file.contentType }), file.name);
+      return this.request("disputes.sendMessage", { id, form });
+    },
     // The integration guide sends JSON ({ note }); the OpenAPI schema lists multipart. JSON is what PayPal's own examples use.
     acceptClaim: (id, body) => this.request("disputes.acceptClaim", { id, body: body ?? {} }),
   };

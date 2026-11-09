@@ -245,6 +245,8 @@ export interface Booking {
   dispute?: BookingDispute;
   /** Claude's second look at the lines the renter contested, and the agent's counter. */
   secondLook?: SecondLook;
+  /** When the host last asked PayPal (list_disputes) for a dispute the webhook may have missed. */
+  disputeCheckedAt?: string;
 }
 
 /** Sending the evidence pack to PayPal, through the Guard's approval gate. */
@@ -254,6 +256,8 @@ export interface EvidenceSubmission {
   submittedAt?: string;
   /** The file PayPal received. */
   fileName?: string;
+  /** How it went: as formal evidence on a claim, or attached to a message while the case is an inquiry. */
+  sentAs?: "evidence" | "message";
   /** Why the last attempt stopped, in words the host can act on. */
   error?: string;
 }
@@ -266,6 +270,8 @@ export interface BookingDispute {
   reason: string;
   /** PayPal's status, e.g. WAITING_FOR_SELLER_RESPONSE, UNDER_REVIEW, RESOLVED. */
   status: string;
+  /** PayPal's stage: INQUIRY (messages between the two sides), then a claim (CHARGEBACK and on) where PayPal takes evidence. */
+  stage?: string;
   amountCents: number;
   openedAt: string;
   /** PayPal wants the host's answer by this time. */

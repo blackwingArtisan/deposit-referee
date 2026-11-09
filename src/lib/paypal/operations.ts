@@ -43,6 +43,7 @@ export const OPERATIONS = {
   "disputes.list": { method: "GET", path: "/v1/customer/disputes", label: "List disputes" },
   "disputes.get": { method: "GET", path: "/v1/customer/disputes/{id}", label: "Get dispute" },
   "disputes.provideEvidence": { method: "POST", path: "/v1/customer/disputes/{id}/provide-evidence", label: "Provide evidence" },
+  "disputes.sendMessage": { method: "POST", path: "/v1/customer/disputes/{id}/send-message", label: "Send message" },
   "disputes.acceptClaim": { method: "POST", path: "/v1/customer/disputes/{id}/accept-claim", label: "Accept claim", money: true },
 
   "transactions.search": { method: "GET", path: "/v1/reporting/transactions", label: "Search transactions" },

@@ -304,6 +304,12 @@ describe("disputes", () => {
     expect(dispute.status).toBe("WAITING_FOR_SELLER_RESPONSE");
     const list = await pp.disputes.list({ dispute_state: "REQUIRED_ACTION" });
     expect(list.items).toHaveLength(1);
+    // An inquiry takes messages only, as on PayPal; evidence opens once the buyer makes it a claim.
+    expect(dispute.links.map((l) => l.rel)).toEqual(["self", "accept_claim", "send_message"]);
+    await expectIssue(pp.disputes.provideEvidence(dispute.dispute_id, { evidences: [{ evidence_type: "OTHER" }] }), "ACTION_NOT_ALLOWED_IN_CURRENT_DISPUTE_STATE");
+    const claim = await pp.simulateDisputeEscalation(dispute.dispute_id);
+    expect(claim.links.map((l) => l.rel)).toEqual(["self", "accept_claim", "provide_evidence"]);
+    await expectIssue(pp.disputes.sendMessage(dispute.dispute_id, "Hello"), "ACTION_NOT_ALLOWED_IN_CURRENT_DISPUTE_STATE");
     await expectIssue(pp.disputes.provideEvidence(dispute.dispute_id, { evidences: [{ evidence_type: "PROOF_OF_FULFILLMENT" }] }), "MISSING_TRACKING_INFO");
     await pp.disputes.provideEvidence(dispute.dispute_id, { evidences: [{ evidence_type: "PROOF_OF_FULFILLMENT", evidence_info: { tracking_info: [{ carrier_name: "UPS", tracking_number: "1Z999" }] } }] });
     expect((await pp.disputes.get(dispute.dispute_id)).status).toBe("UNDER_REVIEW");
@@ -312,6 +318,21 @@ describe("disputes", () => {
     expect(resolved.status).toBe("RESOLVED");
     expect(resolved.dispute_outcome?.amount_refunded).toEqual(usd("60.00"));
     expect((await pp.payments.getCapture(cap.id)).status).toBe("REFUNDED");
+  });
+
+  it("an inquiry takes a seller's message with a file, then waits on the buyer", async () => {
+    const order = await approvedOrder("CAPTURE", "40.00");
+    const cap = (await pp.orders.capture(order.id)).purchase_units![0].payments!.captures![0];
+    const dispute = await pp.simulateDispute({ captureId: cap.id, buyerMessage: "Where is it?" });
+    await expectIssue(pp.disputes.sendMessage(dispute.dispute_id, " "), "MISSING_REQUIRED_PARAMETER");
+    await expectIssue(pp.disputes.sendMessage(dispute.dispute_id, "Here", { name: "a.exe", contentType: "application/octet-stream" as "application/pdf", data: Buffer.from("x") }), "INVALID_EVIDENCE_FILE");
+    await pp.disputes.sendMessage(dispute.dispute_id, "The pack is attached.", { name: "pack.pdf", contentType: "application/pdf", data: Buffer.from("%PDF-1.4") });
+    const after = await pp.disputes.get(dispute.dispute_id);
+    expect(after.status).toBe("WAITING_FOR_BUYER_RESPONSE");
+    expect(after.messages!.map((m) => [m.posted_by, m.content, m.documents?.map((d) => d.name)])).toEqual([
+      ["BUYER", "Where is it?", undefined],
+      ["SELLER", "The pack is attached.", ["pack.pdf"]],
+    ]);
   });
 });
 
