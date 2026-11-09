@@ -59,11 +59,12 @@ export async function caption(page: Page, text: string, opts: { ms?: number; wai
 }
 
 /**
- * Zooms in on one element (say, the AI's box) for a moment, then back out. By default the
- * element's parent grows around it; `self` grows the element itself from its centre (a card).
+ * Zooms in on one element and stays zoomed until the returned function zooms back out, so the
+ * take can type, click or wait while the crop is on camera. By default the element's parent grows
+ * around it; `self` grows the element itself from its centre (a card).
  */
-export async function zoomOn(page: Page, target: Locator, opts: { scale?: number; ms?: number; self?: boolean } = {}) {
-  const { scale = 2.6, ms = 3200, self = false } = opts;
+export async function zoomIn(page: Page, target: Locator, opts: { scale?: number; self?: boolean } = {}): Promise<() => Promise<void>> {
+  const { scale = 2.6, self = false } = opts;
   await target.evaluate((el) => el.scrollIntoView({ block: "center" }));
   await sleep(400);
   const handle = await target.elementHandle();
@@ -81,17 +82,56 @@ export async function zoomOn(page: Page, target: Locator, opts: { scale?: number
     },
     { el: handle, scale, self },
   );
-  await sleep(ms);
-  await page.evaluate(() => {
-    const frame = document.querySelector<HTMLElement>("[data-demo-zoom]");
-    if (frame) frame.style.transform = "scale(1)";
-  });
-  await sleep(900);
-  await page.evaluate(() => {
-    const frame = document.querySelector<HTMLElement>("[data-demo-zoom]");
-    if (frame) Object.assign(frame.style, { zIndex: "", boxShadow: "", transform: "", backgroundColor: "" });
-    delete frame?.dataset.demoZoom;
-  });
+  await sleep(800);
+  return async () => {
+    await page.evaluate(() => {
+      const frame = document.querySelector<HTMLElement>("[data-demo-zoom]");
+      if (frame) frame.style.transform = "scale(1)";
+    });
+    await sleep(900);
+    await page.evaluate(() => {
+      const frame = document.querySelector<HTMLElement>("[data-demo-zoom]");
+      if (frame) Object.assign(frame.style, { zIndex: "", boxShadow: "", transform: "", backgroundColor: "" });
+      delete frame?.dataset.demoZoom;
+    });
+  };
+}
+
+/** Zooms in on one element (say, the AI's box) for `ms`, then back out. */
+export async function zoomOn(page: Page, target: Locator, opts: { scale?: number; ms?: number; self?: boolean } = {}) {
+  const out = await zoomIn(page, target, opts);
+  await sleep(Math.max(0, (opts.ms ?? 3200) - 800));
+  await out();
+}
+
+/**
+ * A visible click: a pointer and a ring that pulses where the element is, so the click itself is
+ * on camera (the recorder draws no cursor). Then the real click.
+ */
+export async function clickOnCamera(page: Page, target: Locator, ms = 900) {
+  const box = await target.boundingBox();
+  if (box) {
+    await page.evaluate(
+      ({ x, y, ms }) => {
+        const ring = document.createElement("div");
+        ring.id = "__demo_click";
+        Object.assign(ring.style, {
+          position: "fixed", left: `${x - 28}px`, top: `${y - 28}px`, width: "56px", height: "56px", borderRadius: "50%",
+          border: "4px solid #f59e0b", background: "rgba(245,158,11,.25)", zIndex: "2147483646", pointerEvents: "none",
+          transform: "scale(.4)", opacity: "1", transition: `transform ${ms}ms ease-out, opacity ${ms}ms ease-in`,
+        });
+        const pointer = document.createElement("div");
+        pointer.innerHTML = '<svg width="34" height="34" viewBox="0 0 24 24"><path d="M4 2l16 9-7 2-3 7z" fill="#111" stroke="#fff" stroke-width="1.5"/></svg>';
+        Object.assign(pointer.style, { position: "fixed", left: `${x - 4}px`, top: `${y - 2}px`, zIndex: "2147483647", pointerEvents: "none" });
+        document.body.append(ring, pointer);
+        requestAnimationFrame(() => Object.assign(ring.style, { transform: "scale(1.6)", opacity: "0" }));
+        setTimeout(() => { ring.remove(); pointer.remove(); }, ms + 900);
+      },
+      { x: box.x + box.width / 2, y: box.y + box.height / 2, ms },
+    );
+    await sleep(Math.round(ms / 2));
+  }
+  await target.click();
 }
 
 /** Shows a page the way a renter sees it on their phone: a 375px-wide screen in the middle of the frame. */
