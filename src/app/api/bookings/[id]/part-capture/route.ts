@@ -8,4 +8,4 @@ export const POST = bookingRoute<RouteContext<"/api/bookings/[id]/part-capture">
   const { id } = await ctx.params;
   requestPartCapture(id, getContext().channel);
   return viewBooking(requireBooking(id));
-});
+}, { host: true });

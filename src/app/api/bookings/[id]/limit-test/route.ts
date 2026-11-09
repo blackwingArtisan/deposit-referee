@@ -14,4 +14,4 @@ export const POST = bookingRoute<RouteContext<"/api/bookings/[id]/limit-test">>(
     throw e instanceof RuleError ? new HttpError(409, e.message, "conflict") : e;
   }
   return viewBooking(requireBooking(id));
-});
+}, { host: true });

@@ -8,4 +8,4 @@ export const POST = bookingRoute<RouteContext<"/api/bookings/[id]/dispute/eviden
   const { id } = await ctx.params;
   requestEvidenceSubmission(id, getContext().channel);
   return viewBooking(requireBooking(id));
-});
+}, { host: true });

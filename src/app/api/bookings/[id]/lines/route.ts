@@ -12,4 +12,4 @@ const Body = z.object({
 });
 
 /** The host's own numbers. The hold is still the ceiling, and a raise goes back to the renter. */
-export const POST = bookingRoute<RouteContext<"/api/bookings/[id]/lines">>(async (req, ctx) => viewBooking(saveHostLines((await ctx.params).id, await readJson(req, Body))));
+export const POST = bookingRoute<RouteContext<"/api/bookings/[id]/lines">>(async (req, ctx) => viewBooking(saveHostLines((await ctx.params).id, await readJson(req, Body))), { host: true });

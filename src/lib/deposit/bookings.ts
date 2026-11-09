@@ -2,6 +2,7 @@
 import { randomUUID } from "node:crypto";
 import { HttpError } from "@/lib/http";
 import { getApprovals } from "@/lib/agent/approvals";
+import { newHostSecret } from "./host-key";
 import { collection } from "@/lib/store/collection";
 import { singleton } from "@/lib/singleton";
 import { recordBookingEvents } from "./booking-events";
@@ -20,7 +21,7 @@ export const TEST_RENTER = "Test Renter";
 export const activeSettlements = () => singleton("deposit:active-settlements", () => new Set<string>());
 
 export function createBooking(input: { item: string; renter: string; depositCents: number; visitorId?: string }): Booking {
-  return bookings().upsert({ ...input, id: `bk_${randomUUID().slice(0, 8)}`, status: "draft", createdAt: new Date().toISOString(), renterToken: randomUUID(), photos: {} });
+  return bookings().upsert({ ...input, id: `bk_${randomUUID().slice(0, 8)}`, status: "draft", createdAt: new Date().toISOString(), renterToken: randomUUID(), hostSecret: newHostSecret(), photos: {} });
 }
 
 export function requireBooking(id: string): Booking {
@@ -81,6 +82,7 @@ export function viewBooking(input: Booking): BookingView {
   return {
     ...booking,
     visitorId: undefined,
+    hostSecret: undefined,
     hold: booking.holdExpiresAt ? holdClock(booking.holdExpiresAt) : null,
     approval: pendingApproval(booking),
     disputeApproval: evidence && !evidence.submittedAt ? pendingFor(evidence.runId) : null,
@@ -116,4 +118,11 @@ export function listBookings(visitor: string | undefined, opts?: { tests?: boole
 export function ownPaypalIds(): Set<string> {
   const ids = allBookings({ tests: true }).flatMap((b) => [b.orderId, b.authorizationId, b.refreshedAuthorizationId, b.settlement?.captureId]);
   return new Set(ids.filter((id): id is string => !!id));
+}
+
+/** The booking an approval is for, by the run that asked for it. */
+export function bookingForRun(runId: string): Booking | undefined {
+  return bookings()
+    .list()
+    .find((b) => b.settlement?.runId === runId || b.partCapture?.runId === runId || b.dispute?.evidence?.runId === runId);
 }

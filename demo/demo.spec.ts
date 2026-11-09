@@ -105,7 +105,7 @@ test("demo", async ({ page, request }) => {
   await say(page, "The settlement agent prices each one from the price table, proposes, and stops.");
   await expect(proposal).toBeVisible({ timeout: 90_000 });
   await page.screenshot({ path: "docs/screenshot.png", style: "#__demo_caption { display: none !important; } body { padding-bottom: 0 !important; }" });
-  const view = await (await request.get(`/api/bookings/${id}`)).json();
+  const view = await (await page.request.get(`/api/bookings/${id}`)).json();
   const lines = view.proposal.lines as { id: string; amountCents: number }[];
   const [accepted, ...contestedLines] = lines;
   const acceptedCents = accepted.amountCents;
@@ -144,7 +144,7 @@ test("demo", async ({ page, request }) => {
   clock.check("part");
 
   const chargeCents = Math.min(2_000, contestedCents);
-  const [first, ...rest] = (await (await request.get(`/api/bookings/${id}`)).json()).proposal.lines as { id: string }[];
+  const [first, ...rest] = (await (await page.request.get(`/api/bookings/${id}`)).json()).proposal.lines as { id: string }[];
   for (const line of rest) await page.getByTestId(`line-amount-${line.id}`).fill("0.00");
   const amount = page.getByTestId(`line-amount-${first.id}`);
   await amount.scrollIntoViewIfNeeded();
@@ -189,7 +189,7 @@ test("demo", async ({ page, request }) => {
   clock.check("calls");
 
   // 7. The end card, from the amounts PayPal returned.
-  const done = await (await request.get(`/api/bookings/${id}`)).json();
+  const done = await (await page.request.get(`/api/bookings/${id}`)).json();
   const captured = whole(done.settlement.capturedCents);
   const released = whole(done.settlement.releasedCents);
   await say(page, "Deposit Referee: two photos, a fair charge, and PayPal holds the rest.");

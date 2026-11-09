@@ -132,7 +132,7 @@ async function approveCharge(page: Page, flow: Flow, chargeCents: number, screen
 test("the agent proposes and stops, the renter accepts, the host approves", async ({ page, request }) => {
   // Money only moves through the Guard: the kit's open PayPal routes, demo pages and agent route are gone.
   for (const path of ["/example", "/dashboard"]) expect((await page.request.get(path)).status()).toBe(404);
-  for (const path of ["/api/paypal/orders", "/api/paypal/captures/X/refund", "/api/paypal/authorizations/X/capture", "/api/paypal/authorizations/X/void", "/api/agent/runs"]) {
+  for (const path of ["/api/paypal/orders", "/api/paypal/captures/X/refund", "/api/paypal/authorizations/X/capture", "/api/paypal/authorizations/X/void", "/api/agent/runs", "/api/ai/summarize"]) {
     expect((await page.request.post(path, { data: {} })).status()).toBe(404);
   }
 
@@ -216,7 +216,7 @@ test("closing PayPal before approving says so, and nothing is held", async ({ pa
   await page.getByTestId("create-booking").click();
   await page.waitForURL(/\/bookings\/bk_/);
   const id = new URL(page.url()).pathname.split("/").pop()!;
-  const renter = await openAsRenter(page, await (await request.get(`/api/bookings/${id}`)).json());
+  const renter = await openAsRenter(page, await (await page.request.get(`/api/bookings/${id}`)).json());
   await renter.getByTestId("simulate-paypal-approval").click();
   await renter.getByRole("button", { name: "Cancel" }).click();
   await expect(renter.getByText("PayPal was closed before the hold was approved")).toBeVisible();
@@ -224,7 +224,7 @@ test("closing PayPal before approving says so, and nothing is held", async ({ pa
   await expect(renter.getByTestId("renter-headline")).toHaveText("Place your $300 deposit hold");
   await renter.context().close();
   await expect(page.getByTestId("waiting-headline")).toHaveText(/Waiting for the renter.s hold/);
-  expect((await (await request.get(`/api/bookings/${id}`)).json()).status).toBe("draft");
+  expect((await (await page.request.get(`/api/bookings/${id}`)).json()).status).toBe("draft");
 });
 
 test("the host changes the AI's number on an uploaded photo", async ({ page, request }) => {
@@ -336,7 +336,7 @@ test("no damage: the agent proposes a full release and the hold is voided", asyn
   await page.screenshot({ path: `screenshots/deposit-release-${flow.mode}-${flow.live ? "live-ai" : "mock-ai"}.png`, fullPage: true });
   // Nothing was charged, so there is no evidence pack to offer.
   await expect(page.getByTestId("evidence-panel")).toHaveCount(0);
-  expect((await request.get(`/api/bookings/${flow.id}/evidence`)).status()).toBe(409);
+  expect((await page.request.get(`/api/bookings/${flow.id}/evidence`)).status()).toBe(409);
 
   if (flow.sandbox) {
     const { order, authorization } = await readPayPalObjects(done.orderId!, done.authorizationId!);
@@ -633,7 +633,7 @@ test("safe input: bad amounts and fake photos get a plain message, photos can be
   const fake = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.from("not a picture ".repeat(40))]);
   await page.getByTestId("replace-upload-check_out").setInputFiles({ name: "check-out.png", mimeType: "image/png", buffer: fake });
   await expect(page.getByText("That file isn't a readable photo. Choose a JPEG, PNG or WebP photo.")).toBeVisible();
-  const refused = await request.post(`/api/bookings/${flow.id}/photos`, { data: { slot: "check_out", dataUrl: `data:image/png;base64,${fake.toString("base64")}` } });
+  const refused = await page.request.post(`/api/bookings/${flow.id}/photos`, { data: { slot: "check_out", dataUrl: `data:image/png;base64,${fake.toString("base64")}` } });
   expect(refused.status()).toBe(400);
   expect((await refused.json()).error.message).toBe("That file isn't a readable photo. Choose a JPEG, PNG or WebP photo.");
   await expect(page.getByTestId("photo-source").nth(1)).toContainText("same photo");
@@ -671,7 +671,7 @@ test("safe input: bad amounts and fake photos get a plain message, photos can be
   const renter = await renterAccepts(page, await flow.booking());
   await page.reload();
   await expect(page.getByTestId("replace-check_out")).toHaveCount(0);
-  const late = await request.post(`/api/bookings/${flow.id}/photos`, { data: { slot: "check_out" } });
+  const late = await page.request.post(`/api/bookings/${flow.id}/photos`, { data: { slot: "check_out" } });
   expect(late.status()).toBe(409);
   await expectNoSidewaysScroll(page);
   await renter.context().close();

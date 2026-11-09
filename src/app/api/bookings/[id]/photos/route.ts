@@ -27,4 +27,4 @@ export const POST = bookingRoute<RouteContext<"/api/bookings/[id]/photos">>(asyn
   // A new photo means a new comparison: the old review, proposal and renter window go.
   const fresh = booking.status === "held" ? booking : { ...booking, status: "held" as const, review: undefined, proposal: undefined, renterState: undefined, agentError: undefined, settlement: undefined };
   return viewBooking(saveBooking({ ...fresh, photos: { ...fresh.photos, [slot]: photo } }));
-});
+}, { host: true });
