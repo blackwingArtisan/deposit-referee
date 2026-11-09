@@ -3,7 +3,7 @@ import { ArrowRight, Bot, Check, ExternalLink, Lock, ScanSearch, ShieldCheck, Sp
 import { appConfig } from "@/app.config";
 import { BLIND_TEST } from "@/lib/deposit/blind-test";
 import { MoneyBadge } from "../money-badge";
-import { ButtonLink } from "../ui/button";
+import { buttonClass, ButtonLink } from "../ui/button";
 import { AppLogo } from "../shell/app-logo";
 
 /**
@@ -109,7 +109,11 @@ export function Hero() {
             <ButtonLink href={l.primaryCta.href} size="lg">
               {l.primaryCta.label} <ArrowRight className="size-4" />
             </ButtonLink>
-            <ButtonLink href={l.secondaryCta.href} size="lg" variant="secondary">
+            {/* A plain link: /try is a redirect, not a page. */}
+            <a href="/try" className={buttonClass("secondary", "lg")} data-testid="try-demo-booking">
+              Try the demo booking
+            </a>
+            <ButtonLink href={l.secondaryCta.href} size="lg" variant="ghost">
               {l.secondaryCta.label}
             </ButtonLink>
           </div>
