@@ -3,7 +3,8 @@
  * duration, amount) and lands in the local ledger. Same behaviour for mock and sandbox.
  */
 import { performance } from "node:perf_hooks";
-import { startStep } from "../events/bus";
+import { getContext, startStep } from "../events/bus";
+import { viaFor } from "./toolkit-coverage";
 import { formatMoney, sumMoney, type Money } from "../money";
 import type { PayPalApi } from "./api";
 import { ingestPayPalResource } from "./ledger";
@@ -94,13 +95,14 @@ export function instrument(impl: PayPalApi): PayPalApi {
         const requestBody = typeof args[0] === "string" ? args[1] : args[0];
         const requestAmount = amountFrom(requestBody);
         const quiet = spec.method === "GET" || op === "webhooks.verify";
+        const via = viaFor(op, getContext().tool);
         const step = startStep({
           kind: "paypal",
           title: spec.label,
           subtitle: `${spec.method} ${path}`,
           amount: requestAmount,
           direction: DIRECTION[op],
-          paypal: { operation: op, method: spec.method, path, mode: impl.mode },
+          paypal: { operation: op, method: spec.method, path, mode: impl.mode, via },
           data: quiet ? { quiet: true } : undefined,
         });
         const meta: CallMeta = {};
@@ -115,14 +117,14 @@ export function instrument(impl: PayPalApi): PayPalApi {
             amount,
             direction: DIRECTION[op],
             detail: describe(op, result) ?? (amount ? formatMoney(amount) : undefined),
-            paypal: { operation: op, method: spec.method, path, mode: impl.mode, httpStatus: meta.httpStatus, debugId: meta.debugId, requestId: meta.requestId, durationMs: Math.round(performance.now() - t0) },
+            paypal: { operation: op, method: spec.method, path, mode: impl.mode, httpStatus: meta.httpStatus, debugId: meta.debugId, requestId: meta.requestId, durationMs: Math.round(performance.now() - t0), via },
             data: { quiet, replayed: meta.replayed, request: requestBody, response: result },
           });
           return result;
         } catch (error) {
           const e = error as { status?: number; debugId?: string };
           step.fail(error, {
-            paypal: { operation: op, method: spec.method, path, mode: impl.mode, httpStatus: e.status ?? meta.httpStatus, debugId: e.debugId ?? meta.debugId, requestId: meta.requestId, durationMs: Math.round(performance.now() - t0) },
+            paypal: { operation: op, method: spec.method, path, mode: impl.mode, httpStatus: e.status ?? meta.httpStatus, debugId: e.debugId ?? meta.debugId, requestId: meta.requestId, durationMs: Math.round(performance.now() - t0), via },
             data: { request: requestBody },
           });
           throw error;

@@ -11,6 +11,7 @@ import { releaseDeposit } from "@/agents/tools/release-deposit";
 import { runTool, type ToolCallResult } from "@/lib/agent/execute";
 import { Guard } from "@/lib/agent/guard";
 import { voidAuthorization } from "@/lib/agent/tools/extensions";
+import { readHoldGuarded } from "./hold-read";
 import { withContext } from "@/lib/events/bus";
 import { HttpError } from "@/lib/http";
 import { getPayPal } from "@/lib/paypal";
@@ -44,11 +45,12 @@ type ToolCtx = Parameters<typeof runTool>[2];
 /** The whole deposit goes back. PayPal's re-read decides whether that happened. */
 async function releaseWhole(id: string, authorizationId: string, ctx: ToolCtx) {
   const paypal = getPayPal();
-  if ((await paypal.payments.getAuthorization(authorizationId)).status !== "VOIDED") {
+  const orderId = requireBooking(id).orderId;
+  if ((await readHoldGuarded(paypal, orderId, authorizationId, ctx)).status !== "VOIDED") {
     const result = await runTool(releaseDeposit, { booking_id: id, idempotency_key: `${id}:release` }, ctx);
     if (result.isError) return backToHost(id, failureReason(result));
   }
-  const auth = await paypal.payments.getAuthorization(authorizationId);
+  const auth = await readHoldGuarded(paypal, orderId, authorizationId, ctx);
   if (auth.status !== "VOIDED") throw new RuleError(`PayPal shows this hold as ${auth.status}, not voided.`);
   // Anything already charged for accepted items stays charged; the rest of the hold goes back.
   const part = partCapturedCents(requireBooking(id));
@@ -74,8 +76,8 @@ async function settle(id: string, channel: string) {
   }
 
   const paypal = getPayPal();
-  if (releasedCents(heldCents(start), capturedCents!) > 0 && (await paypal.payments.getAuthorization(authorization_id)).status !== "VOIDED") {
-    const result = await runTool(voidAuthorization, { authorization_id, reason: "Deposit settled: releasing what was not charged" }, ctx);
+  if (releasedCents(heldCents(start), capturedCents!) > 0 && (await readHoldGuarded(paypal, start.orderId, authorization_id, ctx)).status !== "VOIDED") {
+    const result = await runTool(voidAuthorization, { authorization_id, order_id: start.orderId, reason: "Deposit settled: releasing what was not charged" }, ctx);
     if (result.isError) {
       updateSettlement(id, "captured", { error: `The charge went through, but the rest of the hold was not released: ${failureReason(result)}` });
       return;
@@ -85,7 +87,7 @@ async function settle(id: string, channel: string) {
   // The result screen shows what PayPal says happened, not what we asked for.
   const { captureId } = requireBooking(id).settlement!;
   const capture = await paypal.payments.getCapture(captureId!);
-  const auth = await paypal.payments.getAuthorization(authorization_id);
+  const auth = await readHoldGuarded(paypal, start.orderId, authorization_id, ctx);
   const confirmedCents = dollarsToCents(capture.amount.value);
   if (confirmedCents !== settlement.requestedCents) throw new RuleError(`PayPal shows ${formatCents(confirmedCents)} captured, not the approved ${formatCents(settlement.requestedCents)}.`);
   // With a split, the accepted items were charged earlier from the same hold, and count here too.

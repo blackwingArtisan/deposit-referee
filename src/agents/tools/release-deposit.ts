@@ -11,6 +11,7 @@ import { requireBooking } from "@/lib/deposit/bookings";
 import { assertHoldOpen, dollarsToCents, formatExactCents, RuleError } from "@/lib/deposit/rules";
 import { partCapturedCents } from "@/lib/deposit/split-rules";
 import type { PayPalApi } from "@/lib/paypal/api";
+import { readHold } from "@/lib/deposit/hold-read";
 
 export const RELEASE_DEPOSIT = "release_deposit";
 
@@ -18,7 +19,7 @@ async function readOpenHold(paypal: PayPalApi, bookingId: string) {
   const booking = requireBooking(bookingId);
   if (!booking.authorizationId) throw new RuleError("This booking has no hold.");
   if (booking.status !== "awaiting_approval" || booking.settlement?.kind !== "release") throw new RuleError("The host hasn't asked for a release, so nothing was voided.");
-  const auth = await paypal.payments.getAuthorization(booking.authorizationId);
+  const auth = await readHold(paypal, booking.orderId, booking.authorizationId);
   assertHoldOpen(auth.expiration_time);
   const partCents = partCapturedCents(booking);
   const open = auth.status === "CREATED" || (partCents > 0 && auth.status === "PARTIALLY_CAPTURED");

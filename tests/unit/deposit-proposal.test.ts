@@ -49,6 +49,8 @@ describe("the agent proposes and stops", () => {
     const held = await heldBooking();
     saveBooking({ ...held, status: "reviewed", review: { newDamage: true, confidence: "high", reasoning: "x", items: [], suggestedCents: 0, cappedToHold: false, model: "m", mocked: true, costUsd: 0 } as never });
     vi.spyOn(paypal().payments, "getAuthorization").mockRejectedValue(new Error("PayPal is down"));
+    // The hold is read with the Agent Toolkit's get_order, so the order read fails too.
+    vi.spyOn(paypal().orders, "get").mockRejectedValue(new Error("PayPal is down"));
     const after = await runSettlementAgent(held.id, "test");
     vi.restoreAllMocks();
     expect(after.status).toBe("reviewed");

@@ -99,7 +99,15 @@ async function approveCharge(page: Page, flow: Flow, chargeCents: number, screen
   await scrollHeadlineAway(page);
   // The void on the timeline shows what was released, not the whole hold.
   await page.getByTestId("paypal-calls-toggle").click();
-  await expect(page.getByTestId("timeline-step").filter({ hasText: "void_authorization" })).toContainText(dollars(releaseCents));
+  await expect(page.locator('[data-testid="timeline-step"][data-kind="tool"]').filter({ hasText: "void_authorization" })).toContainText(dollars(releaseCents));
+  // Each call names its tool: the hold is read with the Agent Toolkit's get_order, and where the
+  // Toolkit has no tool (capture from a hold, void) the strip says so plainly.
+  const calls = page.getByTestId("paypal-calls");
+  await expect(calls.locator('[data-testid="paypal-via"][data-toolkit="get_order"]').first()).toBeAttached();
+  const paypalRow = (title: string) => calls.locator('[data-testid="timeline-step"][data-kind="paypal"]').filter({ hasText: title });
+  await expect(paypalRow("Capture authorization").getByTestId("paypal-via-gap")).toContainText("has no tool to capture from a hold");
+  await expect(paypalRow("Void authorization").getByTestId("paypal-via")).toContainText("Tool · void_authorization");
+  await expect(calls.getByTestId("paypal-via-gap").filter({ hasText: "has no tool to void a hold" }).first()).toBeVisible();
   await expect(ruling.locator("img").nth(1)).toHaveJSProperty("complete", true);
   await expect(page.getByTestId("ruling-headline")).toBeInViewport();
   await expectNoSidewaysScroll(page);

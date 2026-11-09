@@ -7,6 +7,7 @@ import { requireBooking } from "@/lib/deposit/bookings";
 import { recordProposal } from "@/lib/deposit/proposal";
 import { rowLabel } from "@/lib/deposit/prices";
 import { dollarsToCents, RuleError } from "@/lib/deposit/rules";
+import { readHold } from "@/lib/deposit/hold-read";
 
 export const readDamageReview = defineTool({
   name: "read_damage_review",
@@ -52,9 +53,9 @@ export const proposeSettlement = defineTool({
   }),
   title: (i) => (i.decision === "release" ? "Propose a full release" : `Propose charging for ${i.items.length} ${i.items.length === 1 ? "finding" : "findings"}`),
   execute: async (i, ctx) => {
-    const { authorizationId } = requireBooking(i.booking_id);
+    const { authorizationId, orderId } = requireBooking(i.booking_id);
     if (!authorizationId) throw new RuleError("This booking has no hold.");
-    const auth = await ctx.paypal.payments.getAuthorization(authorizationId);
+    const auth = await readHold(ctx.paypal, orderId, authorizationId);
     if (auth.status !== "CREATED") throw new RuleError(`This hold is ${auth.status}, so nothing can be proposed against it.`);
     const live = isAiLive();
     const booking = recordProposal(i, { runId: ctx.runId, heldCents: dollarsToCents(auth.amount.value), engine: live ? modelLabel(AI_MODELS.default) : "Simulated agent", simulated: !live });

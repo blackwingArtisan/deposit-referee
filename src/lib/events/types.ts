@@ -6,6 +6,7 @@
  * that goes running -> awaiting_approval -> succeeded).
  */
 import type { Money } from "../money";
+import type { PayPalVia } from "../paypal/toolkit-coverage";
 
 export type TimelineKind =
   | "run"
@@ -59,6 +60,8 @@ export interface TimelineEvent {
     debugId?: string;
     requestId?: string;
     durationMs?: number;
+    /** The tool that made the call, and whether the Agent Toolkit has one for it. */
+    via?: PayPalVia;
   };
   approval?: { id: string; state: "pending" | "approved" | "denied" | "expired"; reason?: string; decidedBy?: string };
   error?: { name: string; message: string; issue?: string; debugId?: string };

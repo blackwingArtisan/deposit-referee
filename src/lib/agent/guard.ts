@@ -9,6 +9,7 @@
  */
 import { compareMoney, formatMoney, money, type Money } from "../money";
 import type { PayPalApi } from "../paypal/api";
+import { asTool } from "../events/bus";
 import { getApprovals, type Approval, type ApprovalService } from "./approvals";
 import { getAuditLog, resultRef, type AuditLog } from "./audit";
 import { deriveIdempotencyKey, getIdempotencyStore, type IdempotencyStore } from "./idempotency";
@@ -79,7 +80,7 @@ export class Guard {
     // Reads skip the money checks entirely.
     if (tool.risk === "read") {
       try {
-        const result = await tool.execute(input, { runId: ctx.runId, actor: ctx.actor, paypal: this.paypal, idempotencyKey: "", requestId: "" });
+        const result = await asTool(tool, () => tool.execute(input, { runId: ctx.runId, actor: ctx.actor, paypal: this.paypal, idempotencyKey: "", requestId: "" }));
         return { status: "executed", result, idempotencyKey: "", replayed: false };
       } catch (error) {
         this.audit.append({ ...base, action: "tool.failed", reason: errorMessage(error) });
@@ -102,7 +103,7 @@ export class Guard {
     let impact: ToolImpact | undefined;
     if (tool.impact) {
       try {
-        impact = await tool.impact(input, { runId: ctx.runId, actor: ctx.actor, paypal: this.paypal });
+        impact = await asTool(tool, () => tool.impact!(input, { runId: ctx.runId, actor: ctx.actor, paypal: this.paypal }));
         ctx.onImpact?.(impact);
       } catch (error) {
         this.audit.append({ ...base, action: "tool.failed", reason: `Could not resolve impact: ${errorMessage(error)}` });
@@ -169,7 +170,7 @@ export class Guard {
     }
 
     try {
-      const result = await tool.execute(input, { runId: ctx.runId, actor: ctx.actor, paypal: this.paypal, idempotencyKey: key, requestId: this.idempotency.requestIdFor(key) });
+      const result = await asTool(tool, () => tool.execute(input, { runId: ctx.runId, actor: ctx.actor, paypal: this.paypal, idempotencyKey: key, requestId: this.idempotency.requestIdFor(key) }));
       this.idempotency.succeed(key, result);
       if (reserved) this.daily.commit(key, p.currency);
       this.audit.append({ ...base, action: "tool.executed", amount, counterparties: impact?.counterparties, idempotencyKey: key, approvalId: approval?.id, result: resultRef(result) });

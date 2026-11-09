@@ -7,16 +7,34 @@ import { z } from "zod";
 import { formatMoney, money, moneyFromMinor, toMinor, type Money } from "../../money";
 import type { PayPalApi } from "../../paypal/api";
 import type * as T from "../../paypal/types";
+import { asTool } from "../../events/bus";
 import { defineTool } from "../tool";
+import { toolkitTools } from "./toolkit";
 
 const amountString = z.string().regex(/^\d+(\.\d{1,2})?$/, 'Decimal string like "45.00"');
 const currency = z.string().length(3).default("USD");
 
-/** Authorized minus captured so far, computed from the order (works in sandbox and mock). */
-export async function authorizationState(pp: PayPalApi, authorizationId: string) {
-  const auth = await pp.payments.getAuthorization(authorizationId);
-  const orderId = auth.supplementary_data?.related_ids.order_id;
-  const order = orderId ? await pp.orders.get(orderId) : null;
+/** The order, read with the Agent Toolkit's own get_order tool. The Toolkit has no get_authorization, but the order carries its holds. */
+export async function orderViaToolkit(pp: PayPalApi, orderId: string): Promise<T.Order> {
+  const tool = toolkitTools(["get_order"], pp.mode)[0];
+  return (await asTool(tool, () => tool.execute({ id: orderId }, { runId: "", actor: "", paypal: pp, idempotencyKey: "", requestId: "" }))) as T.Order;
+}
+
+const holdIn = (order: T.Order | null, authorizationId: string) => order?.purchase_units?.flatMap((u) => u.payments?.authorizations ?? []).find((a) => a.id === authorizationId);
+
+/**
+ * Authorized minus captured so far, computed from the order (works in sandbox and mock). With the
+ * order id known, the Toolkit's get_order is the only read; otherwise the hold is read first to find it.
+ */
+export async function authorizationState(pp: PayPalApi, authorizationId: string, knownOrderId?: string) {
+  let order = knownOrderId ? await orderViaToolkit(pp, knownOrderId) : null;
+  let auth = holdIn(order, authorizationId);
+  if (!auth) {
+    auth = await pp.payments.getAuthorization(authorizationId);
+    const found = auth.supplementary_data?.related_ids.order_id;
+    order = found ? await orderViaToolkit(pp, found) : null;
+  }
+  const orderId = knownOrderId ?? auth.supplementary_data?.related_ids.order_id;
   // Captures inside an order have no supplementary_data on the real API, only the "up" link.
   const belongsToAuth = (c: T.Capture) => c.supplementary_data?.related_ids.authorization_id === authorizationId || c.links.some((l) => l.rel === "up" && l.href.endsWith(`/authorizations/${authorizationId}`));
   const captures = (order?.purchase_units ?? []).flatMap((u) => u.payments?.captures ?? []).filter(belongsToAuth);
@@ -128,9 +146,9 @@ export const voidAuthorization = defineTool({
   description: "Void an authorization, releasing whatever has not been captured back to the buyer. Irreversible. Fails if the authorization is already fully captured.",
   risk: "write",
   source: "kit-extension",
-  schema: z.object({ authorization_id: z.string().min(10), reason: z.string().optional() }),
+  schema: z.object({ authorization_id: z.string().min(10), order_id: z.string().optional().describe("The hold's order, so it is read with one Agent Toolkit get_order call"), reason: z.string().optional() }),
   impact: async (i, ctx) => {
-    const s = await authorizationState(ctx.paypal, i.authorization_id);
+    const s = await authorizationState(ctx.paypal, i.authorization_id, i.order_id);
     return { amount: s.remaining, summary: `Void the remaining ${formatMoney(s.remaining)} hold` };
   },
   execute: async (i, ctx) => {
