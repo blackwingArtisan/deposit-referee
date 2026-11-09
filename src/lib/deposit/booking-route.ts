@@ -4,7 +4,8 @@ import { enforceRateLimit } from "@/lib/ai/rate-limit";
 import { route, type RouteOptions } from "@/lib/http";
 import { forBooking } from "./booking-events";
 import { requireBooking } from "./bookings";
-import { requireHost } from "./host-key";
+import { isHost, requireHost } from "./host-key";
+import type { BookingView } from "./types";
 
 export interface BookingRouteOptions extends RouteOptions {
   /** Needs the host's booking secret (host-key.ts). "unless-sample" lets anyone read a sample's. */
@@ -22,8 +23,19 @@ export function bookingRoute<Ctx extends { params: Promise<{ id: string }> }>(ha
         if (!(opts.host === "unless-sample" && booking.sample)) await requireHost(booking);
       }
       if (aiAfterHost) enforceRateLimit(req, "ai");
-      return forBooking(id, () => handler(req, ctx));
+      return withViewer(id, await forBooking(id, () => handler(req, ctx)));
     },
     aiAfterHost ? { ...opts, rateLimit: "api" } : opts,
   );
+}
+
+/**
+ * A route that returns the booking says who is looking, as GET /api/bookings/[id] does, so the
+ * browser keeps showing the host's controls after the host acts.
+ */
+async function withViewer(id: string, out: unknown): Promise<unknown> {
+  if (!out || typeof out !== "object" || out instanceof Response) return out;
+  const view = out as Partial<BookingView>;
+  if (view.id !== id || !("status" in view) || view.viewer) return out;
+  return { ...view, viewer: (await isHost(requireBooking(id))) ? "host" : "visitor" };
 }

@@ -6,7 +6,7 @@
  */
 import fs from "node:fs";
 import { expect, test, type Page } from "@playwright/test";
-import { dollars, expectCallsSurviveReload, expectNoSidewaysScroll, headline, kitStatus, openAsRenter, renterAccepts, renterContests, setCharge, toPhotos, toProposal, type Flow } from "./booking-flow";
+import { dollars, expectCallsSurviveReload, expectNoSidewaysScroll, headline, kitStatus, openAsRenter, openDemoTools, renterAccepts, renterContests, setCharge, toPhotos, toProposal, unfold, type Flow } from "./booking-flow";
 import { readPayPalObjects, tryCapture } from "./paypal-reread";
 import { priceOf } from "../../src/lib/deposit/prices";
 
@@ -80,7 +80,7 @@ async function approveCharge(page: Page, flow: Flow, chargeCents: number, screen
   await expect(prompt.getByTestId("approval-renter-answer")).toBeVisible();
   await expect(prompt.getByTestId("approval-money")).toHaveText(`Capture ${dollars(chargeCents)} · release ${dollars(releaseCents)}`);
   await expect(prompt.getByTestId("approval-guard-reason")).not.toBeEmpty();
-  expect((await prompt.boundingBox())!.width).toBeGreaterThan(((await page.getByTestId("hold-panel").boundingBox())!.width) * 0.9);
+  expect((await prompt.boundingBox())!.width).toBeGreaterThan(((await page.getByTestId("fold-hold").boundingBox())!.width) * 0.9);
   await expect(page.getByTestId("approve-button")).toHaveCount(1);
   await expect(page.getByTestId("approve-button")).toBeInViewport();
   await expectNoSidewaysScroll(page);
@@ -152,6 +152,7 @@ test("the agent proposes and stops, the renter accepts, the host approves", asyn
   expect(proposal!.simulated).toBe(!flow.live);
   expect(proposal!.kind).toBe("charge");
   expect(review!.items.length).toBeGreaterThan(0);
+  await unfold(page, "photos");
   const box = page.getByTestId("damage-box").first();
   await expect(box).toBeVisible();
   const drawn = review!.items[0].box!;
@@ -407,7 +408,7 @@ test("a script that asks for too much is refused by code", async ({ page, reques
   const flow = await toProposal(page, request, { item: "Harbor loft, weekend of Nov 27" });
   const before = await flow.booking();
 
-  await page.getByTestId("for-judges").locator("summary").click();
+  await openDemoTools(page);
   await page.getByTestId("limit-test").click();
   await expect(page.getByText("Refused: $300.01 is more than the hold")).toBeVisible({ timeout: 20_000 });
 
@@ -532,7 +533,9 @@ test("renter photos: the renter's own check-in close-up is weighed, and each fin
   await page.reload();
   await expect(page.getByTestId("renter-photo-check_in")).toBeVisible();
   await page.getByTestId("run-review").click();
-  await expect(page.getByTestId("review")).toBeVisible({ timeout: 90_000 });
+  await expect(page.getByTestId("ai-proposal")).toBeVisible({ timeout: 90_000 });
+  await unfold(page, "compare");
+  await expect(page.getByTestId("review")).toBeVisible();
   await expect(page.getByTestId("review-renter-photos")).toContainText("renter’s own check-in photo");
   const reviewed = await flow.booking();
   expect(reviewed.review!.renterPhotos).toEqual(["check_in"]);
@@ -653,7 +656,9 @@ test("safe input: bad amounts and fake photos get a plain message, photos can be
   expect((await flow.booking()).proposal!.kind).toBe("release");
 
   // Before the renter answers, the host can swap a photo; the comparison starts over.
+  await unfold(page, "photos");
   await expect(page.getByTestId("replace-note")).toBeVisible();
+  await openDemoTools(page);
   await page.getByTestId("replace-demo-check_out").click();
   await expect(page.getByTestId("run-review")).toBeVisible({ timeout: 15_000 });
   const reset = await flow.booking();

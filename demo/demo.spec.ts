@@ -122,18 +122,21 @@ test("demo", async ({ page, request }) => {
 
   // 3. The comparison, captioned while Claude works.
   await say(page, "After the stay, the host adds the check-in and check-out photos.");
+  await page.getByTestId("demo-tools").locator("summary").click();
   await tap(page, "demo-photo-check_in");
   await expect(page.getByTestId("demo-photo-two")).toBeEnabled();
   await tap(page, "demo-photo-two");
   await expect(page.getByTestId("photo-source")).toHaveCount(2);
   await tap(page, "run-review");
   await say(page, status.ai.mode === "live" ? "Claude Sonnet 5.5 compares the two photos and boxes only what's new. Each step shows as it happens." : "Claude compares the two photos and boxes only what's new. Each step shows as it happens.");
-  await expect(page.getByTestId("review")).toBeVisible({ timeout: 90_000 });
+  const proposal = page.getByTestId("ai-proposal");
+  await expect(proposal).toBeVisible({ timeout: 90_000 });
+  // The finished steps fold to one line each; open the photos to show the boxes.
+  await page.getByTestId("fold-photos").locator("summary").click();
   await say(page, "Two new marks: a gouge in the floor and a stain on the rug.");
   await zoomOn(page, page.getByTestId("damage-box").first(), { scale: 2.4, ms: 2600 });
-  const proposal = page.getByTestId("ai-proposal");
+  await page.getByTestId("fold-photos").locator("summary").click();
   await say(page, "The settlement agent prices each one from the price table, proposes, and stops.");
-  await expect(proposal).toBeVisible({ timeout: 90_000 });
   await page.screenshot({ path: "docs/screenshot.png", style: "#__demo_caption { display: none !important; } body { padding-bottom: 0 !important; }" });
   const view = await (await page.request.get(`/api/bookings/${id}`)).json();
   const lines = view.proposal.lines as { id: string; amountCents: number }[];
