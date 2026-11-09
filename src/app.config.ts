@@ -34,7 +34,7 @@ export const appConfig = {
     primaryCta: { label: "Open bookings", href: "/bookings" },
     secondaryCta: { label: "See the dashboard", href: "/insights" },
     steps: [
-      { title: "Hold the deposit", body: "The renter approves a PayPal hold. Nothing is charged. PayPal guarantees it for 3 days, and it can be captured until day 29." },
+      { title: "Hold the deposit", body: "The renter places a PayPal hold from their own link. Nothing is charged. PayPal guarantees it for 3 days, and it can be captured until day 29." },
       { title: "Compare the photos", body: "Claude looks at check-in and check-out, draws a red box on new damage and suggests a charge with its reasons." },
       { title: "Approve the charge", body: "The renter can accept or contest. You set the exact amount, PayPal captures that and releases the rest." },
     ],
@@ -75,10 +75,36 @@ export const appConfig = {
         ],
       },
     ],
+    /** When the AI isn't sure, it says so and charges nothing. Shown with the blind test. */
+    lookRule: {
+      title: "Worth a look, nothing charged",
+      body: "When Claude sees a mark but isn\u2019t sure it\u2019s new, it goes under Worth a look with an amber box on the photo. It is never charged unless you add it, and the renter sees anything you add.",
+    },
+    /**
+     * Existing tools, each described only from its own public page (read 2026-11-08). We say what
+     * each page says, not what it lacks: a missing feature on a page is not proof.
+     */
+    differs: {
+      intro: "Each one below is described only from its own page, read in November 2026, and linked so you can check.",
+      tools: [
+        { name: "Witnessed", kind: "AI inspection", what: "Compares photos from the start and end of a stay or rental, tells wear from possible damage, and makes shareable PDF reports.", href: "https://www.producthunt.com/products/witnessed" },
+        { name: "RentSolve AI", kind: "AI inspection", what: "Itemized deduction reports with photo evidence and repair estimates, emailed to the tenant.", href: "https://rentsolve-site.pages.dev/features/damage-deduction-reports" },
+        { name: "CheckEasy", kind: "AI inspection", what: "AI check-in and check-out reports for short-term rentals. It saves the guest\u2019s card \u201cwithout holding anything\u201d and charges after damage.", href: "https://www.checkeasy.co/en" },
+        { name: "VerifyAI (Switch Labs)", kind: "Photo API", what: "An API and SDKs that compare checkout and return photos for new damage and missing parts.", href: "https://verify.switchlabs.dev/use-cases/rental-return-verification" },
+        { name: "Truvi (formerly Superhog)", kind: "Damage protection", what: "Damage protection with \u201cno guest deposits or waivers required\u201d; payouts go to the host.", href: "https://truvi.com/damage-protection" },
+        { name: "Waivo", kind: "Damage waiver", what: "A non-refundable guest fee that \u201creplaces traditional security deposits\u201d, with $1,500 of cover.", href: "https://www.futurestay.com/built-in-partners/waivo" },
+        { name: "Obligo", kind: "Lease deposit alternative", what: "Renters link a payment method instead of paying a lease deposit; owners can charge up to the deposit amount. A non-refundable fee applies.", href: "https://www.obligo.com/blog/obligo-a-better-security-deposit-alternative" },
+      ],
+      ours: [
+        { title: "The hold stays on PayPal", body: "The renter\u2019s money is authorized on PayPal, not taken and not replaced by a fee. Only what the host approves is captured; the rest is released." },
+        { title: "Several captures on one hold", body: "Lines the renter accepts are captured straight away, and the contested part stays on the same PayPal hold until the host decides." },
+        { title: "The renter contests line by line", body: "The renter sees each line with its photo and price row, and accepts or contests each one before anything moves." },
+      ],
+    },
     features: [
       { title: "Money stays on hold", body: "The deposit is authorized, not taken. Only the amount you approve is ever captured, and the app's code refuses anything over the hold." },
       { title: "Evidence both sides read", body: "Both photos side by side, the damage boxed, and reasons the renter sees on their own link before any charge." },
-      { title: "Not another inspection tool", body: "Damage-inspection apps stop at a report. This one keeps the money on a PayPal hold until the host and renter have seen the same evidence." },
+      { title: "Every PayPal call named", body: "The activity strip shows each PayPal call with the Agent Toolkit tool that made it, and says plainly where the Toolkit has no tool for a step." },
     ],
   },
 

@@ -1,13 +1,14 @@
 /* eslint-disable @next/next/no-img-element -- the demo photos are small local files shown as they are */
-import { ArrowRight, Bot, Check, Lock, ScanSearch, ShieldCheck, Sparkles } from "lucide-react";
+import { ArrowRight, Bot, Check, ExternalLink, Lock, ScanSearch, ShieldCheck, Sparkles } from "lucide-react";
 import { appConfig } from "@/app.config";
+import { BLIND_TEST } from "@/lib/deposit/blind-test";
 import { MoneyBadge } from "../money-badge";
 import { ButtonLink } from "../ui/button";
 import { AppLogo } from "../shell/app-logo";
 
 /**
  * Landing page sections. Content comes from appConfig.landing; reorder or replace freely.
- *   <SiteHeader /> <Hero /> <PainPoints /> <HowItWorks /> <Features /> <CtaBand /> <SiteFooter />
+ *   <SiteHeader /> <Hero /> <PainPoints /> <HowItWorks /> <BlindTest /> <HowThisDiffers /> <Features /> <CtaBand /> <SiteFooter />
  */
 
 export function SiteHeader() {
@@ -18,6 +19,9 @@ export function SiteHeader() {
         <nav className="flex items-center gap-2">
           <a href="#how" className="hidden rounded-md px-3 py-2 text-sm text-zinc-600 hover:text-zinc-900 sm:block">
             How it works
+          </a>
+          <a href="#differs" className="hidden rounded-md px-3 py-2 text-sm text-zinc-600 hover:text-zinc-900 sm:block">
+            How this differs
           </a>
           <ButtonLink href={appConfig.landing.primaryCta.href} size="sm">
             {appConfig.landing.primaryCta.label}
@@ -164,6 +168,86 @@ export function PainPoints() {
                   </span>
                 ))}
               </p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/** How far to trust the photo comparison: the blind test's numbers and the rule for marks it isn't sure of. */
+export function BlindTest() {
+  const rule = appConfig.landing.lookRule;
+  return (
+    <section id="blind-test" className="py-20" data-testid="landing-blind-test">
+      <div className="mx-auto grid max-w-6xl gap-8 px-4 sm:px-6 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
+        <div className="min-w-0">
+          <p className="text-sm font-semibold uppercase tracking-wider text-brand">Blind test</p>
+          <h2 className="mt-2 text-3xl font-semibold tracking-tight text-zinc-950" data-testid="landing-blind-headline">
+            {BLIND_TEST.pairs} new photo pairs, {BLIND_TEST.falseCharges} false charges
+          </h2>
+          <div className="mt-6 overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
+            <table className="w-full text-left text-sm">
+              <thead className="bg-zinc-50 text-xs text-zinc-500">
+                <tr>
+                  <th className="px-4 py-2 font-medium">Pairs</th>
+                  <th className="px-4 py-2 font-medium">Count</th>
+                  <th className="px-4 py-2 font-medium">Result</th>
+                </tr>
+              </thead>
+              <tbody className="text-zinc-800">
+                {BLIND_TEST.rows.map((r) => (
+                  <tr key={r.group} className="border-t border-zinc-100 align-top" data-testid="landing-blind-row">
+                    <td className="px-4 py-2.5">{r.group}</td>
+                    <td className="px-4 py-2.5 tabular-nums">{r.pairs}</td>
+                    <td className="px-4 py-2.5">{r.outcome}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="mt-3 text-sm text-zinc-500">{BLIND_TEST.caveat}</p>
+        </div>
+        <div className="min-w-0 self-start rounded-2xl border border-amber-300 bg-amber-50 p-6" data-testid="landing-look-rule">
+          <span className="inline-flex size-6 items-center justify-center bg-amber-400 text-xs font-semibold text-amber-950" aria-hidden>A</span>
+          <h3 className="mt-3 text-lg font-semibold text-amber-950">{rule.title}</h3>
+          <p className="mt-2 text-[15px] leading-relaxed text-amber-950/85">{rule.body}</p>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/** Existing tools named with links to their own pages, then the three things this one does differently. */
+export function HowThisDiffers() {
+  const d = appConfig.landing.differs;
+  return (
+    <section id="differs" className="border-y border-zinc-200/70 bg-white py-20" data-testid="how-this-differs">
+      <div className="mx-auto max-w-6xl px-4 sm:px-6">
+        <p className="text-sm font-semibold uppercase tracking-wider text-brand">How this differs</p>
+        <h2 className="mt-2 text-3xl font-semibold tracking-tight text-zinc-950">Inspection reports and deposit replacements already exist</h2>
+        <p className="mt-3 max-w-2xl text-[15px] leading-relaxed text-zinc-600">{d.intro}</p>
+        <ul className="mt-8 grid gap-3 md:grid-cols-2">
+          {d.tools.map((t) => (
+            <li key={t.name} className="min-w-0 rounded-xl border border-zinc-200 bg-zinc-50/50 px-4 py-3" data-testid="differs-tool">
+              <p className="flex flex-wrap items-baseline gap-x-2">
+                <a href={t.href} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 font-semibold text-zinc-900 underline decoration-zinc-300 underline-offset-2 hover:decoration-zinc-700">
+                  {t.name} <ExternalLink className="size-3.5 text-zinc-400" aria-hidden />
+                </a>
+                <span className="text-xs text-zinc-500">{t.kind}</span>
+              </p>
+              <p className="mt-1 text-sm leading-relaxed text-zinc-600">{t.what}</p>
+            </li>
+          ))}
+        </ul>
+        <h3 className="mt-12 text-xl font-semibold text-zinc-950">What {appConfig.name} does that these pages don&rsquo;t describe</h3>
+        <div className="mt-5 grid gap-6 md:grid-cols-3">
+          {d.ours.map((o) => (
+            <div key={o.title} className="rounded-2xl border border-brand-200 bg-brand-50/40 p-6" data-testid="differs-ours">
+              <Check className="size-5 text-brand" aria-hidden />
+              <h4 className="mt-3 font-semibold text-zinc-900">{o.title}</h4>
+              <p className="mt-1.5 text-[15px] leading-relaxed text-zinc-600">{o.body}</p>
             </div>
           ))}
         </div>

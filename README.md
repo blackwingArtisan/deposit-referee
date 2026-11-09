@@ -19,6 +19,42 @@
 
 Partial capture itself isn't unique to PayPal (Stripe can capture less than the hold too). What this app uses is the 29-day authorization and several captures on one hold, so the items a renter accepts are charged at once and the contested ones wait on the same hold.
 
+## How this differs
+
+Photo inspection and deposit replacement already exist. Each line below says only what that product's own page says (read 8 Nov 2026):
+
+| Product | Kind | What its page says it does |
+|---|---|---|
+| [Witnessed](https://www.producthunt.com/products/witnessed) | AI inspection | Compares photos from the start and end of a stay or rental, tells normal wear from possible damage, and makes shareable PDF reports |
+| [RentSolve AI](https://rentsolve-site.pages.dev/features/damage-deduction-reports) | AI inspection | Itemized deduction reports with photo evidence and repair estimates, emailed to the tenant |
+| [CheckEasy](https://www.checkeasy.co/en) | AI inspection | AI check-in and check-out reports for short-term rentals; saves the guest's card "without holding anything" and charges after damage, backed by the report |
+| [VerifyAI (Switch Labs)](https://verify.switchlabs.dev/use-cases/rental-return-verification) | Photo API | An API and SDKs that compare checkout and return photos for new damage, missing parts and cleanliness |
+| [Truvi, formerly Superhog](https://truvi.com/damage-protection) | Damage protection | Damage protection with "no guest deposits or waivers required"; claim payouts go to the host |
+| [Waivo](https://www.futurestay.com/built-in-partners/waivo) | Damage waiver | A non-refundable guest fee that "replaces traditional security deposits", with $1,500 of cover |
+| [Obligo](https://www.obligo.com/blog/obligo-a-better-security-deposit-alternative) | Lease deposit alternative | Renters link a payment method instead of paying a lease deposit, and owners can charge up to the deposit amount; a non-refundable fee applies |
+
+What Deposit Referee does that none of those pages describes:
+
+- **The hold stays on PayPal.** The renter's money is authorized, not taken and not replaced by a fee. Only what the host approves is captured; the rest is released.
+- **Several captures on one hold.** The lines the renter accepts are captured at once with `final_capture: false`, and the contested part stays on the same authorization until the host decides.
+- **The renter contests line by line.** The renter sees each line with its photo and price-table row and accepts or contests each one before anything moves.
+
+That is what those public pages say, not proof that none of them does it. The photo comparison itself is a crowded niche, and Claude doing it isn't unique.
+
+## How far to trust the photo comparison
+
+A blind test on the real API, before this build was frozen: 10 new pairs made from CC0 photos of real rooms with digitally added marks.
+
+| Pairs | Count | Result |
+|---|---|---|
+| No new damage | 5 | 0 charged, 0 flagged |
+| One new mark | 5 | 3 charged, 1 Worth a look, 1 missed (a crack across a floor tile) |
+| Obvious damage, and the demo pair | 4 | 4 charged |
+
+**0 false charges.** A small sample, and both photos in each test pair come from one capture, so real photos may do worse.
+
+**Worth a look, nothing charged.** When Claude sees a mark but isn't sure it's new, or calls it faint, it goes under **Worth a look** with an amber box on the photo. Code never charges it unless the host adds it, and then it goes to the renter and the approval card like any other line.
+
 ## The problem
 
 Airbnb's AirCover and Turo's protection plans settle damage inside their platforms. A host who rents out a cabin from their own website, or lends out a trailer or a camera kit, has nothing like that. Anyone who does knows this argument. A renter leaves, the host finds a long scratch in the floor, and each side remembers it differently. If the host already has the deposit, the renter has to chase it back. If the host doesn't, there's no easy way to charge for real damage. Deposit Referee keeps the money on a PayPal hold, puts the evidence on one page both sides can read, and charges only what the host approves.
@@ -26,12 +62,12 @@ Airbnb's AirCover and Turo's protection plans settle damage inside their platfor
 ## What it does
 
 1. The host creates a booking with a deposit, for example $300 for a lakeside cabin.
-2. The renter places the deposit: a PayPal order with `intent=AUTHORIZE`. The money is held, not taken. PayPal guarantees the funds for 3 days and lets the hold be captured until day 29; the booking page shows both dates.
+2. The renter places the deposit on their own page (it fits a phone): a PayPal order with `intent=AUTHORIZE`. The money is held, not taken. Until then the host's page says "Waiting for the renter's hold"; once PayPal returns the hold it says "$300 authorized, nothing charged" with the authorization id. PayPal guarantees the funds for 3 days and lets the hold be captured until day 29; both pages show the dates.
 3. Check-in and check-out photos go on the booking, each with its source shown.
-4. Claude compares the two photos, itemizes new damage and draws a red box on it.
+4. Claude compares the two photos, itemizes new damage and draws a red box on it. While it works, the page shows a live list of steps (hold confirmed, photos in, Claude comparing with the seconds so far, price table, proposal ready), never a bare spinner.
 5. The settlement agent reads that review, checks the order and the hold through PayPal's tools, and proposes a charge or a full release with its evidence. Then it stops. It has no tool that can move money.
 6. The renter opens their own link, sees the proposal, the photos and the reasons, and accepts or contests it. A contest stops the capture and brings their note back to the host. It's a note inside this app, not a PayPal dispute.
-7. The host can change any amount, since the AI's figures are proposals, not repair quotes, and adds a one-line reason the renter sees. Raising a charge goes back to the renter. Then the host sends the charge or release to the Guard's approval step. No money moves before that approval, and declining moves nothing and keeps the booking open.
+7. The host can change any amount, since the AI's figures are proposals, not repair quotes, and adds a one-line reason the renter sees. Raising a charge goes back to the renter. Then the host sends the charge or release to the Guard's approval step. The approval is the main card on the page: each line with its price-table row, the renter's answer on each, "Capture $150.00 · release $150.00" and the Guard's reason for stopping. No money moves before the host clicks Approve (an end-to-end test waits and re-checks that nothing was captured or voided), and declining moves nothing and keeps the booking open.
 8. PayPal captures exactly that amount, the rest of the hold is voided, and the result screen shows, for example, "$150 captured, $150 released", re-read from PayPal. With no damage the whole hold is voided and re-read: "$0 captured, $300 released".
 
 **Split capture.** When the renter accepts some items and contests others, the host can charge the accepted items at once (after the same approval step), as a capture with `final_capture: false`. The contested part stays on the same hold until a person settles it, with a second capture from that hold or a release; the settlement then voids what's left. PayPal can't shrink a hold, so the app's own limit keeps the second charge to the contested amount. On the sandbox both captures and the void are re-read from PayPal.
@@ -71,7 +107,7 @@ All PayPal calls go to the **sandbox** (`https://api-m.sandbox.paypal.com`); the
 | Payments v2 | `GET /v2/payments/authorizations/{id}`, `/capture`, `/void`, `GET /v2/payments/captures/{id}` | Charges the exact amount the host approved, releases the rest of the hold, then re-reads both so the result screen shows PayPal's numbers |
 | Webhooks | `POST /v1/notifications/verify-webhook-signature` | Verified webhooks update the app's ledger and appear on the timeline of the booking they belong to |
 | Disputes v1 | `GET /v1/customer/disputes/{id}`, `POST /v1/customer/disputes/{id}/provide-evidence` | Reads a renter's dispute when its webhook arrives, and sends the evidence pack (PDF, evidence type `OTHER`) after the host approves |
-| **PayPal Agent Toolkit** | `@paypal/agent-toolkit` 1.11 tools: `get_order`, `get_dispute` | The settlement agent reads the order through PayPal's Agent Toolkit (definitions, validation and sandbox execution), plus guarded extensions the toolkit lacks: `get_authorization` for the agent, and `void_authorization` for the release after the host approves. |
+| **PayPal Agent Toolkit** | `@paypal/agent-toolkit` 1.11 tools: `get_order`, `get_dispute` | Every read of a hold goes through the Toolkit's `get_order`, because the order carries its authorizations and their captures: the agent's `get_authorization`, and the checks inside `capture_deposit`, `capture_accepted_items` and `void_authorization`, all behind the Guard. Toolkit 1.11 has no tool to capture from a hold, void one or reauthorize it, so those three use the kit's own Payments v2 calls behind the same Guard. Each row of **PayPal calls** names the tool that made it and says so plainly where the Toolkit has none. |
 
 **Safety around money:** every money-moving agent call passes a guard. It enforces a per-action cap, a daily cap, a payee allowlist and idempotency (`PayPal-Request-Id`), and makes `capture_deposit`, `capture_accepted_items`, `release_deposit` and `submit_dispute_evidence` wait for the host at any amount. Every decision goes to a hash-chained, append-only audit log.
 
@@ -157,7 +193,7 @@ Started from kit `b67af83`. Two kit bugs found while building this are fixed her
 - The sandbox app's credentials are shared with other demo apps, so the ledger, the Activity page and the timelines show only the PayPal records behind this app's own bookings.
 - Sandbox Transaction Search needs the reporting feature enabled on the PayPal app, and data can lag up to 3 hours; the app keeps its own ledger.
 - The optional PayPal remote MCP connector is read-only and untested.
-- There are no logins yet: the renter's page is a private link the host shares by hand, and anyone with the host's page could approve. The bookings list never includes renter links, but a single booking's page does, because the host needs it.
+- There are no logins yet. Creating a booking gives that browser the booking's host secret (an httpOnly cookie, also accepted as the `x-booking-secret` header). Every route that approves, captures, voids, edits the charge, compares photos or sends evidence answers 401 without it and 403 with the wrong one, before any PayPal or AI call (`tests/e2e/host-secret.spec.ts`). Anyone else with the booking's link sees it read-only, with no renter link. The catch: the host can't act from a second device yet. The renter's page is a private link the host shares by hand.
 - The renter's contest is a note to the host inside this app. It doesn't open a PayPal dispute.
 - A PayPal dispute is opened by the buyer from their PayPal account, so automated runs open one on mock PayPal only. The webhook handler, `get_dispute` and the evidence upload are the same code on the sandbox, but no sandbox dispute has been run through them yet. The evidence pack shows JPEG photos; a PNG or WebP upload is named in the pack but not drawn.
 - The AI's figures run low and aren't repair estimates. They're proposals the host can change.
