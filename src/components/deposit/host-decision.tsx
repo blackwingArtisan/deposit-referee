@@ -11,6 +11,7 @@ import { heldCents, splitOf, type Split } from "@/lib/deposit/split-rules";
 import type { BookingPhoto, BookingView, ChargeLine, DamageItem } from "@/lib/deposit/types";
 import { PriceSource, PriceTable } from "./damage-items";
 import { LineCard, MarkThumb, NoMarkTile, splitDescription } from "./line-card";
+import { Why } from "./why";
 import { findingPhotoLabel, lookLetter } from "./photo-frame";
 import { SecondLookCard } from "./second-look";
 
@@ -30,14 +31,18 @@ function RenterPanel({ booking, chargeCents }: { booking: BookingView; chargeCen
       <div data-testid="renter-note" className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950">
         <p className="flex items-center gap-2 font-semibold"><MessageSquareWarning className="size-4" /> The renter contested {response.acceptedLineIds?.length ? "part of the charge" : formatExactCents(response.amountCents)}</p>
         <p className="mt-1">&ldquo;{response.note}&rdquo;</p>
-        <p className="mt-2 text-xs">The capture stopped here. Lower the charge, release the deposit, or keep the charge knowing the renter disagrees. They can still open a dispute with PayPal.</p>
+        <Why testId="renter-note-why" className="mt-1">
+          <p>The capture stopped here. Lower the charge, release the deposit, or keep the charge knowing the renter disagrees. They can still open a dispute with PayPal.</p>
+        </Why>
       </div>
     );
   }
   return (
     <div className="rounded-lg border border-zinc-200 px-4 py-3 text-sm">
       <p className="font-medium text-zinc-900" data-testid="renter-status">{clearance.until ? `The renter has until ${localTime(clearance.until)} to accept or contest.` : clearance.reason}</p>
-      <p className="mt-1 text-zinc-600">Send the renter their link. They see this proposal and the photos, and can accept or contest it before anything is charged.</p>
+      <Why testId="renter-status-why" className="mt-1">
+        <p>Send the renter their link. They see this proposal and the photos, and can accept or contest it before anything is charged.</p>
+      </Why>
       {booking.renterToken ? (
         <div className="mt-2 flex flex-wrap items-center gap-3">
           <Link href={path} target="_blank" className="inline-flex items-center gap-1 font-medium text-brand underline underline-offset-2" data-testid="renter-link">
@@ -110,7 +115,10 @@ function WorthALook({ looks, onCharge, disabled, onAdd }: { looks: DamageItem[];
   return (
     <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3" data-testid="worth-a-look">
       <h4 className="text-sm font-semibold text-amber-950">Worth a look</h4>
-      <p className="mt-0.5 text-xs text-amber-900">The AI noticed {looks.length === 1 ? "this" : "these"} but wasn&rsquo;t sure enough to charge. Check the amber box on the check-out photo. Nothing here is charged unless you add it, and the renter sees anything you add.</p>
+      <p className="mt-0.5 text-xs text-amber-900">Not charged unless you add it.</p>
+      <Why testId="worth-a-look-why" className="mt-0.5">
+        <p>The AI noticed {looks.length === 1 ? "this" : "these"} but wasn&rsquo;t sure enough to charge. Check the amber box on the check-out photo. Nothing here is charged unless you add it, and the renter sees anything you add.</p>
+      </Why>
       <ul className="mt-3 space-y-3">
         {looks.map((look, i) => (
           <li key={i} className="flex flex-wrap items-start justify-between gap-2 text-sm" data-testid={`look-${i}`}>
@@ -144,8 +152,11 @@ function SplitPanel({ booking, split, busy, act }: { booking: BookingView; split
           {part.lines.map((line) => <li key={line.id}>{line.description} ({formatExactCents(line.amountCents)})</li>)}
         </ul>
         <p className="mt-2 text-xs">
-          PayPal capture <span className="font-mono" data-testid="part-capture-id">{part.captureId}</span>, {part.captureStatus?.toLowerCase()}, read back from PayPal. It was not the final capture, so the contested {formatExactCents(split.contestedCents)} is still on the same hold. Settle it below. PayPal can&rsquo;t shrink a hold, so the app won&rsquo;t charge more than the contested amount from it, and settling releases the rest.
+          PayPal capture <span className="font-mono" data-testid="part-capture-id">{part.captureId}</span>, {part.captureStatus?.toLowerCase()}. The contested {formatExactCents(split.contestedCents)} is still on the same hold.
         </p>
+        <Why testId="part-capture-why" className="mt-1">
+          <p>Read back from PayPal. It was not the final capture, so the contested part stays on the same hold. Settle it below. PayPal can&rsquo;t shrink a hold, so the app won&rsquo;t charge more than the contested amount from it, and settling releases the rest.</p>
+        </Why>
       </div>
     );
   }
@@ -157,7 +168,6 @@ function SplitPanel({ booking, split, busy, act }: { booking: BookingView; split
         {split.contested.map((line) => <li key={line.id}>Contested: {line.description} ({formatExactCents(line.amountCents)})</li>)}
       </ul>
       {booking.renterState?.response?.note ? <p className="mt-2" data-testid="renter-note">&ldquo;{booking.renterState.response.note}&rdquo;</p> : null}
-      <p className="mt-2 text-xs">The accepted items can be charged now. The contested part stays on the hold until you settle it.</p>
       {part?.error ? <p className="mt-2 text-xs text-red-700" data-testid="part-capture-error">{part.error}</p> : null}
       {booking.status === "contested" ? (
         <Button className="mt-3" size="sm" loading={busy === "part"} disabled={!!busy} onClick={() => act("part", "Could not request approval", () => kitFetch<BookingView>(`/api/bookings/${booking.id}/part-capture`, { method: "POST" }))} data-testid="request-part-capture">
@@ -208,7 +218,7 @@ export function HostDecision({ booking, busy, act }: { booking: BookingView; bus
             ? `The charge can't be more than the ${formatExactCents(authorizedCents)} hold.`
             : !clearance.cleared
               ? clearance.until
-                ? `Waiting for the renter to accept or contest. If they don't answer, you can go ahead after ${localTime(clearance.until)}.`
+                ? "Waiting for the renter."
                 : clearance.reason
               : null;
 
@@ -228,13 +238,15 @@ export function HostDecision({ booking, busy, act }: { booking: BookingView; bus
       <div className="rounded-lg bg-zinc-50 px-4 py-3" data-testid="ai-proposal">
         <p className="flex items-center gap-2 font-medium text-zinc-900">
           <Bot className="size-4 text-brand" aria-hidden />
-          {proposal.kind === "release" ? `The agent proposes releasing the whole ${formatExactCents(authorizedCents)}.` : `The agent proposes charging ${formatExactCents(proposal.aiCents)} and releasing ${formatExactCents(authorizedCents - proposal.aiCents)}.`}
+          {proposal.kind === "release" ? `The agent proposes releasing the whole ${formatExactCents(authorizedCents)}.` : `The agent proposes: charge ${formatExactCents(proposal.aiCents)}, release ${formatExactCents(authorizedCents - proposal.aiCents)}.`}
         </p>
-        <p className="mt-1.5 text-sm leading-relaxed text-zinc-700">{proposal.rationale}</p>
         <div className="mt-2 flex flex-wrap items-center gap-2">
           <Badge tone={proposal.simulated ? "warning" : "brand"}>{proposal.engine}</Badge>
-          <span className="text-xs text-zinc-500">It has stopped here. It can&rsquo;t move money.</span>
+          <span className="text-xs text-zinc-500">It can&rsquo;t move money.</span>
         </div>
+        <Why testId="proposal-why" className="mt-1.5" label="Show reasoning" hideLabel="Hide reasoning">
+          <p className="leading-relaxed" data-testid="proposal-rationale">{proposal.rationale}</p>
+        </Why>
       </div>
 
       {split ? <SplitPanel booking={booking} split={split} busy={busy} act={act} /> : null}
@@ -252,7 +264,7 @@ export function HostDecision({ booking, busy, act }: { booking: BookingView; bus
       <div className="rounded-lg border border-zinc-200 px-4 py-3" data-testid="itemized-charge">
         <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
           <h4 className="text-sm font-semibold text-zinc-900">Itemized charge</h4>
-          <p className="text-sm text-zinc-600">Amounts come from the price table, not the AI. Change any to your real cost.</p>
+          <p className="text-sm text-zinc-600">Priced by code. You can edit.</p>
         </div>
         {parsed.length ? (
           <ul className="space-y-3">
@@ -311,7 +323,7 @@ export function HostDecision({ booking, busy, act }: { booking: BookingView; bus
       ) : null}
       {raised && contested ? <p className="flex items-center gap-1.5 text-sm text-red-700"><CircleAlert className="size-4" /> The renter contested this charge, so it can only go down now.</p> : null}
 
-      <p className="flex items-center gap-1.5 text-xs text-zinc-600"><ShieldCheck className="size-4 shrink-0 text-brand" aria-hidden /> Code limit: no capture above the itemized lines ({formatExactCents(savedCents)}) or the hold ({formatExactCents(authorizedCents)}), whatever the AI asks.</p>
+      <p className="flex items-center gap-1.5 text-xs text-zinc-600"><ShieldCheck className="size-4 shrink-0 text-brand" aria-hidden /> Code limit: at most {formatExactCents(Math.min(savedCents, authorizedCents))}, whatever the AI asks.</p>
       </>
       )}
     </div>

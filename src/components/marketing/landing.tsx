@@ -5,6 +5,7 @@ import { BLIND_TEST } from "@/lib/deposit/blind-test";
 import { MoneyBadge } from "../money-badge";
 import { buttonClass, ButtonLink } from "../ui/button";
 import { AppLogo } from "../shell/app-logo";
+import { PhoneFold } from "./phone-fold";
 
 /**
  * Landing page sections. Content comes from appConfig.landing; reorder or replace freely.
@@ -85,12 +86,12 @@ export function Hero() {
     <section className="relative overflow-hidden">
       <div className="bg-grid absolute inset-0 [mask-image:radial-gradient(ellipse_at_top,black,transparent_70%)]" aria-hidden />
       <div className="absolute -top-40 left-1/2 h-[480px] w-[900px] -translate-x-1/2 rounded-full bg-brand-200/40 blur-3xl" aria-hidden />
-      <div className="relative mx-auto grid max-w-6xl items-center gap-12 px-4 pb-20 pt-16 sm:px-6 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] lg:pt-24">
+      <div className="relative mx-auto grid max-w-6xl items-center gap-8 px-4 pb-12 pt-8 sm:gap-12 sm:px-6 sm:pb-20 sm:pt-16 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] lg:pt-24">
         <div>
           <span className="inline-flex items-center gap-2 rounded-full border border-brand-200 bg-white/80 px-3 py-1 text-sm font-medium text-brand-700 shadow-sm">
             <Sparkles className="size-4" /> {l.eyebrow}
           </span>
-          <h1 className="mt-6 text-4xl font-semibold leading-[1.08] tracking-tight text-zinc-950 sm:text-5xl lg:text-[56px]" data-testid="landing-headline">
+          <h1 className="mt-4 text-4xl sm:mt-6 font-semibold leading-[1.08] tracking-tight text-zinc-950 sm:text-5xl lg:text-[56px]" data-testid="landing-headline">
             {l.headline}
           </h1>
           <p className="mt-3 text-sm text-zinc-500" data-testid="headline-sources">
@@ -104,11 +105,11 @@ export function Hero() {
               </span>
             ))}
           </p>
-          <p className="mt-5 max-w-xl text-lg leading-relaxed text-zinc-600">{l.subheadline}</p>
+          <p className="mt-4 max-w-xl text-base leading-relaxed text-zinc-600 sm:mt-5 sm:text-lg">{l.subheadline}</p>
           <p className="mt-3 max-w-xl text-base font-medium text-zinc-900" data-testid="paypal-reason">
             {l.paypalReason}
           </p>
-          <div className="mt-8 flex flex-wrap gap-3">
+          <div className="mt-6 flex flex-wrap gap-3 sm:mt-8">
             <ButtonLink href={l.primaryCta.href} size="lg">
               {l.primaryCta.label} <ArrowRight className="size-4" />
             </ButtonLink>
@@ -116,7 +117,7 @@ export function Hero() {
             <a href="/try" className={buttonClass("secondary", "lg")} data-testid="try-demo-booking">
               Try the demo booking
             </a>
-            <ButtonLink href={l.secondaryCta.href} size="lg" variant="ghost">
+            <ButtonLink href={l.secondaryCta.href} size="lg" variant="ghost" className="max-sm:hidden!">
               {l.secondaryCta.label}
             </ButtonLink>
           </div>
@@ -132,13 +133,13 @@ export function Hero() {
 
 export function HowItWorks() {
   return (
-    <section id="how" className="border-y border-zinc-200/70 bg-white py-20">
+    <section id="how" className="border-y border-zinc-200/70 bg-white py-12 sm:py-20">
       <div className="mx-auto max-w-6xl px-4 sm:px-6">
         <p className="text-sm font-semibold uppercase tracking-wider text-brand">How it works</p>
         <h2 className="mt-2 text-3xl font-semibold tracking-tight text-zinc-950">Three steps, fully visible</h2>
-        <div className="mt-10 grid gap-6 md:grid-cols-3">
+        <div className="mt-6 grid gap-3 sm:mt-10 sm:gap-6 md:grid-cols-3">
           {appConfig.landing.steps.map((s, i) => (
-            <div key={s.title} className="relative rounded-2xl border border-zinc-200 bg-zinc-50/50 p-6">
+            <div key={s.title} className="relative rounded-2xl border border-zinc-200 bg-zinc-50/50 p-4 sm:p-6">
               <span className="flex size-9 items-center justify-center rounded-full bg-brand text-sm font-semibold text-brand-foreground">{i + 1}</span>
               <h3 className="mt-4 text-lg font-semibold text-zinc-900">{s.title}</h3>
               <p className="mt-2 text-[15px] leading-relaxed text-zinc-600">{s.body}</p>
@@ -153,18 +154,20 @@ export function HowItWorks() {
 /** The problem, from the research, each with what the app does about it and where the figure came from. */
 export function PainPoints() {
   return (
-    <section id="why" className="py-20" data-testid="pain-points">
+    <section id="why" className="py-12 sm:py-20" data-testid="pain-points">
       <div className="mx-auto max-w-6xl px-4 sm:px-6">
         <p className="text-sm font-semibold uppercase tracking-wider text-brand">Why hosts need this</p>
         <h2 className="mt-2 text-3xl font-semibold tracking-tight text-zinc-950">What goes wrong with a damage deposit today</h2>
-        <div className="mt-10 grid gap-6 md:grid-cols-2">
+        <div className="mt-6 grid gap-3 sm:mt-10 sm:gap-6 md:grid-cols-2">
           {appConfig.landing.painPoints.map((p) => (
-            <div key={p.title} className="min-w-0 rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm" data-testid="pain-point">
+            <div key={p.title} className="min-w-0 rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm sm:p-6" data-testid="pain-point">
               <h3 className="font-semibold text-zinc-900">{p.title}</h3>
-              <p className="mt-2 text-[15px] leading-relaxed text-zinc-600">{p.body}</p>
-              <p className="mt-3 flex gap-2 text-[15px] leading-relaxed text-zinc-800">
+              <p className="mt-2 flex gap-2 text-[15px] leading-relaxed text-zinc-800">
                 <Check className="mt-1 size-4 shrink-0 text-brand" aria-hidden /> {p.answer}
               </p>
+              <div className="mt-2">
+              <PhoneFold summary="The figures and sources" testId="pain-point-fold">
+              <p className="mt-2 text-[15px] leading-relaxed text-zinc-600">{p.body}</p>
               <p className="mt-3 text-xs text-zinc-500">
                 {p.sources.map((s, i) => (
                   <span key={s.href + s.label}>
@@ -175,6 +178,8 @@ export function PainPoints() {
                   </span>
                 ))}
               </p>
+              </PhoneFold>
+              </div>
             </div>
           ))}
         </div>
@@ -187,14 +192,15 @@ export function PainPoints() {
 export function BlindTest() {
   const rule = appConfig.landing.lookRule;
   return (
-    <section id="blind-test" className="py-20" data-testid="landing-blind-test">
+    <section id="blind-test" className="py-12 sm:py-20" data-testid="landing-blind-test">
       <div className="mx-auto grid max-w-6xl gap-8 px-4 sm:px-6 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
         <div className="min-w-0">
           <p className="text-sm font-semibold uppercase tracking-wider text-brand">Blind test</p>
           <h2 className="mt-2 text-3xl font-semibold tracking-tight text-zinc-950" data-testid="landing-blind-headline">
             {BLIND_TEST.pairs} new photo pairs, {BLIND_TEST.falseCharges} false charges
           </h2>
-          <div className="mt-6 overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
+          <PhoneFold summary="Show the results" testId="landing-blind-fold">
+          <div className="mt-4 overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm sm:mt-6">
             <table className="w-full text-left text-sm">
               <thead className="bg-zinc-50 text-xs text-zinc-500">
                 <tr>
@@ -215,6 +221,7 @@ export function BlindTest() {
             </table>
           </div>
           <p className="mt-3 text-sm text-zinc-500">{BLIND_TEST.caveat}</p>
+          </PhoneFold>
         </div>
         <div className="min-w-0 self-start rounded-2xl border border-amber-300 bg-amber-50 p-6" data-testid="landing-look-rule">
           <span className="inline-flex size-6 items-center justify-center bg-amber-400 text-xs font-semibold text-amber-950" aria-hidden>A</span>
@@ -230,12 +237,13 @@ export function BlindTest() {
 export function HowThisDiffers() {
   const d = appConfig.landing.differs;
   return (
-    <section id="differs" className="border-y border-zinc-200/70 bg-white py-20" data-testid="how-this-differs">
+    <section id="differs" className="border-y border-zinc-200/70 bg-white py-12 sm:py-20" data-testid="how-this-differs">
       <div className="mx-auto max-w-6xl px-4 sm:px-6">
         <p className="text-sm font-semibold uppercase tracking-wider text-brand">How this differs</p>
         <h2 className="mt-2 text-3xl font-semibold tracking-tight text-zinc-950">Inspection reports and deposit replacements already exist</h2>
         <p className="mt-3 max-w-2xl text-[15px] leading-relaxed text-zinc-600">{d.intro}</p>
-        <ul className="mt-8 grid gap-3 md:grid-cols-2">
+        <PhoneFold summary={`Show the ${d.tools.length} tools we read`} testId="differs-tools-fold">
+        <ul className="mt-4 grid gap-3 sm:mt-8 md:grid-cols-2">
           {d.tools.map((t) => (
             <li key={t.name} className="min-w-0 rounded-xl border border-zinc-200 bg-zinc-50/50 px-4 py-3" data-testid="differs-tool">
               <p className="flex flex-wrap items-baseline gap-x-2">
@@ -248,7 +256,8 @@ export function HowThisDiffers() {
             </li>
           ))}
         </ul>
-        <h3 className="mt-12 text-xl font-semibold text-zinc-950">What {appConfig.name} does that these pages don&rsquo;t describe</h3>
+        </PhoneFold>
+        <h3 className="mt-8 sm:mt-12 text-xl font-semibold text-zinc-950">What {appConfig.name} does that these pages don&rsquo;t describe</h3>
         <div className="mt-5 grid gap-6 md:grid-cols-3">
           {d.ours.map((o) => (
             <div key={o.title} className="rounded-2xl border border-brand-200 bg-brand-50/40 p-6" data-testid="differs-ours">
@@ -263,9 +272,10 @@ export function HowThisDiffers() {
   );
 }
 
+/** Wider screens only: on a phone the three steps above already say this. */
 export function Features() {
   return (
-    <section className="py-20">
+    <section className="hidden py-12 sm:block sm:py-20">
       <div className="mx-auto grid max-w-6xl gap-6 px-4 sm:px-6 md:grid-cols-3">
         {appConfig.landing.features.map((f) => (
           <div key={f.title} className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
