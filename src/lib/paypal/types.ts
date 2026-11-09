@@ -549,7 +549,7 @@ export interface Dispute extends DisputeSummary {
   };
   evidences?: DisputeEvidence[];
   allowed_response_options?: { accept_claim?: { accept_claim_types: AcceptClaimType[] } };
-  messages?: { posted_by: "BUYER" | "SELLER"; time_posted: string; content: string }[];
+  messages?: { posted_by: "BUYER" | "SELLER"; time_posted: string; content: string; documents?: { name: string; url?: string }[] }[];
 }
 
 export interface DisputeList {

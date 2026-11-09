@@ -585,6 +585,10 @@ test("dispute pack: the renter disputes the charge with PayPal, and the host sen
   await expect(page.getByTestId("ruling-headline")).toHaveText("$150 captured, $150 released", { timeout: 60_000 });
   const settled = await flow.booking();
 
+  // Before any dispute, the host can ask PayPal directly (list_disputes): nothing there yet.
+  await page.getByTestId("evidence-panel").getByTestId("check-dispute").click();
+  await expect(page.getByTestId("dispute-checked")).toContainText("PayPal showed no dispute on this charge");
+
   // The renter opens a dispute from their PayPal account; PayPal sends CUSTOMER.DISPUTE.CREATED.
   const opened = await request.post(`/api/dev/mock/dispute/${flow.id}`, { data: { message: "The scratch was already there when I arrived." } });
   expect(opened.status()).toBe(200);
@@ -607,10 +611,12 @@ test("dispute pack: the renter disputes the charge with PayPal, and the host sen
   await expect(prompt.getByTestId("approve-button")).toBeInViewport();
   expect((await flow.booking()).dispute!.status).toBe("WAITING_FOR_SELLER_RESPONSE");
   await prompt.getByTestId("approve-button").click();
+  // A new case is an inquiry, where PayPal takes messages, not evidence: the pack goes attached to one.
   await expect(page.getByTestId("evidence-sent")).toContainText(`deposit-evidence-${flow.id}.pdf`, { timeout: 15_000 });
-  await expect(panel).toContainText("PayPal is reviewing");
+  await expect(page.getByTestId("evidence-sent")).toContainText("attached to a message");
+  await expect(panel).toContainText("Waiting for the renter's reply");
   const sent = await flow.booking();
-  expect(sent.dispute).toMatchObject({ status: "UNDER_REVIEW", evidence: { fileName: `deposit-evidence-${flow.id}.pdf` } });
+  expect(sent.dispute).toMatchObject({ status: "WAITING_FOR_BUYER_RESPONSE", stage: "INQUIRY", evidence: { fileName: `deposit-evidence-${flow.id}.pdf`, sentAs: "message" } });
 
   // The submission is on the audit trail with its approval, and on the booking's PayPal calls.
   const audit = await (await request.get("/api/audit")).json();

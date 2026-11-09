@@ -74,6 +74,7 @@ const REFRESH_AFTER: Partial<Record<OperationKey, (impl: PayPalApi, id: string) 
   "invoicing.cancel": (impl, id) => impl.invoicing.get(id),
   "invoicing.recordPayment": (impl, id) => impl.invoicing.get(id),
   "disputes.provideEvidence": (impl, id) => impl.disputes.get(id),
+  "disputes.sendMessage": (impl, id) => impl.disputes.get(id),
   "disputes.acceptClaim": (impl, id) => impl.disputes.get(id),
 };
 

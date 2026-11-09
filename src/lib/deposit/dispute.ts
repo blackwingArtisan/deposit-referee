@@ -18,6 +18,7 @@ import type { Dispute } from "@/lib/paypal/types";
 import { forBooking } from "./booking-events";
 import { activeSettlements, allBookings, evidenceKey, requireBooking, saveBooking } from "./bookings";
 import { evidenceFileName } from "./evidence";
+import { canSendEvidence } from "./dispute-state";
 import { dollarsToCents } from "./rules";
 import { failureReason } from "./settle";
 import type { Booking, BookingDispute } from "./types";
@@ -37,6 +38,7 @@ function fromPayPal(dispute: Dispute, booking: Booking): Omit<BookingDispute, "e
     captureId,
     reason: dispute.reason,
     status: dispute.status,
+    stage: dispute.dispute_life_cycle_stage,
     amountCents: dollarsToCents(dispute.dispute_amount.value),
     openedAt: dispute.create_time,
     responseDueAt: dispute.seller_response_due_date,
@@ -77,6 +79,36 @@ export async function recordDispute(resource: Dispute): Promise<Booking | undefi
   return readBack(booking.id, resource.dispute_id);
 }
 
+/** list_disputes answers { items: [...] }, or wrapped as { response } by some toolkit versions. */
+function disputeIdsFrom(output: unknown): string[] {
+  const raw = output && typeof output === "object" && "response" in output ? (output as { response: unknown }).response : output;
+  const items = raw && typeof raw === "object" && "items" in raw ? (raw as { items: unknown }).items : [];
+  return Array.isArray(items) ? items.map((i) => (i && typeof i === "object" ? (i as { dispute_id?: unknown }).dispute_id : undefined)).filter((id): id is string => typeof id === "string" && !!id) : [];
+}
+
+/**
+ * PayPal's CUSTOMER.DISPUTE.CREATED webhook can't reach an app on a laptop, and can be late. So the
+ * host can ask PayPal directly: the settlement agent runs the toolkit's list_disputes for each of
+ * the booking's captures, through the Guard (a read, so no approval), and files the first dispute
+ * it finds just as the webhook would. With no dispute, the booking only notes when it looked.
+ */
+export async function checkForDispute(bookingId: string): Promise<Booking> {
+  const booking = requireBooking(bookingId);
+  if (booking.dispute) return readBack(bookingId, booking.dispute.disputeId);
+  const captures = [booking.settlement?.captureId, booking.partCapture?.captureId].filter((id): id is string => !!id);
+  if (!captures.length) throw new HttpError(409, "Nothing has been charged on this booking, so there is nothing to dispute.", "conflict");
+  const [listDisputes] = toolkitTools(["list_disputes"], getEnv().paypalMode === "sandbox" ? "sandbox" : "mock");
+  const runId = `dispute_check_${randomUUID().slice(0, 12)}`;
+  const ctx = { runId, actor: "settlement-agent", channel: getContext().channel, guard: new Guard({ paypal: getPayPal(), policy: appConfig.agentPolicy }) };
+  for (const captureId of captures) {
+    const result = await forBooking(bookingId, () => withContext({ ...getContext(), runId, actor: "settlement-agent", bookingId }, () => runTool(listDisputes, { disputed_transaction_id: captureId, page_size: 5 }, ctx)));
+    if (result.isError) throw new HttpError(502, `PayPal didn't list the disputes: ${failureReason(result)}`, "paypal_error");
+    const [disputeId] = disputeIdsFrom(result.output);
+    if (disputeId) return readBack(bookingId, disputeId);
+  }
+  return saveBooking({ ...requireBooking(bookingId), disputeCheckedAt: new Date().toISOString() });
+}
+
 /** The host asks for PayPal's latest word on the dispute. */
 export async function refreshDispute(bookingId: string): Promise<Booking> {
   const booking = requireBooking(bookingId);
@@ -94,12 +126,12 @@ async function submit(id: string, channel: string, runId: string) {
   }
   // What the host sees next is PayPal's own status, read back before the pack is marked sent, so
   // the page (which stops asking once it is sent) never shows "sent" next to the old status.
-  const { file_name } = result.output as { file_name: string };
+  const { file_name, sent_as } = result.output as { file_name: string; sent_as: "evidence" | "message" };
   try {
     await readBack(id, requireBooking(id).dispute!.disputeId);
   } finally {
     const now = requireBooking(id);
-    saveBooking({ ...now, dispute: { ...now.dispute!, evidence: { ...now.dispute!.evidence!, submittedAt: new Date().toISOString(), fileName: file_name, error: undefined } } });
+    saveBooking({ ...now, dispute: { ...now.dispute!, evidence: { ...now.dispute!.evidence!, submittedAt: new Date().toISOString(), fileName: file_name, sentAs: sent_as, error: undefined } } });
   }
 }
 
@@ -108,7 +140,7 @@ export function requestEvidenceSubmission(id: string, channel = getContext().cha
   const booking = requireBooking(id);
   const dispute = booking.dispute;
   if (!dispute) throw new HttpError(409, "This booking has no PayPal dispute.", "conflict");
-  if (dispute.evidence?.submittedAt) throw new HttpError(409, "The evidence pack was already sent to PayPal.", "conflict");
+  if (!canSendEvidence(dispute) && dispute.evidence?.submittedAt) throw new HttpError(409, "The evidence pack was already sent to PayPal.", "conflict");
   const key = evidenceKey(id);
   const active = activeSettlements();
   if (active.has(key)) throw new HttpError(409, "The evidence pack is already waiting for approval.", "conflict");

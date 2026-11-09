@@ -65,8 +65,10 @@ export interface PayPalApi {
   disputes: {
     list(query?: T.ListDisputesQuery): Promise<T.DisputeList>;
     get(disputeId: string): Promise<T.Dispute>;
-    /** multipart/form-data under the hood. Only while status is WAITING_FOR_SELLER_RESPONSE. */
+    /** multipart/form-data under the hood. Only while status is WAITING_FOR_SELLER_RESPONSE, past the INQUIRY stage (a claim). */
     provideEvidence(disputeId: string, input: { evidences: T.DisputeEvidence[] }, files?: T.EvidenceFile[]): Promise<{ links: T.Link[] }>;
+    /** A message to the other party, with an optional file (multipart, `message_document`). Only at the INQUIRY stage. */
+    sendMessage(disputeId: string, message: string, file?: T.EvidenceFile): Promise<{ links: T.Link[] }>;
     /** Accepting refunds the buyer. */
     acceptClaim(disputeId: string, body?: T.AcceptClaimRequest): Promise<{ links: T.Link[] }>;
   };
