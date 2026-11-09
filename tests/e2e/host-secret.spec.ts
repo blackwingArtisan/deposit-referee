@@ -16,6 +16,7 @@ const ACTIONS: { method: "post" | "get"; path: string; data?: object }[] = [
   { method: "post", path: "review" },
   { method: "post", path: "photos", data: { slot: "check_out" } },
   { method: "post", path: "limit-test" },
+  { method: "post", path: "host-link" },
   { method: "post", path: "dispute" },
   { method: "post", path: "dispute/evidence" },
   { method: "get", path: "evidence" },

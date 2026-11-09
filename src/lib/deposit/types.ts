@@ -160,6 +160,8 @@ export interface Booking {
   renterToken: string;
   /** The host's key to act on this booking, in an httpOnly cookie on the browser that made it (host-key.ts). Never sent in a view. */
   hostSecret?: string;
+  /** One-time links that open this booking as the host on another device (host-key.ts). Only hashes are kept. Never sent in a view. */
+  hostLinks?: HostLink[];
   orderId?: string;
   authorizationId?: string;
   /** Set once the hold was refreshed after PayPal's 3-day honor period. Charges come from this one; a release voids the original, which voids both. */
@@ -217,6 +219,14 @@ export interface PendingApproval {
   summary: string;
   reason: string;
   amountValue?: string;
+}
+
+/** A one-time "open on another device" link: the hash of its code, and when it was used. */
+export interface HostLink {
+  hash: string;
+  createdAt: string;
+  expiresAt: string;
+  usedAt?: string;
 }
 
 /**

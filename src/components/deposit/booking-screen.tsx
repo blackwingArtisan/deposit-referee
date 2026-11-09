@@ -19,6 +19,7 @@ import { DamageItems } from "./damage-items";
 import { DemoTools, type DemoPhotoKind } from "./demo-tools";
 import { DisputePanel } from "./dispute-panel";
 import { HostDecision } from "./host-decision";
+import { HostLink } from "./host-link";
 import { photoDataUrl } from "./photo-file";
 import { PhotoFrame, RENTER_SLOTS } from "./photo-frame";
 import { Ruling } from "./ruling";
@@ -327,6 +328,7 @@ export function BookingScreen() {
         <div className="space-y-6">
           <Ruling booking={booking} calls={timeline} />
           <DisputePanel booking={booking} busy={busy} act={run} onDecided={() => void refresh().catch(() => undefined)} />
+          <HostLink booking={booking} />
         </div>
       ) : (
         <div className="mx-auto max-w-5xl space-y-6">
@@ -452,6 +454,7 @@ export function BookingScreen() {
           </Card>
           <DemoTools booking={booking} busy={busy} act={run} addDemoPhoto={addDemoPhoto} canReplace={canReplace} />
           <DisputePanel booking={booking} busy={busy} act={run} onDecided={() => void refresh().catch(() => undefined)} />
+          <HostLink booking={booking} />
           {timeline}
         </div>
       )}
