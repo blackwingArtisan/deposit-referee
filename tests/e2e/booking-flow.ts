@@ -125,7 +125,9 @@ export async function toPhotos(page: Page, request: APIRequestContext, opts: { i
   await expect(page.getByTestId("hold-authorization-id")).toHaveText((await booking()).authorizationId!);
   if (opts.checkCalls) await expectCallsSurviveReload(page, 2);
 
-  // Both photos, each with its source.
+  // Both photos, each with its source. The sample photos sit behind Demo tools.
+  await expect(page.getByTestId("demo-tools")).not.toHaveAttribute("open");
+  await openDemoTools(page);
   await page.getByTestId("demo-photo-check_in").click();
   await expect(page.getByTestId("demo-photo-check_out")).toBeEnabled();
   if (checkOut === "upload") await page.getByTestId("upload-photo-check_out").setInputFiles("public/demo-photos/cabin-check-out.jpg");
@@ -137,14 +139,30 @@ export async function toPhotos(page: Page, request: APIRequestContext, opts: { i
   return { id, sandbox, live, mode, booking };
 }
 
+/** Opens the Demo tools disclosure (sample photos and the limit test) if it's closed. */
+export async function openDemoTools(page: Page) {
+  const tools = page.getByTestId("demo-tools");
+  if (!(await tools.evaluate((el) => (el as HTMLDetailsElement).open))) await tools.locator("summary").click();
+}
+
+/** Opens a finished step that folded to one line once the proposal came in. */
+export async function unfold(page: Page, step: "hold" | "photos" | "compare") {
+  const fold = page.getByTestId(`fold-${step}`);
+  if (!(await fold.evaluate((el) => (el as HTMLDetailsElement).open))) await fold.locator("summary").click();
+}
+
 /** Everything in toPhotos, then the review and the agent, which stops at its proposal. */
 export async function toProposal(page: Page, request: APIRequestContext, opts: Parameters<typeof toPhotos>[2] = {}): Promise<Flow> {
   const flow = await toPhotos(page, request, opts);
   await page.getByTestId("run-review").click();
   // Never a bare spinner: a live list of steps, with the seconds Claude has been comparing.
   await expect(page.getByTestId("wait-story").first()).toBeVisible({ timeout: 2_000 });
-  await expect(page.getByTestId("review")).toBeVisible({ timeout: 90_000 });
   await expect(page.getByTestId("ai-proposal")).toBeVisible({ timeout: 90_000 });
+  // With the proposal in, the finished steps fold to one line each, and open on a click.
+  for (const step of ["hold", "photos", "compare"]) await expect(page.getByTestId(`fold-${step}-summary`)).toBeVisible();
+  await expect(page.getByTestId("review")).toBeHidden();
+  await unfold(page, "compare");
+  await expect(page.getByTestId("review")).toBeVisible();
   await expect(page.getByTestId("wait-step-proposal")).toHaveAttribute("data-state", "done");
   await expect(page.getByTestId("wait-step-proposal")).toContainText("Proposal ready");
   await expect(page.getByTestId("wait-note-compare")).toHaveText(/^· \d+ s$/);

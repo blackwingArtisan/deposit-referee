@@ -158,7 +158,6 @@ function SplitPanel({ booking, split, busy, act }: { booking: BookingView; split
 /** The agent has stopped. Everything from here is the host's call, and no money moves until they approve. */
 export function HostDecision({ booking, busy, act }: { booking: BookingView; busy: string | null; act: (name: string, failTitle: string, action: () => Promise<BookingView>) => Promise<void> }) {
   const { kitFetch } = useKit();
-  const { toast } = useToast();
   const [edits, setEdits] = useState<Record<string, string>>({});
   const [reason, setReason] = useState<string | undefined>(undefined);
   const { proposal, hold } = booking;
@@ -210,11 +209,6 @@ export function HostDecision({ booking, busy, act }: { booking: BookingView; bus
     return kitFetch<BookingView>(`${url}/settle`, { json: { chargeCents: totalCents } });
   };
   const sendRelease = () => kitFetch<BookingView>(`${url}/settle`, { json: { release: true } });
-  const limitTest = async () => {
-    const after = await kitFetch<BookingView>(`${url}/limit-test`, { method: "POST" });
-    toast({ title: `Refused: ${formatExactCents(authorizedCents + 1)} is more than the hold`, description: "The app's code stopped it before PayPal. No money moved.", variant: "success", durationMs: 5000 });
-    return after;
-  };
 
   return (
     <div className="space-y-4">
@@ -303,15 +297,6 @@ export function HostDecision({ booking, busy, act }: { booking: BookingView; bus
       {raised && contested ? <p className="flex items-center gap-1.5 text-sm text-red-700"><CircleAlert className="size-4" /> The renter contested this charge, so it can only go down now.</p> : null}
 
       <p className="flex items-center gap-1.5 text-xs text-zinc-600"><ShieldCheck className="size-4 shrink-0 text-brand" aria-hidden /> Code limit: no capture above the itemized lines ({formatExactCents(savedCents)}) or the hold ({formatExactCents(authorizedCents)}), whatever the AI asks.</p>
-      <details className="text-xs text-zinc-500" data-testid="for-judges">
-        <summary className="cursor-pointer select-none hover:text-zinc-800">For judges</summary>
-        <div className="mt-2 flex flex-wrap items-center gap-2 rounded-lg bg-zinc-50 px-3 py-2">
-          <span>Have an agent try to capture {formatExactCents(authorizedCents + 1)}, one cent over the hold, through the real tool and Guard.</span>
-          <Button variant="secondary" size="sm" disabled={!!busy} loading={busy === "limit-test"} onClick={() => act("limit-test", "The limit test could not run", limitTest)} data-testid="limit-test">
-            Test the limit
-          </Button>
-        </div>
-      </details>
       </>
       )}
     </div>

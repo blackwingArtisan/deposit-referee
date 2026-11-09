@@ -16,6 +16,7 @@ import { bookingSteps, combineEvents } from "@/lib/deposit/timeline";
 import type { BookingStatus, BookingView, PhotoSlot } from "@/lib/deposit/types";
 import { mergeEvents, type TimelineEvent, type TimelineStep } from "@/lib/events/types";
 import { DamageItems } from "./damage-items";
+import { DemoTools, type DemoPhotoKind } from "./demo-tools";
 import { DisputePanel } from "./dispute-panel";
 import { HostDecision } from "./host-decision";
 import { photoDataUrl } from "./photo-file";
@@ -48,6 +49,30 @@ function Step({ n, title, done, children }: { n: number; title: string; done?: b
       <h3 className="pt-1 font-semibold text-zinc-900">{title}</h3>
       {children ? <div className="mt-3">{children}</div> : null}
     </div>
+  );
+}
+
+/**
+ * A finished step once the proposal is in: one line with what it settled, and the full step a
+ * click away. Keeps the decision at the top of the page.
+ */
+function Fold({ k, title, summary, children }: { k: string; title: string; summary: string; children: ReactNode }) {
+  return (
+    <details className="group relative pl-11" data-testid={`fold-${k}`}>
+      <summary className="flex min-h-8 cursor-pointer list-none items-center gap-2 [&::-webkit-details-marker]:hidden">
+        <span className="absolute left-0 top-0 flex size-8 items-center justify-center rounded-full bg-brand text-sm font-semibold text-brand-foreground" aria-hidden>✓</span>
+        <span className="min-w-0 flex-1 truncate text-sm">
+          <span className="font-semibold text-zinc-900">{title}</span>
+          <span className="text-zinc-600" data-testid={`fold-${k}-summary`}> · {summary}</span>
+        </span>
+        <span className="inline-flex shrink-0 items-center gap-1 text-xs font-medium text-zinc-500">
+          <span className="group-open:hidden">Show</span>
+          <span className="hidden group-open:inline">Hide</span>
+          <ChevronDown className="size-3.5 transition-transform group-open:rotate-180" aria-hidden />
+        </span>
+      </summary>
+      <div className="mt-3">{children}</div>
+    </details>
   );
 }
 
@@ -234,7 +259,7 @@ export function BookingScreen() {
   const { status, review, proposal, settlement, photos, authorizedCents = booking.depositCents } = booking;
   const deciding = status === "proposed" || status === "contested";
 
-  const addDemoPhoto = (slot: PhotoSlot, kind?: { clean?: boolean; faint?: boolean; two?: boolean }) => run(`photo:${slot}`, "Could not add the photo", () => kitFetch<BookingView>(`${url}/photos`, { json: { slot, ...kind } }));
+  const addDemoPhoto = (slot: PhotoSlot, kind?: DemoPhotoKind) => run(`photo:${slot}`, "Could not add the photo", () => kitFetch<BookingView>(`${url}/photos`, { json: { slot, ...kind } }));
 
   async function uploadPhoto(slot: PhotoSlot, event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -245,6 +270,32 @@ export function BookingScreen() {
   const approval = booking.approval;
   const timeline = <PayPalCalls steps={timelineSteps} loading={!savedLoaded} />;
   const canReplace = !photoChangeBlocked(booking);
+  const host = booking.viewer === "host";
+  // Once there is a proposal, the finished steps fold to one line each and the decision leads.
+  const folded = !!proposal && (status === "proposed" || status === "contested" || status === "awaiting_approval" || status === "captured");
+  const step = (k: string, n: number, title: string, foldTitle: string, summary: string, done: boolean, content: ReactNode) =>
+    folded ? (
+      <Fold k={k} title={foldTitle} summary={summary}>
+        {content}
+      </Fold>
+    ) : (
+      <Step n={n} title={title} done={done}>
+        {content}
+      </Step>
+    );
+  const findings = review?.items ?? [];
+  const compareSummary = findings.length
+    ? `${findings.length} new ${findings.length === 1 ? "mark" : "marks"}, ${formatCents(findings.reduce((sum, item) => sum + item.chargeCents, 0))} from the price table`
+    : review?.worthALook?.length
+      ? "nothing to charge, one thing worth a look"
+      : "no new damage";
+  const renterPhotoCount = Object.values(booking.renterPhotos ?? {}).filter(Boolean).length;
+  const approvalCard =
+    status === "awaiting_approval" && approval ? (
+      <div ref={decision} className="scroll-mt-6">
+        <ApprovalHero booking={booking} onDecided={() => void refresh().catch(() => undefined)} />
+      </div>
+    ) : null;
 
   return (
     <>
@@ -274,18 +325,14 @@ export function BookingScreen() {
         </div>
       ) : (
         <div className="mx-auto max-w-5xl space-y-6">
+          {approvalCard}
           <Card>
             <CardBody className="space-y-8 py-6">
-              <Step n={1} title="Renter places the deposit" done={status !== "draft"}>
-                {status === "draft" ? (
-                  <WaitingForHold booking={booking} />
-                ) : (
-                  <HoldPanel booking={booking} />
-                )}
-              </Step>
+              <div className={folded ? "space-y-3" : "space-y-8"}>
+              {step("hold", 1, "Renter places the deposit", "Deposit on hold", `${formatCents(authorizedCents)} authorized on PayPal, nothing charged`, status !== "draft", status === "draft" ? <WaitingForHold booking={booking} /> : <HoldPanel booking={booking} />)}
 
               {status !== "draft" ? (
-                <Step n={2} title="Add the check-in and check-out photos" done={Boolean(photos.check_in && photos.check_out)}>
+                step("photos", 2, "Add the check-in and check-out photos", "Photos", `check-in and check-out${renterPhotoCount ? `, plus ${renterPhotoCount} from the renter` : ""}`, Boolean(photos.check_in && photos.check_out), <>
                   <div className="grid gap-4 sm:grid-cols-2">
                     {SLOTS.map(({ slot, label }) => {
                       const photo = photos[slot];
@@ -295,9 +342,6 @@ export function BookingScreen() {
                           {canReplace ? (
                             <div className="mt-2 flex flex-wrap items-center gap-1" data-testid={`replace-${slot}`}>
                               <span className="text-xs text-zinc-500">Replace:</span>
-                              <Button variant="ghost" size="sm" loading={busy === `photo:${slot}`} disabled={!!busy} onClick={() => addDemoPhoto(slot)} data-testid={`replace-demo-${slot}`}>
-                                Demo photo
-                              </Button>
                               <label className="inline-flex h-8 cursor-pointer items-center justify-center gap-1.5 rounded-lg px-3 text-sm font-medium text-zinc-700 hover:bg-zinc-100 focus-within:ring-2 focus-within:ring-brand-300">
                                 <Upload className="size-4" /> Upload a different photo
                                 <input type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" disabled={!!busy} onChange={(e) => uploadPhoto(slot, e)} data-testid={`replace-upload-${slot}`} />
@@ -308,26 +352,11 @@ export function BookingScreen() {
                       ) : (
                         <div key={slot} className="flex flex-col gap-2 rounded-lg border border-dashed border-zinc-300 p-4">
                           <p className="text-sm font-medium text-zinc-800">{label}</p>
-                          <Button variant="secondary" size="sm" icon={<ImagePlus className="size-4" />} loading={busy === `photo:${slot}`} disabled={!!busy} onClick={() => addDemoPhoto(slot)} data-testid={`demo-photo-${slot}`}>
-                            Use demo photo
-                          </Button>
-                          {slot === "check_out" ? (
-                            <>
-                              <Button variant="ghost" size="sm" disabled={!!busy} onClick={() => addDemoPhoto(slot, { clean: true })} data-testid="demo-photo-clean">
-                                Use demo photo, no damage
-                              </Button>
-                              <Button variant="ghost" size="sm" disabled={!!busy} onClick={() => addDemoPhoto(slot, { faint: true })} data-testid="demo-photo-faint">
-                                Use demo photo, faint mark
-                              </Button>
-                              <Button variant="ghost" size="sm" disabled={!!busy} onClick={() => addDemoPhoto(slot, { two: true })} data-testid="demo-photo-two">
-                                Use demo photo, two marks
-                              </Button>
-                            </>
-                          ) : null}
-                          <label className="inline-flex h-8 cursor-pointer items-center justify-center gap-2 rounded-lg px-3 text-sm font-medium text-zinc-700 hover:bg-zinc-100 focus-within:ring-2 focus-within:ring-brand-300">
-                            <Upload className="size-4" /> Upload photo
+                          <label className="inline-flex h-9 cursor-pointer items-center justify-center gap-2 rounded-lg border border-zinc-300 bg-white px-3 text-sm font-medium text-zinc-800 hover:bg-zinc-50 focus-within:ring-2 focus-within:ring-brand-300">
+                            {busy === `photo:${slot}` ? <ImagePlus className="size-4 animate-pulse" /> : <Upload className="size-4" />} Upload photo
                             <input type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" disabled={!!busy} onChange={(e) => uploadPhoto(slot, e)} data-testid={`upload-photo-${slot}`} />
                           </label>
+                          {host ? <p className="text-xs text-zinc-500">No photo to hand? <span className="font-medium text-zinc-700">Demo tools</span>, below, has sample photos.</p> : null}
                         </div>
                       );
                     })}
@@ -347,12 +376,11 @@ export function BookingScreen() {
                       <Link href={`/renter/${booking.renterToken}`} target="_blank" className="underline underline-offset-2 hover:text-zinc-800">their page</Link> until you compare. The comparison weighs them with yours.
                     </p>
                   ) : null}
-                </Step>
+                </>)
               ) : null}
 
               {photos.check_in && photos.check_out ? (
-                <Step n={3} title="AI compares the photos" done={!!review}>
-                  {review ? (
+                step("compare", 3, "AI compares the photos", "AI comparison", compareSummary, !!review, review ? (
                     <div className="space-y-3" data-testid="review">
                       {compareRun?.finishedAt && !compareRun.error ? <WaitStory run={compareRun} events={events} bookingId={booking.id} /> : null}
                       {!review.items.length && review.worthALook?.length ? (
@@ -383,9 +411,9 @@ export function BookingScreen() {
                         </div>
                       ) : null}
                     </div>
-                  )}
-                </Step>
+                  ))
               ) : null}
+              </div>
 
               {review ? (
                 <Step n={4} title="The agent proposes, you decide" done={status === "captured"}>
@@ -403,7 +431,7 @@ export function BookingScreen() {
 
                     {deciding && proposal ? <HostDecision key={proposal.runId} booking={booking} busy={busy} act={run} /> : null}
 
-                    {status === "awaiting_approval" && approval ? <Notice tone="muted">Waiting for your approval below. Nothing has moved on the hold.</Notice> : null}
+                    {status === "awaiting_approval" && approval ? <Notice tone="muted">Waiting for your approval above. Nothing has moved on the hold.</Notice> : null}
 
                     {status === "awaiting_approval" && !approval ? <Notice tone="muted">Working with PayPal.</Notice> : null}
                     {status === "captured" && !settlement?.error ? <Notice tone="muted">Charge taken. Releasing the rest of the hold.</Notice> : null}
@@ -417,11 +445,7 @@ export function BookingScreen() {
               ) : null}
             </CardBody>
           </Card>
-          {status === "awaiting_approval" && approval ? (
-            <div ref={decision} className="scroll-mt-6">
-              <ApprovalHero booking={booking} onDecided={() => void refresh().catch(() => undefined)} />
-            </div>
-          ) : null}
+          <DemoTools booking={booking} busy={busy} act={run} addDemoPhoto={addDemoPhoto} canReplace={canReplace} />
           <DisputePanel booking={booking} busy={busy} act={run} onDecided={() => void refresh().catch(() => undefined)} />
           {timeline}
         </div>
