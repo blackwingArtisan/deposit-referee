@@ -51,7 +51,6 @@ export function AppShell({ children }: { children: ReactNode }) {
           </Suspense>
         </div>
         <ModeBadges vertical className="px-1" />
-        <p className="mt-4 px-1 text-[11px] leading-relaxed text-zinc-400">Sandbox only. No live PayPal calls are possible from this app.</p>
       </aside>
 
       <header className="sticky top-0 z-30 flex items-center justify-between border-b border-zinc-200 bg-white/90 px-4 py-3 backdrop-blur lg:hidden">

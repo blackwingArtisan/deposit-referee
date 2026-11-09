@@ -65,7 +65,7 @@ export function SecondLookLineRow({ line, charge, number, checkOut, evidence, de
         {flagged ? (
           decide ? (
             <div className="mt-2 space-y-1.5" data-testid="second-look-flag">
-              <p className="text-sm text-amber-900">Claude can&rsquo;t tell from the photos whether this is new. It stays at {formatExactCents(line.fromCents)} until you decide.</p>
+              <p className="text-sm text-amber-900">It stays at {formatExactCents(line.fromCents)} until you decide.</p>
               <div className="flex flex-wrap gap-2">
                 <Button size="sm" variant="secondary" disabled={busy} onClick={() => decide("keep")} data-testid="flag-keep">
                   Keep it: {formatExactCents(line.fromCents)}
