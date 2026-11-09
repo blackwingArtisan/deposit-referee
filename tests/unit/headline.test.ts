@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { approvalAction, approvalPlan } from "@/lib/deposit/approval-plan";
 import { hostHeadline, secondLookHeadline } from "@/lib/deposit/headline";
 import type { ChargeLine, SecondLook, SecondLookLine } from "@/lib/deposit/types";
 
@@ -27,8 +28,27 @@ describe("one money headline per state", () => {
   });
 
   it("at the approval gate and settled", () => {
-    expect(hostHeadline({ ...base, status: "awaiting_approval", approval: { id: "x", summary: "", reason: "", amountValue: "250.00" } })).toBe("Your approval: capture $250.00, release $50.00");
-    expect(hostHeadline({ ...base, status: "awaiting_approval", partCapture: part, approval: { id: "x", summary: "", reason: "" } })).toBe("Your approval: release $150.00");
+    const approval = { id: "x", summary: "", reason: "" };
+    const charge = { kind: "charge", requestedCents: 25_000 } as never;
+    expect(hostHeadline({ ...base, status: "awaiting_approval", settlement: charge, approval: { ...approval, amountValue: "250.00" } })).toBe("Your approval: capture $250.00, release $50.00");
+    expect(hostHeadline({ ...base, status: "awaiting_approval", partCapture: part, settlement: { kind: "release" } as never, approval })).toBe("Your approval: release $150.00");
+  });
+
+  it("at the approval gate, the headline names what the Approve button moves, never another number", () => {
+    const approval = { id: "x", summary: "", reason: "" };
+    // The hosted take's bug: a $90 part capture on a $300 hold, the Guard's amount missing. It read "release $300.00".
+    const pending = { runId: "p", requestedCents: 9_000, contestedCents: 5_000, lines: [line("a", 9_000)] } as never;
+    const gate = { ...base, status: "awaiting_approval" as const, partCapture: pending, approval };
+    const plan = approvalPlan(gate);
+    expect(hostHeadline(gate)).toBe("Your approval: capture $90.00, keep $210.00 on hold");
+    expect(hostHeadline(gate)).toContain(approvalAction(plan)!);
+    // An amount on the Guard's approval that disagrees with the booking doesn't change the headline either.
+    expect(hostHeadline({ ...gate, approval: { ...approval, amountValue: "300.00" } })).toBe("Your approval: capture $90.00, keep $210.00 on hold");
+    // Nothing on the booking names an amount: neutral words, no number.
+    const unknown = hostHeadline({ ...base, status: "awaiting_approval", approval });
+    expect(unknown).toBe("Waiting for your approval: nothing moves until you decide");
+    expect(unknown).not.toMatch(/\$/);
+    expect(approvalAction(approvalPlan({ ...base }))).toBeNull();
     expect(hostHeadline({ ...base, status: "settled", settlement: { capturedCents: 15_000, releasedCents: 15_000 } as never })).toBe("$150.00 captured, $150.00 released");
   });
 

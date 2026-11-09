@@ -6,7 +6,7 @@
  */
 import fs from "node:fs";
 import { expect, test, type Page } from "@playwright/test";
-import { dollars, expectCallsSurviveReload, expectMoneyStrip, expectNoSidewaysScroll, headline, kitStatus, openAsRenter, openDemoTools, renterAccepts, renterContests, setCharge, toPhotos, toProposal, unfold, type Flow } from "./booking-flow";
+import { dollars, expectCallsSurviveReload, expectHeadlineMatchesApprove, expectMoneyStrip, expectNoSidewaysScroll, headline, kitStatus, openAsRenter, openDemoTools, renterAccepts, renterContests, setCharge, toPhotos, toProposal, unfold, type Flow } from "./booking-flow";
 import { readPayPalObjects, tryCapture } from "./paypal-reread";
 import { priceOf } from "../../src/lib/deposit/prices";
 import { photoDateLabel } from "../../src/lib/deposit/second-look-rules";
@@ -84,6 +84,7 @@ async function approveCharge(page: Page, flow: Flow, chargeCents: number, screen
   }
   await expect(prompt.getByTestId("approval-renter-answer")).toBeVisible();
   await expect(prompt.getByTestId("approval-money")).toHaveText(`Capture ${dollars(chargeCents)} · release ${dollars(releaseCents)}`);
+  await expectHeadlineMatchesApprove(page, `capture ${dollars(chargeCents)}`);
   await expect(prompt.getByTestId("approval-guard-reason")).not.toBeEmpty();
   expect((await prompt.boundingBox())!.width).toBeGreaterThan(((await page.getByTestId("fold-hold").boundingBox())!.width) * 0.9);
   await expect(page.getByTestId("approve-button")).toHaveCount(1);
@@ -342,6 +343,7 @@ test("no damage: the agent proposes a full release and the hold is voided", asyn
   await expect(prompt).toBeVisible({ timeout: 30_000 });
   await expect(prompt).toContainText("Release the whole $300.00");
   await expect(prompt.getByTestId("approval-money")).toHaveText("Capture $0.00 · release $300.00");
+  await expectHeadlineMatchesApprove(page, "release $300.00");
   await expect(prompt.getByTestId("approval-renter-answer")).toContainText("doesn’t need to answer");
   await expectHoldUntouched(flow);
   await page.getByTestId("approve-button").click();
@@ -463,6 +465,9 @@ test("split: the renter accepts one item and contests the other; the accepted pa
   await expect(prompt.getByTestId("approval-line")).toHaveCount(1);
   await expect(prompt.getByTestId("approval-line-answer")).toHaveText(["Renter accepts"]);
   await expect(prompt.getByTestId("approval-money")).toHaveText(`Capture ${dollars(acceptedCents)} · keep ${dollars(30_000 - acceptedCents)} on hold`);
+  // The accepted part only: the headline says capture, never "release" the whole hold.
+  await expectHeadlineMatchesApprove(page, `capture ${dollars(acceptedCents)}`);
+  await expect(page.getByTestId("host-headline")).toHaveText(`Your approval: capture ${dollars(acceptedCents)}, keep ${dollars(30_000 - acceptedCents)} on hold`);
   await expectHoldUntouched(flow);
   await page.getByTestId("approve-button").click();
   await expect(page.getByTestId("part-capture")).toContainText(`${dollars(acceptedCents)} charged now`, { timeout: 60_000 });
@@ -805,6 +810,7 @@ async function secondLook(page: Page, request: Parameters<typeof toProposal>[1],
   // The host approves the accepted part first: one capture, not final, so the rest stays on the hold.
   await expect(page.getByTestId("approval-prompt")).toBeVisible({ timeout: 30_000 });
   await expect(page.getByTestId("approval-money")).toHaveText(`Capture ${dollars(acceptedCents)} · keep ${dollars(DEPOSIT_CENTS - acceptedCents)} on hold`);
+  await expectHeadlineMatchesApprove(page, `capture ${dollars(acceptedCents)}`);
   await page.getByTestId("approve-button").click();
   await expect(page.getByTestId("part-capture")).toBeVisible({ timeout: 60_000 });
 

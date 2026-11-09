@@ -52,7 +52,8 @@ test("one money headline per state on the host's page, the renter's page and the
   await renter.getByTestId("contest").click();
   await expect(renter.getByTestId("renter-contested")).toBeVisible();
   await expect(renter.getByTestId("renter-contested-why")).not.toHaveAttribute("open");
-  await oneHeadline(page, "host-headline", "Your approval: capture $150.00, release $150.00");
+  await oneHeadline(page, "host-headline", "Your approval: capture $150.00, keep $150.00 on hold");
+  await expect(page.getByTestId("approve-button")).toHaveText("Approve: capture $150.00");
   await page.getByTestId("approve-button").click();
   await oneHeadline(renter, "renter-headline", "$150.00 charged for what you accepted. $100.00 you contested is with the host.");
 
@@ -79,6 +80,7 @@ test("one money headline per state on the host's page, the renter's page and the
 
   // Approval, then settled: the ruling's headline is the one on screen.
   await oneHeadline(page, "host-headline", "Your approval: release $150.00");
+  await expect(page.getByTestId("approve-button")).toHaveText("Approve: release $150.00");
   await shots(page, "host-approval");
   await page.getByTestId("approve-button").click();
   await expect(page.getByTestId("ruling-headline")).toHaveText("$150 captured, $150 released", { timeout: 60_000 });

@@ -3,6 +3,7 @@
  * line, the amounts from the booking itself; everything that explains them folds behind "Why?".
  * Shared by server and client: no Node imports.
  */
+import { approvalAction, approvalPlan, approvalRemainder } from "./approval-plan";
 import { formatExactCents } from "./rules";
 import { awaitsHost, isUnchanged } from "./second-look-rules";
 import type { Booking, PendingApproval, SecondLook } from "./types";
@@ -15,7 +16,6 @@ type HeadlineBooking = Pick<Booking, "status" | "depositCents" | "authorizedCent
 export function hostHeadline(b: HeadlineBooking): string {
   const held = b.authorizedCents ?? b.depositCents;
   const charged = b.partCapture?.captureId ? (b.partCapture.capturedCents ?? b.partCapture.requestedCents) : 0;
-  const onHold = held - charged;
   switch (b.status) {
     case "draft":
       return `Waiting for the renter's ${formatExactCents(b.depositCents)} hold`;
@@ -38,8 +38,12 @@ export function hostHeadline(b: HeadlineBooking): string {
       return `${lead}${formatExactCents(contested)} contested, still on hold`;
     }
     case "awaiting_approval": {
-      const value = b.approval?.amountValue ? Math.round(Number(b.approval.amountValue) * 100) : undefined;
-      return value !== undefined ? `Your approval: capture ${formatExactCents(value)}, release ${formatExactCents(onHold - value)}` : `Your approval: release ${formatExactCents(onHold)}`;
+      // The same plan as the Approve button: never a number the button doesn't move.
+      const plan = approvalPlan(b);
+      const action = approvalAction(plan);
+      if (!b.approval || !action) return "Waiting for your approval: nothing moves until you decide";
+      const remainder = approvalRemainder(plan);
+      return `Your approval: ${action}${remainder ? `, ${remainder}` : ""}`;
     }
     case "captured":
       return `${formatExactCents(b.settlement?.capturedCents ?? charged)} charged, releasing the rest`;
