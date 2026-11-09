@@ -238,10 +238,10 @@ test("demo", async ({ page, request }) => {
     `The host adds the two photos. Claude boxes only what's new: ${marks}.`,
   ], photosAt);
   // The finished steps fold to one line each; open the photos to show the boxes.
-  await page.getByTestId("fold-photos").locator("summary").click();
+  await page.getByTestId("fold-photos").locator(":scope > summary").click();
   await say(page, `${marks[0].toUpperCase()}${marks.slice(1)}.`);
   await zoomOn(page, page.getByTestId("damage-box").first(), { scale: 2.4, ms: 2600 });
-  await page.getByTestId("fold-photos").locator("summary").click();
+  await page.getByTestId("fold-photos").locator(":scope > summary").click();
   vo(6, [
     `The prices come from a table in code, not from the model. ${whole(acceptedCents)} for the ${acceptedName}, ${whole(contestedCents)} for the ${contestedName}. The agent proposes and stops: it has no tool that can move money.`,
     `Prices come from a table in code. The agent proposes ${whole(acceptedCents + contestedCents)} and stops: it can't move money.`,

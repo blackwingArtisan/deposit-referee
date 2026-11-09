@@ -112,7 +112,8 @@ export const appConfig = {
   agentPolicy: {
     approvalThreshold: "50.00",
     maxPerAction: "500.00",
-    maxPerDay: "2000.00",
+    // The mock e2e suite moves more mock money in a day than this; it may raise the cap for mock PayPal only, never the sandbox.
+    maxPerDay: process.env.PAYPAL_MODE === "mock" && /^\d+\.\d\d$/.test(process.env.MOCK_MAX_PER_DAY ?? "") ? process.env.MOCK_MAX_PER_DAY! : "2000.00",
     requireApprovalFor: ["capture_deposit", "capture_accepted_items", "release_deposit", "submit_dispute_evidence", "accept_dispute_claim"],
   } satisfies Partial<GuardPolicy>,
 };

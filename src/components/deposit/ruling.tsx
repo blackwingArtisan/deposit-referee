@@ -1,5 +1,6 @@
 "use client";
 
+import { Why } from "./why";
 import { useEffect, useRef, type ReactNode } from "react";
 import { moneyLine, moneySteps } from "@/lib/deposit/money-strip";
 import { formatCents, formatExactCents } from "@/lib/deposit/rules";
@@ -115,9 +116,10 @@ export function Ruling({ booking, calls, viewer = "host", pack }: { booking: Rul
             <DamageItems lines={wholeRelease ? [] : lines} />
           </div>
           <div>
-            <h3 className="mb-2 text-sm font-semibold text-zinc-900">Why</h3>
-            <p className="text-sm leading-relaxed text-zinc-700">{proposal?.rationale ?? review.reasoning}</p>
-            {proposal?.hostReason ? <p className="mt-2 text-sm text-zinc-800" data-testid="ruling-host-reason"><span className="font-medium">Host&rsquo;s change:</span> {proposal.hostReason}</p> : null}
+            {proposal?.hostReason ? <p className="mb-2 text-sm text-zinc-800" data-testid="ruling-host-reason"><span className="font-medium">Host&rsquo;s change:</span> {proposal.hostReason}</p> : null}
+            <Why testId="ruling-why">
+              <p className="leading-relaxed" data-testid="ruling-rationale">{proposal?.rationale ?? review.reasoning}</p>
+            </Why>
           </div>
         </div>
       ) : null}
