@@ -100,6 +100,7 @@ export async function toPhotos(page: Page, request: APIRequestContext, opts: { i
 
   // The host has no card form: they wait while the renter places the hold from their own page.
   await expect(page.getByTestId("waiting-headline")).toHaveText(/Waiting for the renter.s hold/);
+  await expect(page.getByTestId("host-headline")).toHaveText("Waiting for the renter's $300.00 hold");
   await expect(page.getByTestId("paypal-v6-button")).toHaveCount(0);
   await expect(page.getByTestId("simulate-paypal-approval")).toHaveCount(0);
 
@@ -120,6 +121,7 @@ export async function toPhotos(page: Page, request: APIRequestContext, opts: { i
   // The host's page picks the hold up by itself.
   const hold = page.getByTestId("hold-panel");
   await expect(page.getByTestId("hold-headline")).toHaveText("$300 authorized, nothing charged", { timeout: 30_000 });
+  await expect(page.getByTestId("host-headline")).toHaveText("$300.00 on hold, nothing charged");
   await expect(hold).toContainText("PayPal keeps an authorization for 29 days");
   await expect(hold).toContainText("guaranteed for the first 3 days");
   // The id on screen is the one PayPal returned for the hold.
@@ -143,13 +145,13 @@ export async function toPhotos(page: Page, request: APIRequestContext, opts: { i
 /** Opens the Demo tools disclosure (sample photos and the limit test) if it's closed. */
 export async function openDemoTools(page: Page) {
   const tools = page.getByTestId("demo-tools");
-  if (!(await tools.evaluate((el) => (el as HTMLDetailsElement).open))) await tools.locator("summary").click();
+  if (!(await tools.evaluate((el) => (el as HTMLDetailsElement).open))) await tools.locator(":scope > summary").click();
 }
 
 /** Opens a finished step that folded to one line once the proposal came in. */
 export async function unfold(page: Page, step: "hold" | "photos" | "compare") {
   const fold = page.getByTestId(`fold-${step}`);
-  if (!(await fold.evaluate((el) => (el as HTMLDetailsElement).open))) await fold.locator("summary").click();
+  if (!(await fold.evaluate((el) => (el as HTMLDetailsElement).open))) await fold.locator(":scope > summary").click();
 }
 
 /** Everything in toPhotos, then the review and the agent, which stops at its proposal. */

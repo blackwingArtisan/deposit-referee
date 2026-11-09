@@ -38,13 +38,13 @@ test("with a proposal, the finished steps fold to one line and the approval card
     await page.evaluate(() => window.scrollTo(0, 0));
     await expect(page.getByTestId("fold-hold-summary")).toContainText("$300 authorized on PayPal, nothing charged");
     for (const step of ["hold", "photos", "compare"]) {
-      const summary = page.getByTestId(`fold-${step}`).locator("summary");
+      const summary = page.getByTestId(`fold-${step}`).locator(":scope > summary");
       await expect(summary).toBeVisible();
       // One line each.
       expect((await summary.boundingBox())!.height, `${step} on ${size.name}`).toBeLessThanOrEqual(40);
     }
-    // The approval card sits above the folded steps, straight under the page header, and starts on screen.
-    const header = (await page.getByRole("heading", { level: 1 }).boundingBox())!;
+    // The approval card sits above the folded steps, straight under the page header and its money headline, and starts on screen.
+    const header = (await page.getByTestId("host-headline").boundingBox())!;
     const card = await top(page, "approval-prompt");
     expect(card).toBeLessThan(await top(page, "fold-hold"));
     expect(card - (header.y + header.height), `gap under the header on ${size.name}`).toBeLessThan(140);
@@ -54,7 +54,7 @@ test("with a proposal, the finished steps fold to one line and the approval card
   }
 
   // A folded step opens on a click, with everything it showed before.
-  await page.getByTestId("fold-photos").locator("summary").click();
+  await page.getByTestId("fold-photos").locator(":scope > summary").click();
   await expect(page.getByTestId("photo-source")).toHaveCount(2);
   await expect(page.getByTestId("photo-source").first()).toBeVisible();
 });

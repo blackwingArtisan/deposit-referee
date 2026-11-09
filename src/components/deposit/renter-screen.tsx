@@ -1,5 +1,6 @@
 "use client";
 
+import { Why } from "./why";
 import { useCallback, useEffect, useState, type ChangeEvent, type ReactNode } from "react";
 import { useParams } from "next/navigation";
 import { Camera, Check, ChevronDown, CircleCheck, Eye, ImagePlus, Lock, MessageSquareWarning, ScanSearch, Upload, X } from "lucide-react";
@@ -181,8 +182,10 @@ export function RenterScreen() {
           <Lock className="mt-0.5 size-4 shrink-0 text-brand" aria-hidden />
           <div className="min-w-0">
             <p className="font-medium text-zinc-900" data-testid="renter-hold-headline">{formatCents(view.hold.authorizedCents)} authorized, nothing charged</p>
-            <p className="mt-0.5">PayPal is holding it on your account. Any charge the host proposes shows here first, and you can answer it line by line.</p>
-            {view.hold.expiresAt ? <p className="mt-0.5" data-testid="renter-hold-ends">The hold ends on {longDate(view.hold.expiresAt)} at the latest. Anything not charged goes back to you.</p> : null}
+            <Why testId="renter-hold-why" className="mt-1">
+              <p>PayPal is holding it on your account. Any charge the host proposes shows here first, and you can answer it line by line.</p>
+              {view.hold.expiresAt ? <p data-testid="renter-hold-ends">The hold ends on {longDate(view.hold.expiresAt)} at the latest. Anything not charged goes back to you.</p> : null}
+            </Why>
           </div>
         </div>
       ) : null}
@@ -194,7 +197,9 @@ export function RenterScreen() {
           <p className="font-semibold">{split ? `You accepted ${formatExactCents(split.acceptedCents)} and contested ${formatExactCents(split.contestedCents)}. The contested part is stopped until the host decides.` : "Your note went to the host. The charge is stopped until they decide."}</p>
           <p className="mt-1">&ldquo;{response.note}&rdquo;</p>
           {split?.chargedCents ? <p className="mt-1" data-testid="renter-part-charged">{formatExactCents(split.chargedCents)} for the items you accepted has been charged.</p> : null}
-          <p className="mt-2 text-xs">From now on the host can only keep {split ? "the contested part" : "this charge"} at {formatExactCents(split ? split.contestedCents : response.amountCents)} or lower it, never raise it. This is a note inside this app, not a PayPal dispute. If you&rsquo;re charged and still disagree, you can open a dispute with PayPal.</p>
+          <Why testId="renter-contested-why" className="mt-2 text-amber-950">
+            <p className="text-xs">From now on the host can only keep {split ? "the contested part" : "this charge"} at {formatExactCents(split ? split.contestedCents : response.amountCents)} or lower it, never raise it. This is a note inside this app, not a PayPal dispute. If you&rsquo;re charged and still disagree, you can open a dispute with PayPal.</p>
+          </Why>
         </div>
       ) : null}
 

@@ -1,6 +1,8 @@
 "use client";
 
 import { awaitsHost, isUnchanged } from "@/lib/deposit/second-look-rules";
+import { hostHeadline } from "@/lib/deposit/headline";
+import { Why } from "./why";
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
@@ -130,9 +132,11 @@ function HoldPanel({ booking }: { booking: BookingView }) {
             {refreshedAuthorizationId ? <span className="text-zinc-500"> (refreshed from {authorizationId})</span> : null}
           </p>
         ) : null}
-        <p className="mt-0.5" data-testid="hold-length">
-          PayPal keeps an authorization for {HOLD_LIMIT_DAYS} days, so this one ends on {longDate(hold.expiresAt)}. The funds are guaranteed for the first {HONOR_DAYS} days, until {longDate(hold.guaranteedUntil)}.
-        </p>
+        <Why testId="hold-why" className="mt-1">
+          <p data-testid="hold-length">
+            PayPal keeps an authorization for {HOLD_LIMIT_DAYS} days, so this one ends on {longDate(hold.expiresAt)}. The funds are guaranteed for the first {HONOR_DAYS} days, until {longDate(hold.guaranteedUntil)}.
+          </p>
+        </Why>
       </div>
     </div>
   );
@@ -310,7 +314,14 @@ export function BookingScreen() {
       <PageHeader
         eyebrow={`Rented by ${booking.renter}`}
         title={booking.item}
-        description={`${formatCents(booking.depositCents)} damage deposit`}
+        description={
+          <>
+            <span data-testid="host-headline" className={status === "settled" ? "sr-only" : "block text-xl font-semibold tracking-tight text-zinc-900 tabular-nums sm:text-2xl"}>
+              {hostHeadline(booking)}
+            </span>
+            <span className="mt-1 block text-sm">{formatCents(booking.depositCents)} damage deposit</span>
+          </>
+        }
         actions={<Badge tone={STATUS_LABEL[status].tone} dot>{STATUS_LABEL[status].label}</Badge>}
       />
 
