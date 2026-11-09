@@ -601,6 +601,7 @@ test("dispute pack: the renter disputes the charge with PayPal, and the host sen
   await expect(panel).toContainText("Not as described, $150.00 of the charge");
   await expect(panel).toContainText("PayPal is waiting for your evidence");
   await expect(page.getByTestId("dispute-id")).toHaveText(disputed.dispute!.disputeId);
+  await expect(page.getByTestId("dispute-stage")).toHaveText("INQUIRY");
   await expect(page.getByTestId("dispute-message")).toContainText("already there");
   await downloadEvidence(page, [settled.settlement!.captureId!]);
 

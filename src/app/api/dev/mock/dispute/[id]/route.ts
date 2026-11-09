@@ -7,16 +7,18 @@ import { getMockPayPal } from "@/lib/paypal";
 /**
  * Mock mode only: the renter opens a PayPal dispute on the booking's charge, as a buyer does from
  * their PayPal account. PayPal then sends CUSTOMER.DISPUTE.CREATED, which the app's handler files.
+ * A dispute opens as an inquiry; `stage: "CHARGEBACK"` opens one that is already a claim, as a
+ * card chargeback is, so PayPal takes evidence from the start.
  */
 export const POST = route<RouteContext<"/api/dev/mock/dispute/[id]">>(
   async (req, ctx) => {
-    const b = await readJson(req, z.object({ message: z.string().max(500).optional(), capture: z.enum(["charge", "accepted"]).optional() }));
+    const b = await readJson(req, z.object({ message: z.string().max(500).optional(), capture: z.enum(["charge", "accepted"]).optional(), stage: z.enum(["INQUIRY", "CHARGEBACK"]).optional() }));
     const { id } = await ctx.params;
     const booking = requireBooking(id);
     const captureId = b.capture === "accepted" ? booking.partCapture?.captureId : (booking.settlement?.captureId ?? booking.partCapture?.captureId);
     if (!captureId) throw new HttpError(409, "Nothing has been charged on this booking, so there is nothing to dispute.", "conflict");
     const mock = getMockPayPal()!;
-    await forBooking(id, () => mock.simulateDispute({ captureId, reason: "MERCHANDISE_OR_SERVICE_NOT_AS_DESCRIBED", buyerMessage: b.message }));
+    await forBooking(id, () => mock.simulateDispute({ captureId, reason: "MERCHANDISE_OR_SERVICE_NOT_AS_DESCRIBED", buyerMessage: b.message, stage: b.stage }));
     await mock.flushWebhooks();
     return viewBooking(requireBooking(id));
   },

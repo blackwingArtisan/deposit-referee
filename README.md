@@ -4,6 +4,14 @@
 
 **Why PayPal:** one hold takes several captures, for up to 29 days, and the rest is released.
 
+## Judge path (about 5 minutes)
+
+1. Open https://deposit-referee.onrender.com. It runs on Render's free plan, so the first load after a quiet spell can take about a minute.
+2. **Try the demo booking** opens a sample booking waiting on the host's decision: both photos, the boxed marks and one card per line with its price-table row. Samples are marked **Sample**; their findings were written for the sample, not made by Claude.
+3. For the whole loop, **Open bookings** and create one. Open the renter's link, choose **Debit or Credit Card** under the PayPal button and pay the hold with PayPal's sandbox card `4111 1111 1111 1111` (any future date, any 3 digits), or tap **Skip the form**, which pays with the same card. No buyer login is needed.
+4. Back on the host's page, add the photos from **Demo tools** (check-in, then **Check-out, two marks**) and compare them: that is a live Claude call. On the renter's page, accept one line and contest the other.
+5. Under **Demo tools → For judges**, **Test the limit** has an agent try to capture one cent over the hold through the real tool and Guard. Code refuses it before PayPal.
+
 **Status:** live at https://deposit-referee.onrender.com on the PayPal sandbox with Claude (Sonnet 5.5 for the photos, Haiku 5.5 for the agent), under an app-side daily AI spend cap · **Video:** link added at submission · **License:** MIT
 
 **PayPal Agent Toolkit:** reads go through the Toolkit (`get_order`, which the agent's `get_authorization` tool is built on, plus `list_disputes` and `get_dispute`); the money moves (capture, void, reauthorize) go through the Guard, which waits for the host's approval.
@@ -184,7 +192,7 @@ Checks: `npm run check` (lint, typecheck, unit tests, build), `npm run test:e2e`
 3. At checkout, log in with the **Personal** sandbox account (password on the account's details page).
 4. Optional: add a webhook for `https://<your-deploy>/api/paypal/webhooks` and set `PAYPAL_WEBHOOK_ID`.
 
-Judges don't need a buyer account: choose **Debit or Credit Card** under the PayPal button and enter PayPal's sandbox card `4111 1111 1111 1111` (any future date, any 3 digits) in PayPal's own card form. The hosted demo also has a one-tap **Skip the form** button that pays with the same sandbox card.
+Judges don't need a buyer account: see the [Judge path](#judge-path-about-5-minutes) at the top.
 
 ## Deploy
 

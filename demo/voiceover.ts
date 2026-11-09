@@ -5,8 +5,8 @@
  * unit test.
  */
 
-/** Speaking pace the narration is laid at. */
-export const WORDS_PER_SECOND = 2.6;
+/** Pace the narration and the captions are laid at: 15 characters a second, a subtitle's reading speed. */
+export const CHARS_PER_SECOND = 15;
 /** A breath between one line and the next. */
 const GAP_S = 0.3;
 
@@ -22,27 +22,29 @@ export interface FittedLine {
   shot: number;
   at: number;
   text: string;
-  words: number;
+  chars: number;
   /** Seconds until the next line (or the end). */
   room: number;
   fits: boolean;
 }
 
-/** Words as spoken: an amount like "$300" or "$150" takes about three words, cents two more. */
-export function spokenWords(text: string): number {
-  return text.split(/\s+/).filter(Boolean).reduce((sum, word) => {
-    const amount = word.match(/^\$[\d,]+(?:\.(\d\d))?/);
-    if (!amount) return sum + 1;
-    return sum + 3 + (amount[1] && amount[1] !== "00" ? 2 : 0);
-  }, 0);
+/**
+ * Characters as spoken: an amount like "$300" is said as about 20 characters ("three hundred
+ * dollars"), its cents 10 more.
+ */
+export function spokenChars(text: string): number {
+  return text.replace(/\$[\d,]+(?:\.(\d\d))?/g, (_, cents?: string) => "x".repeat(20 + (cents && cents !== "00" ? 10 : 0))).length;
 }
+
+/** Seconds a line needs at 15 characters a second. */
+export const secondsFor = (text: string) => spokenChars(text) / CHARS_PER_SECOND;
 
 export function fitVoiceover(voice: VoiceLine[], endAt: number): FittedLine[] {
   const sorted = [...voice].sort((a, b) => a.at - b.at);
   return sorted.map((line, i) => {
     const room = (sorted[i + 1]?.at ?? endAt) - line.at - GAP_S;
-    const fitting = line.lines.find((text) => spokenWords(text) / WORDS_PER_SECOND <= room);
+    const fitting = line.lines.find((text) => secondsFor(text) <= room);
     const text = fitting ?? line.lines.at(-1)!;
-    return { shot: line.shot, at: line.at, text, words: spokenWords(text), room, fits: !!fitting };
+    return { shot: line.shot, at: line.at, text, chars: spokenChars(text), room, fits: !!fitting };
   });
 }

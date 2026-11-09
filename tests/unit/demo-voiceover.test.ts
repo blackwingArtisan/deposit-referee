@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
-import { fitVoiceover, spokenWords, WORDS_PER_SECOND } from "../../demo/voiceover";
+import { CHARS_PER_SECOND, fitVoiceover, spokenChars } from "../../demo/voiceover";
 import { requireBooking, saveBooking } from "@/lib/deposit/bookings";
 import { DEMO_PHOTOS, saveUpload } from "@/lib/deposit/photos";
 import { MOCK_TWO_MARKS, reviewPhotos } from "@/lib/deposit/review";
@@ -14,13 +14,14 @@ beforeEach(async () => {
 const jpeg = (file: string) => `data:image/jpeg;base64,${fs.readFileSync(path.join("public/demo-photos", file)).toString("base64")}`;
 
 describe("the demo's voiceover script", () => {
-  it("counts an amount as the words it takes to say", () => {
-    expect(spokenWords("A $300 hold.")).toBe(5);
-    expect(spokenWords("$150.00 captured")).toBe(4);
-    expect(spokenWords("$20.50 back")).toBe(6);
+  it("counts an amount as the characters it takes to say", () => {
+    expect(spokenChars("A $300 hold.")).toBe("A ".length + 20 + " hold.".length);
+    expect(spokenChars("$150.00 captured")).toBe(20 + " captured".length);
+    expect(spokenChars("$20.50 back")).toBe(30 + " back".length);
   });
 
   it("keeps the long line where it fits and trims to the short one where it doesn't, never moving a shot", () => {
+    // 71 characters: 4.7 s at 15 a second.
     const long = "one two three four five six seven eight nine ten eleven twelve thirteen";
     const script = fitVoiceover(
       [
@@ -35,7 +36,7 @@ describe("the demo's voiceover script", () => {
       [2, 6, "short line", true],
       [3, 8, "far too many words for the time that is left here at the end", false],
     ]);
-    for (const line of script.filter((l) => l.fits)) expect(line.words / WORDS_PER_SECOND).toBeLessThanOrEqual(line.room);
+    for (const line of script.filter((l) => l.fits)) expect(line.chars / CHARS_PER_SECOND).toBeLessThanOrEqual(line.room);
   });
 });
 

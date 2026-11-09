@@ -94,6 +94,12 @@ export function DisputePanel({ booking, busy, act, onDecided }: { booking: Booki
             <dt className="inline text-zinc-500">On capture </dt>
             <dd className="inline font-mono text-zinc-900">{d.captureId}</dd>
           </div>
+          {d.stage ? (
+            <div>
+              <dt className="inline text-zinc-500">PayPal stage </dt>
+              <dd className="inline font-mono text-zinc-900" data-testid="dispute-stage">{d.stage}</dd>
+            </div>
+          ) : null}
           {d.responseDueAt ? (
             <div>
               <dt className="inline text-zinc-500">Answer PayPal by </dt>

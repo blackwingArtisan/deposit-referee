@@ -58,22 +58,28 @@ export async function caption(page: Page, text: string, opts: { ms?: number; wai
   if (opts.wait !== false) await sleep(ms);
 }
 
-/** Zooms in on one element (say, the AI's box) for a moment, then back out. */
-export async function zoomOn(page: Page, target: Locator, opts: { scale?: number; ms?: number } = {}) {
-  const { scale = 2.6, ms = 3200 } = opts;
+/**
+ * Zooms in on one element (say, the AI's box) for a moment, then back out. By default the
+ * element's parent grows around it; `self` grows the element itself from its centre (a card).
+ */
+export async function zoomOn(page: Page, target: Locator, opts: { scale?: number; ms?: number; self?: boolean } = {}) {
+  const { scale = 2.6, ms = 3200, self = false } = opts;
   await target.evaluate((el) => el.scrollIntoView({ block: "center" }));
   await sleep(400);
   const handle = await target.elementHandle();
   await page.evaluate(
-    ({ el, scale }) => {
-      const frame = (el as HTMLElement).parentElement!;
+    ({ el, scale, self }) => {
+      const frame = self ? (el as HTMLElement) : (el as HTMLElement).parentElement!;
       const a = (el as HTMLElement).getBoundingClientRect();
       const f = frame.getBoundingClientRect();
       frame.dataset.demoZoom = "1";
+      // A see-through card would show the page behind it once it grows: give it the page's white.
+      const bg = getComputedStyle(frame).backgroundColor;
+      if (self || bg === "rgba(0, 0, 0, 0)" || bg === "transparent") frame.style.backgroundColor = "#fff";
       Object.assign(frame.style, { position: "relative", zIndex: "40", transition: "transform .8s ease", transformOrigin: `${a.left - f.left + a.width / 2}px ${a.top - f.top + a.height / 2}px`, boxShadow: "0 30px 80px rgba(0,0,0,.45)" });
       requestAnimationFrame(() => (frame.style.transform = `scale(${scale})`));
     },
-    { el: handle, scale },
+    { el: handle, scale, self },
   );
   await sleep(ms);
   await page.evaluate(() => {
@@ -83,7 +89,7 @@ export async function zoomOn(page: Page, target: Locator, opts: { scale?: number
   await sleep(900);
   await page.evaluate(() => {
     const frame = document.querySelector<HTMLElement>("[data-demo-zoom]");
-    if (frame) Object.assign(frame.style, { zIndex: "", boxShadow: "", transform: "" });
+    if (frame) Object.assign(frame.style, { zIndex: "", boxShadow: "", transform: "", backgroundColor: "" });
     delete frame?.dataset.demoZoom;
   });
 }
@@ -133,6 +139,67 @@ export async function zoomPhone(page: Page, target: Locator, scale = 1.7) {
 
 export async function closePhone(page: Page) {
   await page.evaluate(() => document.getElementById("__demo_phone")?.remove());
+}
+
+/** Where the money on the deposit hold stands, in cents, as the app read it back from PayPal. */
+export interface HoldBarState {
+  heldCents: number;
+  capturedCents: number;
+  /** Still on the hold and contested by the renter. */
+  contestedCents: number;
+  releasedCents: number;
+  /** One short line under the bar: what just happened. */
+  note: string;
+}
+
+/**
+ * One bar for the deposit hold, pinned at the right of the frame while the money moves: the hold,
+ * then what is captured, what is contested and still held, and what is released. Each change
+ * slides, so the split capture, the second look and the settlement read as one story instead of
+ * separate screens. `null` fades it out.
+ */
+export async function holdBar(page: Page, state: HoldBarState | null, opts: { title?: string } = {}) {
+  await page.evaluate(
+    ({ state, title, band }) => {
+      let el = document.getElementById("__demo_holdbar");
+      if (!state) {
+        if (el) el.style.opacity = "0";
+        return;
+      }
+      const usd = (c: number) => `$${(c / 100).toFixed(c % 100 ? 2 : 0)}`;
+      const segs: [string, number, string, string][] = [
+        ["captured", state.capturedCents, "#18181b", "Captured"],
+        ["contested", state.contestedCents, "#f59e0b", "Contested"],
+        ["held", Math.max(0, state.heldCents - state.capturedCents - state.contestedCents - state.releasedCents), "#2563eb", "Held"],
+        ["released", state.releasedCents, "#10b981", "Released"],
+      ];
+      if (!el) {
+        el = document.createElement("div");
+        el.id = "__demo_holdbar";
+        Object.assign(el.style, {
+          position: "fixed", right: "14px", top: "50%", transform: "translateY(-50%)", width: "232px", zIndex: "2147483646",
+          padding: "16px 16px 14px", borderRadius: "16px", background: "#fff", boxShadow: "0 18px 50px rgba(0,0,0,.22), 0 0 0 1px rgba(0,0,0,.06)",
+          font: "500 17px/1.35 ui-sans-serif, system-ui, -apple-system, sans-serif", color: "#18181b", opacity: "0", transition: "opacity .4s",
+          maxHeight: `calc(100% - ${band + 48}px)`,
+        });
+        el.innerHTML = `<div data-k="title" style="font-weight:700;font-size:18px"></div>
+          <div style="margin-top:12px;display:flex;height:22px;border-radius:999px;overflow:hidden;background:#e4e4e7">${segs.map(([k, , c]) => `<div data-seg="${k}" style="width:0;background:${c};transition:width .9s ease"></div>`).join("")}</div>
+          <div style="margin-top:12px;display:grid;gap:6px">${segs.map(([k, , c, label]) => `<div data-row="${k}" style="display:flex;align-items:center;gap:8px;transition:opacity .5s"><span style="width:12px;height:12px;border-radius:3px;background:${c};flex:none"></span><span style="flex:1">${label}</span><b data-amt="${k}" style="font-variant-numeric:tabular-nums"></b></div>`).join("")}</div>
+          <div data-k="note" style="margin-top:12px;padding-top:10px;border-top:1px solid #e4e4e7;font-size:16px;color:#3f3f46;font-weight:600"></div>`;
+        document.body.appendChild(el);
+        requestAnimationFrame(() => (el!.style.opacity = "1"));
+      }
+      el.style.opacity = "1";
+      el.querySelector<HTMLElement>('[data-k="title"]')!.textContent = `${title}: ${usd(state.heldCents)}`;
+      el.querySelector<HTMLElement>('[data-k="note"]')!.textContent = state.note;
+      for (const [k, cents] of segs) {
+        el.querySelector<HTMLElement>(`[data-seg="${k}"]`)!.style.width = `${(100 * cents) / state.heldCents}%`;
+        el.querySelector<HTMLElement>(`[data-amt="${k}"]`)!.textContent = usd(cents);
+        el.querySelector<HTMLElement>(`[data-row="${k}"]`)!.style.opacity = cents ? "1" : "0.35";
+      }
+    },
+    { state, title: opts.title ?? "PayPal hold", band: BAND_PX },
+  );
 }
 
 /** Full-screen title card (intro/outro). */
