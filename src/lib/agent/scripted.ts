@@ -1,7 +1,7 @@
 /**
  * Scripted agent for AI mock mode (no ANTHROPIC_API_KEY). It runs the same tools through the
  * same Guard, timeline and audit log as the Claude loop; only the "decisions" are scripted.
- * The timeline labels it clearly as simulated.
+ * The timeline labels it clearly as scripted, with no AI call.
  */
 import { timeline } from "../events/bus";
 import type { AgentDefinition, AgentInput, ScriptStep } from "./define";
@@ -21,11 +21,11 @@ export async function runScriptedAgent(opts: { runId: string; channel: string; d
 
   for (const step of opts.script) {
     if (step.think) {
-      timeline.emit({ kind: "agent.thinking", status: "info", title: "Reasoning (simulated)", detail: step.think, data: { quiet: true } });
+      timeline.emit({ kind: "agent.thinking", status: "info", title: "Reasoning (scripted, no AI)", detail: step.think, data: { quiet: true } });
     }
     if (step.say) {
       lastSay = step.say;
-      timeline.emit({ kind: "agent.message", status: "info", title: `${def.name} (simulated)`, detail: step.say });
+      timeline.emit({ kind: "agent.message", status: "info", title: `${def.name} (scripted, no AI)`, detail: step.say });
     }
     await sleep(step.pauseMs ?? basePause);
     if (!step.tool) continue;
