@@ -11,10 +11,14 @@ describe("the renter photo's EXIF date", () => {
   });
 
   it("gives no date for a photo without EXIF, a PNG or a broken file", () => {
-    expect(photoTakenAt(photo())).toBeUndefined();
+    expect(photoTakenAt(new Uint8Array(fs.readFileSync("public/demo-photos/cabin-check-in.jpg")))).toBeUndefined();
     expect(photoTakenAt(new Uint8Array([0x89, 0x50, 0x4e, 0x47]))).toBeUndefined();
     expect(photoTakenAt(new Uint8Array([0xff, 0xd8, 0xff]))).toBeUndefined();
     expect(photoTakenAt(withExifDate(photo(), "2026-03-03T09:12:00.000Z").subarray(0, 30))).toBeUndefined();
+  });
+
+  it("the demo renter close-up carries its own date, before any take", () => {
+    expect(photoTakenAt(photo())).toBe("2026-11-06T22:14:00.000Z");
   });
 
   it("parses EXIF's own date format, and refuses a zeroed one", () => {
