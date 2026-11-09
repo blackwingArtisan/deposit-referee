@@ -125,7 +125,16 @@ export interface SecondLookLine {
   price?: PriceRow;
   /** The renter sent a photo for this line. */
   withPhoto: boolean;
+  /** When the renter's photo says it was taken (EXIF), and how that sits against the stay. */
+  photoTakenAt?: string;
+  photoTiming?: PhotoTiming;
+  /** Claude couldn't tell (verdict unsure): the line stays as charged until the host keeps or drops it. */
+  flagged?: boolean;
+  hostChoice?: "keep" | "drop";
 }
+
+/** When the renter's photo was taken, against the stay. A photo dated after check-out can't lower a line. */
+export type PhotoTiming = "before_check_in" | "during_stay" | "after_check_out" | "undated";
 
 /** The agent's counter-offer, built from the second look. It moves no money. */
 export interface Counter {
