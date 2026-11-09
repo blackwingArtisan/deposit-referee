@@ -54,3 +54,4 @@ screenshots/
 
 # other browser engines
 test-results-*/
+videos/*.cuts.json
