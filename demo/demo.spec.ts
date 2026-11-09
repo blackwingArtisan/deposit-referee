@@ -195,6 +195,17 @@ test("demo", async ({ page, request }) => {
   await say(page, `${whole(acceptedCents)} for the ${acceptedName}, ${whole(contestedCents)} for the ${contestedName}. It has no tool that can move money.`, 3600);
   await check("proposal");
 
+  // The Guard's refusal: an agent asks for one cent over the hold, and code stops it before PayPal.
+  const limitFrom = clock.raw;
+  await page.getByTestId("demo-tools").locator("summary").click();
+  await tap(page, "limit-test");
+  const refused = page.getByText(/^Refused: \$[\d,.]+ is more than the hold$/);
+  await clock.cut("the limit test running", () => expect(refused).toBeVisible({ timeout: 30_000 }), 600);
+  await highlight(page, refused, 2400);
+  await say(page, `An agent asks for ${whole(view.authorizedCents + 1)}, one cent over the hold. The Guard refuses it in code, before ${pp}.`, 2600);
+  await page.getByTestId("demo-tools").locator("summary").click();
+  console.log(`[demo] limit refusal on camera ${clock.onCamera(limitFrom, clock.raw).toFixed(1)}s`);
+
   // 4. The renter, on their phone: accepts the first item, contests the rest.
   const phone = await openPhone(page, `/renter/${view.renterToken}`);
   await expect(phone.getByTestId("renter-headline")).toBeVisible({ timeout: 20_000 });
