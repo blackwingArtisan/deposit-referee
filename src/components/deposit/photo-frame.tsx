@@ -36,7 +36,8 @@ function PhotoSourceLine({ photo }: { photo: BookingPhoto }) {
 /** An item with `dropped` set was taken off the charge by Claude's second look: its box shows grey, with why. */
 type BoxItem = Pick<DamageItem, "description" | "box" | "photo"> & { dropped?: string; number?: number };
 
-export function PhotoFrame({ label, photo, items = [], looks = [], on = "check_out" }: { label: string; photo: BookingPhoto; items?: BoxItem[]; looks?: Pick<DamageItem, "description" | "box" | "photo">[]; on?: FindingPhoto }) {
+/** `credit` false leaves out the photo's source line, for a repeat of a photo whose source shows elsewhere on the page. */
+export function PhotoFrame({ label, photo, items = [], looks = [], on = "check_out", credit = true }: { label: string; photo: BookingPhoto; items?: BoxItem[]; looks?: Pick<DamageItem, "description" | "box" | "photo">[]; on?: FindingPhoto; credit?: boolean }) {
   const here = (item: Pick<DamageItem, "photo">) => (item.photo ?? "check_out") === on;
   return (
     <figure className="min-w-0">
@@ -77,7 +78,7 @@ export function PhotoFrame({ label, photo, items = [], looks = [], on = "check_o
           ) : null,
         )}
       </div>
-      <PhotoSourceLine photo={photo} />
+      {credit ? <PhotoSourceLine photo={photo} /> : null}
     </figure>
   );
 }

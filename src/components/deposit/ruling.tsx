@@ -2,8 +2,10 @@
 
 import { useEffect, useRef, type ReactNode } from "react";
 import { moneyLine, moneySteps } from "@/lib/deposit/money-strip";
-import { formatCents } from "@/lib/deposit/rules";
-import type { BookingView } from "@/lib/deposit/types";
+import { formatCents, formatExactCents } from "@/lib/deposit/rules";
+import { FileDown, Users } from "lucide-react";
+import { isUnchanged, verdictLabel } from "@/lib/deposit/second-look-rules";
+import type { RulingView } from "@/lib/deposit/types";
 import { DamageItems } from "./damage-items";
 import { PhotoFrame, RENTER_SLOTS } from "./photo-frame";
 
@@ -23,8 +25,12 @@ function showHeadline(headline: HTMLElement | null) {
   if (top < 0 || bottom > window.innerHeight) headline.scrollIntoView({ block: "start" });
 }
 
-/** The result screen. Every number here was re-read from PayPal after the money moved. */
-export function Ruling({ booking, calls }: { booking: BookingView; calls?: ReactNode }) {
+/**
+ * The result screen, the same for host and renter. Every number here was re-read from PayPal after
+ * the money moved. `viewer` only changes who "the other side" is in the shared line; `pack` links
+ * the evidence PDF.
+ */
+export function Ruling({ booking, calls, viewer = "host", pack }: { booking: RulingView; calls?: ReactNode; viewer?: "host" | "renter"; pack?: string }) {
   const headlineRef = useRef<HTMLHeadingElement>(null);
   // The host approves far down the page. When the result appears, bring its headline into view.
   useEffect(() => showHeadline(headlineRef.current), []);
@@ -116,12 +122,38 @@ export function Ruling({ booking, calls }: { booking: BookingView; calls?: React
         </div>
       ) : null}
 
+      {booking.secondLook?.status === "accepted" || (booking.secondLook?.status === "ready" && isUnchanged(booking.secondLook.lines)) ? (
+        <div className="mt-6 border-t border-zinc-100 pt-5" data-testid="ruling-second-look">
+          <h3 className="mb-2 text-sm font-semibold text-zinc-900">{booking.secondLook.status === "accepted" ? <>Claude&rsquo;s second look, accepted by the renter</> : <>Claude&rsquo;s second look changed nothing</>}</h3>
+          <ul className="space-y-1 text-sm text-zinc-700">
+            {booking.secondLook.lines.map((line) => (
+              <li key={line.lineId}>
+                {line.description.split(/(?<=\.)\s/)[0]} <span className="text-zinc-500">· {verdictLabel(line)} ·</span> <span className="tabular-nums">{formatExactCents(line.fromCents)} → {formatExactCents(line.toCents)}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
       <dl className="mt-6 grid gap-x-6 border-t border-zinc-100 pt-4 sm:grid-cols-3">
         <Reference label="PayPal order" value={booking.orderId} />
         <Reference label="PayPal authorization" value={booking.authorizationId} />
         {part ? <Reference label="PayPal capture, accepted items" value={part.captureId} /> : null}
         {wholeRelease || (part && settlement?.kind === "release") ? null : <Reference label={part ? "PayPal capture, contested items" : "PayPal capture"} value={settlement?.captureId} />}
+        {settlement?.authorizationStatus ? <Reference label="The rest of the hold" value={settlement.authorizationStatus} /> : null}
       </dl>
+
+      <div className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-zinc-100 pt-4 text-sm">
+        <p className="inline-flex items-center gap-1.5 text-zinc-600" data-testid="ruling-shared">
+          <Users className="size-4 text-zinc-400" aria-hidden />
+          {viewer === "host" ? `${booking.renter} sees this same page on their link.` : "The host sees this same page."}
+        </p>
+        {pack && captured > 0 ? (
+          <a href={pack} download className="inline-flex items-center gap-1.5 font-medium text-brand-700 hover:underline" data-testid="ruling-pack">
+            <FileDown className="size-4" aria-hidden /> Download the evidence pack (PDF)
+          </a>
+        ) : null}
+      </div>
     </section>
   );
 }
