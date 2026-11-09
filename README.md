@@ -38,6 +38,7 @@ What Deposit Referee does that none of those pages describes:
 - **The hold stays on PayPal.** The renter's money is authorized, not taken and not replaced by a fee. Only what the host approves is captured; the rest is released.
 - **Several captures on one hold.** The lines the renter accepts are captured at once with `final_capture: false`, and the contested part stays on the same authorization until the host decides.
 - **The renter contests line by line.** The renter sees each line with its photo and price-table row and accepts or contests each one before anything moves.
+- **The renter's contest gets a second look, and the charge can only fall.** The renter attaches their own photo to a contested line; Claude re-reads that line against it, code maps the verdict to an amount that can only stay or drop, and an agent sends the counter. RentSolve's page describes a tenant response log for the landlord, not a re-evaluation from the tenant's evidence.
 
 That is what those public pages say, not proof that none of them does it. The photo comparison itself is a crowded niche, and Claude doing it isn't unique.
 
@@ -72,6 +73,8 @@ Airbnb's AirCover and Turo's protection plans settle damage inside their platfor
 
 **Split capture.** When the renter accepts some items and contests others, the host can charge the accepted items at once (after the same approval step), as a capture with `final_capture: false`. The contested part stays on the same hold until a person settles it, with a second capture from that hold or a release; the settlement then voids what's left. PayPal can't shrink a hold, so the app's own limit keeps the second charge to the contested amount. On the sandbox both captures and the void are re-read from PayPal.
 
+**Second look.** When the renter contests a line, they can attach their own photo of it (camera or file) with their note. Claude Sonnet re-reads each contested line against the host's photos and the renter's evidence, with the note passed as quoted data, never as instructions, and names one verdict: `new`, `already_there`, `smaller` or `unsure`. Code turns it into the amount (`src/lib/deposit/second-look-rules.ts`): already there or unsure goes to $0 (a contested line Claude can't stand behind is never charged, like a faint mark), smaller takes the price-table row for the smaller size only if that is lower, and new leaves the line as it was. No verdict can raise a line; a unit test checks every verdict, size and amount. On the host's page the line's box turns grey and the total falls. The counter agent (Claude Haiku, no money tool) reads the second look and writes the counter for both sides; the host sends it with one click, the renter accepts on their phone, and the charge or release goes to the host's approval gate. The accepted items were already captured with `final_capture: false`, so a lowered line that still charges something is a second capture from the same hold, then the rest is voided.
+
 **The renter's own photos.** Until the host compares the photos, the renter can add their own check-in or check-out photo from their link. Claude weighs them with the host's: damage that either check-in photo already shows isn't charged, and each finding says which photo it was seen in ("Seen in the host's check-out photo").
 
 **Dispute pack.** Once anything is charged, the host can download an evidence pack (PDF): the photos with each finding boxed and numbered, every line with its price-table row and the photo it was seen in, the renter's accept or contest record and every PayPal id. If the renter disputes the charge with PayPal, the `CUSTOMER.DISPUTE.CREATED` webhook files the dispute under its booking, and the settlement agent reads it with the Agent Toolkit's `get_dispute`. The host sees the case, the renter's message and the deadline, and can send the pack to PayPal. That submission is a guarded tool (`submit_dispute_evidence`) that waits for the host's approval like a charge.
@@ -90,7 +93,7 @@ These live in `src/lib/deposit/rules.ts` and `src/agents/tools/capture-deposit.t
 - A capture can't exceed the itemized lines or the amount held, whatever is asked. Both are checked when the host asks, again before the approval prompt, and again from PayPal's own numbers just before the capture.
 - The capture tool only runs for a charge the host asked for and approved. An agent calling it directly is refused.
 - A charge can't reach the approval step until the renter has accepted it, contested it (and the host has seen the note), or let their window lapse. The window is 48 hours, or ends an hour before the hold does. Accepting one amount doesn't cover a higher one.
-- After a contest the charge can only stay the same or go down.
+- After a contest the charge can only stay the same or go down. Claude's second look can only lower a contested line: the model names a verdict, and the amount is the price-table row or $0, never more than the line was.
 - A charge on an expired hold is refused.
 - A charge more than 3 days after the hold was placed, past PayPal's honor period, first refreshes the hold: the capture tool reauthorizes the same amount and charges the new authorization, and the PayPal calls show **Hold refreshed**. A release voids the original hold, which voids both. If PayPal refuses the reauthorization, the original hold is charged as before. The sandbox can't age a hold, so this is proven by unit tests on a mocked clock (`tests/unit/hold-refresh.test.ts`), not on the sandbox.
 
@@ -117,6 +120,8 @@ All PayPal calls go to the **sandbox** (`https://api-m.sandbox.paypal.com`); the
 |---|---|---|
 | Settlement agent | Claude Haiku 5.5 (`claude-haiku-5-5`) | Reads the photo review and the hold in a tool loop, then proposes a charge or release with its evidence and stops; explains each step on the timeline |
 | Photo review | Claude Sonnet 5.5 (`claude-sonnet-5-5`) | Vision: compares the two photos, and returns itemized damage with boxes as structured data |
+| Second look | Claude Sonnet 5.5 | Vision: re-reads each line the renter contested against their own photo and note, and names a verdict (new, already there, smaller, unsure); code sets the amount |
+| Counter agent | Claude Haiku 5.5 | Reads the second look with `read_second_look` and writes the counter-offer for both sides with `propose_counter`; it has no money tool |
 
 - **Agent loop**: Claude's tool use via the Anthropic TypeScript SDK (`@anthropic-ai/sdk`), with adaptive thinking and summarized reasoning shown on the timeline.
 - **Structured output**: zod schemas through the Messages API's structured outputs (`output_config.format`).
@@ -195,6 +200,7 @@ Started from kit `b67af83`. Two kit bugs found while building this are fixed her
 - The optional PayPal remote MCP connector is read-only and untested.
 - There are no logins yet. Creating a booking gives that browser the booking's host secret (an httpOnly cookie, also accepted as the `x-booking-secret` header). Every route that approves, captures, voids, edits the charge, compares photos or sends evidence answers 401 without it and 403 with the wrong one, before any PayPal or AI call (`tests/e2e/host-secret.spec.ts`). Anyone else with the booking's link sees it read-only, with no renter link. The catch: the host can't act from a second device yet. The renter's page is a private link the host shares by hand.
 - The renter's contest is a note to the host inside this app. It doesn't open a PayPal dispute.
+- The second look's demo evidence (the renter's check-in close-up) is cut from the same CC0 render as the host's photos, with the stain added digitally; it hasn't been run on a real renter's phone photo. Live Claude may call that stain "unsure" rather than "already there"; both go to $0.
 - A PayPal dispute is opened by the buyer from their PayPal account, so automated runs open one on mock PayPal only. The webhook handler, `get_dispute` and the evidence upload are the same code on the sandbox, but no sandbox dispute has been run through them yet. The evidence pack shows JPEG photos; a PNG or WebP upload is named in the pack but not drawn.
 - The AI's figures run low and aren't repair estimates. They're proposals the host can change.
 - `next dev` can reload endlessly on heavy pages (a kit issue, seen without AG Studio too), so run the AG Studio dashboard on a production build.
