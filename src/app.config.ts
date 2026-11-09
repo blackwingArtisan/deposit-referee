@@ -30,6 +30,7 @@ export const appConfig = {
     ],
     subheadline:
       "When you rent outside Airbnb or Turo, no platform settles the argument. Here the deposit stays on a PayPal hold; only what you approve is captured. Claude compares the check-in and check-out photos and boxes the new damage, and the renter sees the same evidence and can contest before anything moves.",
+    paypalReason: "Why PayPal: one hold takes several captures, for up to 29 days, and the rest is released.",
     holdNote: "A PayPal hold is guaranteed for 3 days and capturable until day 29, so it suits stays and gear rentals, not long leases.",
     primaryCta: { label: "Open bookings", href: "/bookings" },
     secondaryCta: { label: "See the dashboard", href: "/insights" },
