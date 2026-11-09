@@ -102,7 +102,10 @@ function WaitingForHold({ booking }: { booking: BookingView }) {
   return (
     <div data-testid="waiting-for-hold" className="rounded-lg border border-zinc-200 px-4 py-3 text-sm">
       <p className="font-medium text-zinc-900" data-testid="waiting-headline">Waiting for the renter&rsquo;s hold</p>
-      <p className="mt-1 text-zinc-600">Send {booking.renter} their link. They approve a {formatCents(booking.depositCents)} hold with PayPal on their own page, on their phone or computer. The money is held, not taken, and this page updates when PayPal confirms it.</p>
+      <p className="mt-1 text-zinc-600">Send {booking.renter} their link to approve a {formatCents(booking.depositCents)} hold with PayPal.</p>
+      <Why testId="waiting-why" className="mt-1">
+        <p>They approve it on their own page, on their phone or computer. The money is held, not taken, and this page updates when PayPal confirms it.</p>
+      </Why>
       {booking.renterToken ? (
         <div className="mt-2 flex flex-wrap items-center gap-3">
           <Link href={path} target="_blank" className="inline-flex items-center gap-1 font-medium text-brand underline underline-offset-2" data-testid="renter-pay-link">
@@ -412,10 +415,12 @@ export function BookingScreen() {
                       {!review.items.length && review.worthALook?.length ? (
                         <p className="text-sm text-zinc-700">Nothing the AI would charge for, but it flagged something worth a look.</p>
                       ) : (
-                        <DamageItems lines={review.items.map((item) => ({ description: item.description, amountCents: item.chargeCents, price: item.price, box: item.box, photo: item.photo }))} />
+                        <DamageItems compact lines={review.items.map((item) => ({ description: item.description, amountCents: item.chargeCents, price: item.price, box: item.box, photo: item.photo }))} />
                       )}
-                      <p className="text-sm leading-relaxed text-zinc-700">{review.reasoning}</p>
-                      {review.renterPhotos?.length ? <p className="text-sm text-zinc-700" data-testid="review-renter-photos">The comparison weighed the renter&rsquo;s own {review.renterPhotos.map((slot) => (slot === "check_in" ? "check-in" : "check-out")).join(" and ")} photo{review.renterPhotos.length > 1 ? "s" : ""} too.</p> : null}
+                      <Why testId="review-why" label="Show Claude's reasoning" hideLabel="Hide Claude's reasoning">
+                        <p className="leading-relaxed" data-testid="review-reasoning">{review.reasoning}</p>
+                        {review.renterPhotos?.length ? <p data-testid="review-renter-photos">The comparison weighed the renter&rsquo;s own {review.renterPhotos.map((slot) => (slot === "check_in" ? "check-in" : "check-out")).join(" and ")} photo{review.renterPhotos.length > 1 ? "s" : ""} too.</p> : null}
+                      </Why>
                       <div className="flex flex-wrap items-center gap-2">
                         <Badge tone={review.mocked ? "warning" : "brand"} data-testid="review-engine">{review.mocked ? (booking.sample ? "Sample result" : "Simulated AI result") : `${review.model} · compare images`}</Badge>
                         {review.mocked ? null : <Badge data-testid="review-cost">Cost ${review.costUsd.toFixed(3)}</Badge>}
