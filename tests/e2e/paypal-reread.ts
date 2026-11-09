@@ -9,7 +9,7 @@ interface Amount {
 }
 
 export interface PayPalObjects {
-  order: { id: string; status: string; intent: string; purchase_units: { payments: { captures: { id: string; amount: Amount }[] } }[] };
+  order: { id: string; status: string; intent: string; purchase_units: { custom_id?: string; payments: { captures: { id: string; amount: Amount }[] } }[] };
   authorization: { id: string; status: string; amount: Amount };
   capture?: { id: string; status: string; amount: Amount; final_capture: boolean };
 }

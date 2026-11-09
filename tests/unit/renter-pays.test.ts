@@ -18,6 +18,8 @@ describe("the renter places the hold from their own page", () => {
     const order = await paypal().orders.get(orderId);
     expect(order.intent).toBe("AUTHORIZE");
     expect(order.purchase_units![0].amount.value).toBe("300.00");
+    // The order names its booking, so a capture or dispute on it traces back from PayPal's side.
+    expect(order.purchase_units![0].custom_id).toBe(booking.id);
     expect(requireBooking(booking.id).status).toBe("draft");
 
     await paypal().simulateBuyerApproval(orderId);

@@ -136,10 +136,11 @@ async function approveCharge(page: Page, flow: Flow, chargeCents: number, screen
     expect(capture!.amount.value).toBe((chargeCents / 100).toFixed(2));
     expect(capture!.final_capture).toBe(false);
     expect(order.purchase_units[0].payments.captures.map((c) => c.id)).toEqual([capture!.id]);
+    expect(order.purchase_units[0].custom_id, "PayPal's order names its booking").toBe(done.id);
     const further = await tryCapture(done.authorizationId!, "1.00");
     expect(further.status).toBe(422);
     expect(further.issue).toBe("AUTHORIZATION_VOIDED");
-    console.log(`PayPal re-read: order ${order.id} ${order.status}; authorization ${authorization.id} ${authorization.status} ${authorization.amount.value}; capture ${capture!.id} ${capture!.status} ${capture!.amount.value}; further $1.00 capture refused: ${further.status} ${further.issue}`);
+    console.log(`PayPal re-read: booking ${done.id}; order ${order.id} ${order.status} custom_id ${order.purchase_units[0].custom_id}; authorization ${authorization.id} ${authorization.status} ${authorization.amount.value}; capture ${capture!.id} ${capture!.status} ${capture!.amount.value}; further $1.00 capture refused: ${further.status} ${further.issue}`);
   }
 }
 
@@ -572,7 +573,7 @@ test("renter photos: the renter's own check-in close-up is weighed, and each fin
   await renter.context().close();
 });
 
-test("dispute pack: the renter disputes the charge with PayPal, and the host sends the evidence pack through the approval gate", async ({ page, request }) => {
+test("dispute pack: the renter disputes the charge with PayPal, and the host sends the evidence pack through the approval gate", async ({ page, request, browser }) => {
   const { mode, live } = await kitStatus(request);
   test.skip(mode !== "mock", "On the sandbox a buyer opens a dispute from their own PayPal account; the app's handler is the same");
   test.skip(live, "Keeps a live run cheap");
@@ -618,6 +619,23 @@ test("dispute pack: the renter disputes the charge with PayPal, and the host sen
   await expect(panel).toContainText("Waiting for the renter's reply");
   const sent = await flow.booking();
   expect(sent.dispute).toMatchObject({ status: "WAITING_FOR_BUYER_RESPONSE", stage: "INQUIRY", evidence: { fileName: `deposit-evidence-${flow.id}.pdf`, sentAs: "message" } });
+
+  // Another browser with the booking's link (the demo's, say) sees the case read-only: PayPal's id,
+  // stage and the evidence sent, with no buttons, no evidence pack and no renter link.
+  const visitor = await browser.newContext();
+  const other = await visitor.newPage();
+  await other.goto(`/bookings/${flow.id}`);
+  const seen = other.getByTestId("dispute-panel");
+  await expect(seen.getByTestId("dispute-id")).toHaveText(sent.dispute!.disputeId);
+  await expect(seen.getByTestId("dispute-stage")).toHaveText("INQUIRY");
+  await expect(seen.getByTestId("evidence-sent")).toContainText(`deposit-evidence-${flow.id}.pdf`);
+  await expect(other.getByTestId("visitor-note")).toBeVisible();
+  await expect(seen.getByTestId("dispute-actions")).toHaveCount(0);
+  await expect(seen.getByTestId("evidence-download")).toHaveCount(0);
+  const visitorView = await (await other.request.get(`/api/bookings/${flow.id}`)).json();
+  expect(visitorView).toMatchObject({ viewer: "visitor", dispute: { disputeId: sent.dispute!.disputeId } });
+  expect(visitorView).not.toHaveProperty("renterToken");
+  await visitor.close();
 
   // The submission is on the audit trail with its approval, and on the booking's PayPal calls.
   const audit = await (await request.get("/api/audit")).json();
