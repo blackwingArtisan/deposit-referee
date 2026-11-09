@@ -95,7 +95,7 @@ export async function openPhone(page: Page, url: string) {
       const wrap = document.createElement("div");
       wrap.id = "__demo_phone";
       Object.assign(wrap.style, {
-        position: "fixed", inset: "0", bottom: `${band}px`, zIndex: "2147483600", display: "flex", alignItems: "center", justifyContent: "center",
+        position: "fixed", inset: "0", bottom: `${band}px`, zIndex: "2147483600", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden",
         background: "radial-gradient(ellipse at top, #134e4a, #09090b 75%)", opacity: "0", transition: "opacity .4s",
       });
       const phone = document.createElement("div");
@@ -216,6 +216,10 @@ export class DemoClock {
   /** Seconds into the edited video. */
   get seconds() {
     return Math.round((Date.now() - this.start - this.cutMs) / 1000);
+  }
+  /** Seconds into the edited video, unrounded: where a voiceover line starts. */
+  get exact() {
+    return (Date.now() - this.start - this.cutMs) / 1000;
   }
   /** Runs a wait and cuts it from the video, keeping its first `keepMs`. */
   async cut<T>(label: string, wait: () => Promise<T>, keepMs = 0): Promise<T> {
