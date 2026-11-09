@@ -11,6 +11,7 @@ import { heldCents, splitOf, type Split } from "@/lib/deposit/split-rules";
 import type { BookingView, ChargeLine, DamageItem } from "@/lib/deposit/types";
 import { PriceSource, PriceTable } from "./damage-items";
 import { lookLetter } from "./photo-frame";
+import { SecondLookCard } from "./second-look";
 
 function RenterPanel({ booking, chargeCents }: { booking: BookingView; chargeCents: number }) {
   const { toast } = useToast();
@@ -225,6 +226,8 @@ export function HostDecision({ booking, busy, act }: { booking: BookingView; bus
       </div>
 
       {split ? <SplitPanel booking={booking} split={split} busy={busy} act={act} /> : null}
+
+      <SecondLookCard booking={booking} busy={busy} act={act} />
 
       {splitPending ? (
         <Button variant="secondary" onClick={() => act("settle", "Could not request approval", sendRelease)} disabled={blocked} data-testid="release-instead">

@@ -1,5 +1,5 @@
 /** Booking records. Shared by server and browser, so types only. */
-import type { PriceRow } from "./prices";
+import type { DamageSize, PriceRow } from "./prices";
 import type { HoldClock } from "./rules";
 
 export type PhotoSlot = "check_in" | "check_out";
@@ -102,7 +102,57 @@ export interface RenterResponse {
   acceptedLineIds?: string[];
   /** The charge the renter was answering. */
   amountCents: number;
+  /** On a contest: the renter's own photo for a contested line, by line id. */
+  evidence?: Record<string, { photo: BookingPhoto }>;
   at: string;
+}
+
+/** What Claude's second look found on one contested line, against the renter's evidence. */
+export type SecondLookVerdict = "new" | "already_there" | "smaller" | "unsure";
+
+export interface SecondLookLine {
+  lineId: string;
+  description: string;
+  verdict: SecondLookVerdict;
+  /** With "smaller": the size of the part Claude still sees as new. */
+  newSize?: DamageSize;
+  reasoning: string;
+  /** The line before the second look. */
+  fromCents: number;
+  /** The line after it, worked out by code (second-look-rules.ts). Never above fromCents. */
+  toCents: number;
+  /** The price-table row the lower amount comes from, when it changed row. */
+  price?: PriceRow;
+  /** The renter sent a photo for this line. */
+  withPhoto: boolean;
+}
+
+/** The agent's counter-offer, built from the second look. It moves no money. */
+export interface Counter {
+  runId: string;
+  rationale: string;
+  engine: string;
+  simulated: boolean;
+  proposedAt: string;
+}
+
+/**
+ * The renter contested with their own evidence; Claude re-read each contested line against it.
+ * running -> ready (the agent has a counter) -> sent (the host sent it to the renter) -> accepted.
+ */
+export interface SecondLook {
+  status: "running" | "ready" | "sent" | "accepted" | "failed";
+  startedAt: string;
+  finishedAt?: string;
+  lines: SecondLookLine[];
+  mocked: boolean;
+  model?: string;
+  costUsd: number;
+  counter?: Counter;
+  sentAt?: string;
+  acceptedAt?: string;
+  /** Why it stopped, in words the host can act on. */
+  error?: string;
 }
 
 export interface RenterState {
@@ -180,6 +230,8 @@ export interface Booking {
   partCapture?: PartCapture;
   /** A PayPal dispute the renter opened on one of this booking's charges. */
   dispute?: BookingDispute;
+  /** Claude's second look at the lines the renter contested, and the agent's counter. */
+  secondLook?: SecondLook;
 }
 
 /** Sending the evidence pack to PayPal, through the Guard's approval gate. */
@@ -268,4 +320,6 @@ export interface RenterView {
   settled: { capturedCents: number; releasedCents: number } | null;
   /** The renter accepted some items and contested the rest. chargedCents once the accepted part is charged. */
   split: { acceptedCents: number; contestedCents: number; chargedCents?: number } | null;
+  /** Claude's second look: "running" while it reads the renter's evidence, the counter once the host sends it. */
+  secondLook: { status: "running" | "with_host" | "sent" | "accepted"; lines?: SecondLookLine[]; rationale?: string; canAccept: boolean } | null;
 }
