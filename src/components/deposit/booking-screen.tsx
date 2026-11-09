@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, ty
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { Bot, ChevronDown, CircleAlert, Clock, ExternalLink, ImagePlus, Landmark, Lock, ScanSearch, Upload } from "lucide-react";
-import { ApprovalPrompt } from "@/components/agent/approval-prompt";
+import { ApprovalHero } from "./approval-hero";
 import { ToolCallTimeline } from "@/components/agent/tool-call-timeline";
 import { useKit } from "@/components/kit/kit-provider";
 import { useTimeline } from "@/components/kit/use-timeline";
@@ -15,7 +15,6 @@ import { formatCents, HOLD_LIMIT_DAYS, HONOR_DAYS, photoChangeBlocked } from "@/
 import { bookingSteps, combineEvents } from "@/lib/deposit/timeline";
 import type { BookingStatus, BookingView, PhotoSlot } from "@/lib/deposit/types";
 import { mergeEvents, type TimelineEvent, type TimelineStep } from "@/lib/events/types";
-import type { Money } from "@/lib/money";
 import { DamageItems } from "./damage-items";
 import { DisputePanel } from "./dispute-panel";
 import { HostDecision } from "./host-decision";
@@ -181,7 +180,9 @@ export function BookingScreen() {
   const decision = useRef<HTMLDivElement>(null);
   const approvalId = booking?.approval?.id;
   useEffect(() => {
-    if (approvalId) decision.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    // The whole card when it fits, else its foot, so the Approve button is always on screen.
+    const card = decision.current;
+    if (approvalId && card) card.scrollIntoView({ behavior: "smooth", block: card.offsetHeight <= window.innerHeight - 48 ? "start" : "end" });
   }, [approvalId]);
   const shownStatus = useRef(booking?.status);
   useEffect(() => {
@@ -381,17 +382,7 @@ export function BookingScreen() {
 
                     {deciding && proposal ? <HostDecision key={proposal.runId} booking={booking} busy={busy} act={run} /> : null}
 
-                    {status === "awaiting_approval" && approval ? (
-                      <div ref={decision}>
-                        <ApprovalPrompt
-                          approvalId={approval.id}
-                          summary={approval.summary}
-                          reason="Your approval step. No money moves until you approve this exact amount."
-                          amount={approval.amountValue ? ({ currency_code: "USD", value: approval.amountValue } satisfies Money) : undefined}
-                          onDecided={() => void refresh().catch(() => undefined)}
-                        />
-                      </div>
-                    ) : null}
+                    {status === "awaiting_approval" && approval ? <Notice tone="muted">Waiting for your approval below. Nothing has moved on the hold.</Notice> : null}
 
                     {status === "awaiting_approval" && !approval ? <Notice tone="muted">Working with PayPal.</Notice> : null}
                     {status === "captured" && !settlement?.error ? <Notice tone="muted">Charge taken. Releasing the rest of the hold.</Notice> : null}
@@ -405,6 +396,11 @@ export function BookingScreen() {
               ) : null}
             </CardBody>
           </Card>
+          {status === "awaiting_approval" && approval ? (
+            <div ref={decision} className="scroll-mt-6">
+              <ApprovalHero booking={booking} onDecided={() => void refresh().catch(() => undefined)} />
+            </div>
+          ) : null}
           <DisputePanel booking={booking} busy={busy} act={run} onDecided={() => void refresh().catch(() => undefined)} />
           {timeline}
         </div>
