@@ -276,12 +276,15 @@ export async function reviewPhotos(booking: Booking): Promise<DamageReview> {
   const plan = comparisonPlan(booking);
   const images = plan.shown.map((s) => image(s.photo));
   const labels = plan.shown.map((s) => s.label);
+  // A demo photo picked from Demo tools, or the same file uploaded the way a host would (the demo video does that).
+  const isDemo = (photo: BookingPhoto | undefined, demo: BookingPhoto) => !!photo && (photo.src === demo.src || readPhoto(photo).equals(readPhoto(demo)));
+  const faint = () => isDemo(check_out, DEMO_FAINT_CHECK_OUT);
   const mockVerdict = () => {
     if (samePhoto) return MOCK_NO_DAMAGE;
-    if (check_out.src === DEMO_TWO_MARKS_CHECK_OUT.src) return booking.renterPhotos?.check_in?.src === DEMO_RENTER_CHECK_IN.src ? MOCK_TWO_MARKS_RENTER_PROOF : MOCK_TWO_MARKS;
-    return check_out.src === DEMO_FAINT_CHECK_OUT.src ? MOCK_FAINT_MARK : MOCK_VERDICT;
+    if (isDemo(check_out, DEMO_TWO_MARKS_CHECK_OUT)) return isDemo(booking.renterPhotos?.check_in, DEMO_RENTER_CHECK_IN) ? MOCK_TWO_MARKS_RENTER_PROOF : MOCK_TWO_MARKS;
+    return faint() ? MOCK_FAINT_MARK : MOCK_VERDICT;
   };
-  const mockChargeCheck = () => (check_out.src === DEMO_FAINT_CHECK_OUT.src ? MOCK_FAINT_CHARGE_CHECK : mockVerdict());
+  const mockChargeCheck = () => (faint() ? MOCK_FAINT_CHARGE_CHECK : mockVerdict());
   const { data, mocked, model, costUsd } = await compareImages({
     images,
     labels,
