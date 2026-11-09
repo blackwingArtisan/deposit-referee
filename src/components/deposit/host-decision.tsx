@@ -218,7 +218,7 @@ export function HostDecision({ booking, busy, act }: { booking: BookingView; bus
             ? `The charge can't be more than the ${formatExactCents(authorizedCents)} hold.`
             : !clearance.cleared
               ? clearance.until
-                ? `Waiting for the renter to accept or contest. If they don't answer, you can go ahead after ${localTime(clearance.until)}.`
+                ? "Waiting for the renter."
                 : clearance.reason
               : null;
 
@@ -238,7 +238,7 @@ export function HostDecision({ booking, busy, act }: { booking: BookingView; bus
       <div className="rounded-lg bg-zinc-50 px-4 py-3" data-testid="ai-proposal">
         <p className="flex items-center gap-2 font-medium text-zinc-900">
           <Bot className="size-4 text-brand" aria-hidden />
-          {proposal.kind === "release" ? `The agent proposes releasing the whole ${formatExactCents(authorizedCents)}.` : `The agent proposes charging ${formatExactCents(proposal.aiCents)} and releasing ${formatExactCents(authorizedCents - proposal.aiCents)}.`}
+          {proposal.kind === "release" ? `The agent proposes releasing the whole ${formatExactCents(authorizedCents)}.` : `The agent proposes: charge ${formatExactCents(proposal.aiCents)}, release ${formatExactCents(authorizedCents - proposal.aiCents)}.`}
         </p>
         <div className="mt-2 flex flex-wrap items-center gap-2">
           <Badge tone={proposal.simulated ? "warning" : "brand"}>{proposal.engine}</Badge>
@@ -264,7 +264,7 @@ export function HostDecision({ booking, busy, act }: { booking: BookingView; bus
       <div className="rounded-lg border border-zinc-200 px-4 py-3" data-testid="itemized-charge">
         <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
           <h4 className="text-sm font-semibold text-zinc-900">Itemized charge</h4>
-          <p className="text-sm text-zinc-600">From the price table, not the AI. You can edit.</p>
+          <p className="text-sm text-zinc-600">Priced by code. You can edit.</p>
         </div>
         {parsed.length ? (
           <ul className="space-y-3">
@@ -323,7 +323,7 @@ export function HostDecision({ booking, busy, act }: { booking: BookingView; bus
       ) : null}
       {raised && contested ? <p className="flex items-center gap-1.5 text-sm text-red-700"><CircleAlert className="size-4" /> The renter contested this charge, so it can only go down now.</p> : null}
 
-      <p className="flex items-center gap-1.5 text-xs text-zinc-600"><ShieldCheck className="size-4 shrink-0 text-brand" aria-hidden /> Code limit: no capture above the itemized lines ({formatExactCents(savedCents)}) or the hold ({formatExactCents(authorizedCents)}), whatever the AI asks.</p>
+      <p className="flex items-center gap-1.5 text-xs text-zinc-600"><ShieldCheck className="size-4 shrink-0 text-brand" aria-hidden /> Code limit: at most {formatExactCents(Math.min(savedCents, authorizedCents))}, whatever the AI asks.</p>
       </>
       )}
     </div>

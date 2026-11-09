@@ -67,11 +67,19 @@ export function WaitStory({ run, events, bookingId }: { run: CompareRun; events:
     },
   ];
 
+  const head = (
+    <>
+      {failed ? "Stopped" : finished ? "Done" : "Working"} · <span className="tabular-nums" data-testid="wait-elapsed">{seconds(end)} s</span>
+    </>
+  );
+  // Once it's done, the steps fold behind one line: the proposal is what the host reads next.
+  const folded = finished && !failed;
   return (
-    <div className="rounded-lg border border-zinc-200 bg-zinc-50/60 px-4 py-3" data-testid="wait-story">
-      <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
-        {failed ? "Stopped" : finished ? "Done" : "Working"} · <span className="tabular-nums" data-testid="wait-elapsed">{seconds(end)} s</span>
-      </p>
+    <details open={folded ? undefined : true} className="group/wait rounded-lg border border-zinc-200 bg-zinc-50/60 px-4 py-3" data-testid="wait-story">
+      <summary className={cn("text-xs font-semibold uppercase tracking-wide text-zinc-500", folded ? "cursor-pointer hover:text-zinc-800" : "pointer-events-none list-none [&::-webkit-details-marker]:hidden")}>
+        {head}
+        {folded ? <span className="ml-1.5 font-normal normal-case tracking-normal">· <span className="group-open/wait:hidden">show</span><span className="hidden group-open/wait:inline">hide</span></span> : null}
+      </summary>
       <ol className="mt-2 space-y-1.5">
         {steps.map((step) => (
           <li key={step.key} className="flex items-center gap-2.5 text-sm" data-testid={`wait-step-${step.key}`} data-state={step.state}>
@@ -94,6 +102,6 @@ export function WaitStory({ run, events, bookingId }: { run: CompareRun; events:
           </li>
         ))}
       </ol>
-    </div>
+    </details>
   );
 }

@@ -229,6 +229,7 @@ export async function fileDisputeAsBuyer(page: Page, buyer: SandboxBuyer, transa
     };
     let last = "";
     let repeats = 0;
+    let submitted = false;
     for (let step = 1; step <= 12; step++) {
       await page.waitForLoadState("domcontentloaded");
       await page.waitForTimeout(2_000);
@@ -239,9 +240,12 @@ export async function fileDisputeAsBuyer(page: Page, buyer: SandboxBuyer, transa
           .allInnerTexts()
           .catch(() => [])
       ).join(" ");
-      if (done.test(heads)) return "filed";
       const seen = await describePage(page);
       console.log(`buyer step ${step}: ${seen}`);
+      // A case page reached before this run pressed Submit is an earlier run's case (PayPal can
+      // open it when that payment is chosen), not a new filing.
+      if (!submitted && /\/resolutioncenter\/view\//.test(new URL(page.url()).pathname)) return "not offered yet";
+      if (done.test(heads)) return "filed";
       repeats = seen === last ? repeats + 1 : 0;
       last = seen;
       if (repeats >= 2) {
@@ -305,6 +309,7 @@ export async function fileDisputeAsBuyer(page: Page, buyer: SandboxBuyer, transa
           return "filed";
         throw new Error(`no Continue or Submit on step ${step}`);
       }
+      if (/^submit$/i.test((await go.innerText().catch(() => "")).trim())) submitted = true;
       await go.click();
     }
     throw new Error("PayPal's form kept going past 12 steps");
