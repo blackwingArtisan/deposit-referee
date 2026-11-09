@@ -8,9 +8,10 @@ import { useToast } from "@/components/toast";
 import { Badge, Button, Field, Input, MoneyInput } from "@/components/ui";
 import { centsToDollars, formatExactCents, itemizedCents, localTime, parseLineAmount, releasedCents, renterClearance } from "@/lib/deposit/rules";
 import { heldCents, splitOf, type Split } from "@/lib/deposit/split-rules";
-import type { BookingView, ChargeLine, DamageItem } from "@/lib/deposit/types";
+import type { BookingPhoto, BookingView, ChargeLine, DamageItem } from "@/lib/deposit/types";
 import { PriceSource, PriceTable } from "./damage-items";
-import { lookLetter } from "./photo-frame";
+import { LineCard, MarkThumb, NoMarkTile, splitDescription } from "./line-card";
+import { findingPhotoLabel, lookLetter } from "./photo-frame";
 import { SecondLookCard } from "./second-look";
 
 function RenterPanel({ booking, chargeCents }: { booking: BookingView; chargeCents: number }) {
@@ -49,19 +50,30 @@ function RenterPanel({ booking, chargeCents }: { booking: BookingView; chargeCen
   );
 }
 
-function LineRow({ line, value, error, disabled, onChange }: { line: ChargeLine; value: string; error?: string; disabled: boolean; onChange: (value: string) => void }) {
+/** One line of the charge as a card: the mark cropped from the photo, the price chip, one line of reason, and the amount the host can change. */
+function LineRow({ line, number, photo, value, error, disabled, onChange }: { line: ChargeLine; number: number; photo?: BookingPhoto; value: string; error?: string; disabled: boolean; onChange: (value: string) => void }) {
+  const { title, rest } = splitDescription(line.description);
+  const reason = line.note ?? rest ?? (line.box ? `Seen in ${findingPhotoLabel(line.photo)}` : undefined);
+  const origin = line.aiCents === undefined ? "Added by you" : line.aiCents !== line.amountCents ? `The AI proposed ${formatExactCents(line.aiCents)}` : undefined;
   return (
-    <li className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_8.5rem] sm:items-start">
-      <div className="min-w-0 text-sm text-zinc-700">
-        <p>{line.description}</p>
-        <PriceSource price={line.price} className="mt-0.5" />
-        {line.note ? <p className="mt-0.5 text-xs text-zinc-500">{line.note}</p> : null}
-        {line.aiCents === undefined ? <p className="mt-0.5 text-xs text-zinc-500">Added by you</p> : line.aiCents !== line.amountCents ? <p className="mt-0.5 text-xs text-zinc-500">The AI proposed {formatExactCents(line.aiCents)}</p> : null}
-      </div>
-      <div>
-        <MoneyInput aria-label={`Amount for ${line.description}`} value={value} disabled={disabled} onChange={(e) => onChange(e.target.value)} data-testid={`line-amount-${line.id}`} />
-        {error ? <p className="mt-1 text-xs text-red-600">{error}</p> : null}
-      </div>
+    <li data-testid="charge-line">
+      <LineCard
+        thumb={photo && line.box ? <MarkThumb photo={photo} box={line.box} number={number} description={line.description} /> : <NoMarkTile number={number} />}
+        title={`${number}. ${title}`}
+        reason={reason}
+        chips={
+          <>
+            <PriceSource price={line.price} />
+            {origin ? <Badge tone="neutral" className="text-sm!" data-testid="line-origin">{origin}</Badge> : null}
+          </>
+        }
+        aside={
+          <div className="sm:w-36">
+            <MoneyInput aria-label={`Amount for ${line.description}`} value={value} disabled={disabled} onChange={(e) => onChange(e.target.value)} data-testid={`line-amount-${line.id}`} />
+            {error ? <p className="mt-1 text-sm text-red-600">{error}</p> : null}
+          </div>
+        }
+      />
     </li>
   );
 }
@@ -237,15 +249,15 @@ export function HostDecision({ booking, busy, act }: { booking: BookingView; bus
       <>
       {looks.length ? <WorthALook looks={looks} onCharge={(i) => proposal.lines.some((line) => line.id === `look-${i}`)} disabled={blocked || invalid || contested} onAdd={(i) => act("add-look", "Could not add it to the charge", () => saveLines({ addLook: i }))} /> : null}
 
-      <div className="rounded-lg border border-zinc-200 px-4 py-3">
+      <div className="rounded-lg border border-zinc-200 px-4 py-3" data-testid="itemized-charge">
         <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
           <h4 className="text-sm font-semibold text-zinc-900">Itemized charge</h4>
-          <p className="text-xs text-zinc-500">Each amount comes from the price table, not the AI. Change it to your real cost.</p>
+          <p className="text-sm text-zinc-600">Amounts come from the price table, not the AI. Change any to your real cost.</p>
         </div>
         {parsed.length ? (
           <ul className="space-y-3">
-            {parsed.map((p) => (
-              <LineRow key={p.line.id} line={p.line} value={p.value} error={p.error} disabled={!!busy} onChange={(value) => setEdits((all) => ({ ...all, [p.line.id]: value }))} />
+            {parsed.map((p, i) => (
+              <LineRow key={p.line.id} line={p.line} number={i + 1} photo={p.line.photo === "renter_check_out" ? booking.renterPhotos?.check_out : booking.photos.check_out} value={p.value} error={p.error} disabled={!!busy} onChange={(value) => setEdits((all) => ({ ...all, [p.line.id]: value }))} />
             ))}
           </ul>
         ) : (
