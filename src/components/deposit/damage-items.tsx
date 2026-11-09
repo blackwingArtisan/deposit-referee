@@ -1,14 +1,19 @@
+import { Table2 } from "lucide-react";
 import { DAMAGE_SIZES, DAMAGE_TYPES, PRICE_TABLE, rowLabel, SIZE_LABEL, TYPE_LABEL, type PriceRow } from "@/lib/deposit/prices";
 import { formatCents, formatExactCents } from "@/lib/deposit/rules";
 import type { DamageBox, FindingPhoto } from "@/lib/deposit/types";
 import { findingPhotoLabel } from "./photo-frame";
 
-/** Where a line's amount came from, so either side can check it against the table. */
+/** Where a line's amount came from, as a chip, so either side can check it against the table. */
 export function PriceSource({ price, className = "" }: { price?: PriceRow; className?: string }) {
   if (!price) return null;
   return (
-    <span className={`block text-xs text-zinc-500 ${className}`} data-testid="price-row">
-      Price table: {rowLabel(price)}, {formatCents(PRICE_TABLE[price.type][price.size])}
+    <span className={`flex w-fit items-center gap-1.5 rounded-full bg-zinc-100 px-2.5 py-0.5 text-sm text-zinc-700 ${className}`} data-testid="price-row" title="From the fixed price table, not the AI">
+      <Table2 className="size-3.5 shrink-0 text-zinc-500" aria-hidden />
+      <span>
+        <span className="sr-only">Price table: </span>
+        {rowLabel(price)}, <span className="font-semibold tabular-nums text-zinc-900">{formatCents(PRICE_TABLE[price.type][price.size])}</span>
+      </span>
     </span>
   );
 }
@@ -40,9 +45,9 @@ export function PriceTable({ highlight = [] }: { highlight?: PriceRow[] }) {
   return (
     <details className="text-sm" data-testid="price-table">
       <summary className="cursor-pointer text-zinc-600 hover:text-zinc-900">The price table every charge comes from</summary>
-      <p className="mt-2 text-xs text-zinc-500">The AI only names the kind of damage and its size. The amount comes from this table, so the same scratch always costs the same. These are starting figures for a typical repair, not quotes; the host can change a line and tells the renter why.</p>
+      <p className="mt-2 text-sm text-zinc-600">The AI only names the kind of damage and its size. The amount comes from this table, so the same scratch always costs the same. These are starting figures for a typical repair, not quotes; the host can change a line and tells the renter why.</p>
       <div className="mt-2 overflow-x-auto">
-        <table className="w-full min-w-[22rem] text-left text-xs">
+        <table className="w-full min-w-[22rem] text-left text-sm">
           <thead>
             <tr className="text-zinc-500">
               <th className="py-1 pr-2 font-medium">Damage</th>
@@ -63,7 +68,7 @@ export function PriceTable({ highlight = [] }: { highlight?: PriceRow[] }) {
           </tbody>
         </table>
       </div>
-      <p className="mt-1 text-xs text-zinc-500">Small: coin-sized. Medium: up to a hand&rsquo;s length. Large: longer than a hand, or a whole board or panel.</p>
+      <p className="mt-1 text-sm text-zinc-600">Small: coin-sized. Medium: up to a hand&rsquo;s length. Large: longer than a hand, or a whole board or panel.</p>
     </details>
   );
 }
