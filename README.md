@@ -4,7 +4,7 @@
 
 **Why PayPal:** one hold takes several captures, for up to 29 days, and the rest is released.
 
-**Status:** live at https://deposit-referee.onrender.com on the PayPal sandbox with Claude (Sonnet 5.5 for the photos, Haiku 5.5 for the agent), under an app-side daily AI spend cap · **Video:** link added at submission · **License:** MIT
+**Status:** live at https://deposit-referee.onrender.com on the PayPal sandbox with Claude (Sonnet 5.5 for the photos, Haiku 5.5 for the agent), under an app-side daily AI spend cap · **Video:** https://youtu.be/DxEgaxnYA4k · **License:** MIT
 
 **PayPal Agent Toolkit:** reads go through the Toolkit (`get_order`, which the agent's `get_authorization` tool is built on, plus `list_disputes` and `get_dispute`); the money moves (capture, void, reauthorize) go through the Guard, which waits for the host's approval.
 
