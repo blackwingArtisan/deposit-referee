@@ -6,7 +6,7 @@
 
 ## Judge path (about 5 minutes)
 
-1. Open https://deposit-referee.onrender.com. It runs on Render's free plan, so the first load after a quiet spell can take about a minute.
+1. Open https://deposit-referee.onrender.com.
 2. **Try the demo booking** opens a sample booking waiting on the host's decision: both photos, the boxed marks and one card per line with its price-table row. Samples are marked **Sample**; their findings were written for the sample, not made by Claude.
 3. For the whole loop, **Open bookings** and create one. Open the renter's link, choose **Debit or Credit Card** under the PayPal button and pay the hold with PayPal's sandbox card `4111 1111 1111 1111` (any future date, any 3 digits), or tap **Skip the form**, which pays with the same card. No buyer login is needed.
 4. Back on the host's page, add the photos from **Demo tools** (check-in, then **Check-out, two marks**) and compare them: that is a live Claude call. On the renter's page, accept one line and contest the other.
