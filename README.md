@@ -12,7 +12,7 @@
 4. Back on the host's page, add the photos from **Demo tools** (check-in, then **Check-out, two marks**) and compare them: that is a live Claude call. On the renter's page, accept one line and contest the other.
 5. Under **Demo tools → For judges**, **Test the limit** has an agent try to capture one cent over the hold through the real tool and Guard. Code refuses it before PayPal.
 
-**Status:** live at https://deposit-referee.onrender.com on the PayPal sandbox with Claude (Sonnet 5.5 for the photos, Haiku 5.5 for the agent), under an app-side daily AI spend cap · **Video:** link added at submission · **License:** MIT
+**Status:** live at https://deposit-referee.onrender.com on the PayPal sandbox with Claude (Sonnet 5.5 for the photos, Haiku 5.5 for the agent), under an app-side daily AI spend cap · **Video:** https://youtu.be/DxEgaxnYA4k · **License:** MIT
 
 **PayPal Agent Toolkit:** reads go through the Toolkit (`get_order`, which the agent's `get_authorization` tool is built on, plus `list_disputes` and `get_dispute`); the money moves (capture, void, reauthorize) go through the Guard, which waits for the host's approval.
 
@@ -224,4 +224,4 @@ Started from kit `b67af83`. Two kit bugs found while building this are fixed her
 
 ## License
 
-MIT, see [LICENSE](LICENSE).
+MIT, see [LICENSE](LICENSE). Third-party notice: [NOTICE](NOTICE).
