@@ -216,4 +216,4 @@ Started from kit `b67af83`. Two kit bugs found while building this are fixed her
 
 ## License
 
-MIT, see [LICENSE](LICENSE).
+MIT, see [LICENSE](LICENSE). Third-party notice: [NOTICE](NOTICE).
